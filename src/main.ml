@@ -3,13 +3,16 @@
 
 let () = Logging.init ()
 
+let program_name = "example"
+
 let main config mode repo =
   let repo = Current_git.Local.v (Fpath.v repo) in
   let engine = Current.Engine.create ~config (Pipeline.v ~repo) in
+  let site = Current_web.Site.(v ~has_role:allow_all) ~name:program_name (Current_web.routes engine) in
   Logging.run begin
     Lwt.choose [
       Current.Engine.thread engine;  (* The main thread evaluating the pipeline. *)
-      Current_web.run ~mode engine;  (* Optional: provides a web UI *)
+      Current_web.run ~mode site;    (* Optional: provides a web UI *)
     ]
   end
 
@@ -29,6 +32,6 @@ let repo =
 let cmd =
   let doc = "an OCurrent pipeline" in
   Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ repo),
-  Term.info "example" ~doc
+  Term.info program_name ~doc
 
 let () = Term.(exit @@ eval cmd)
