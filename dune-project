@@ -8,7 +8,7 @@
  (synopsis "An OCurrent pipeline")
  (description "A longer description")
  (depends
-  current
+  (current (>= 0.3))
   current_web
   current_git
   fmt
