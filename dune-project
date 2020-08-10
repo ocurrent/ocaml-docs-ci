@@ -3,6 +3,11 @@
 
 (generate_opam_files true)
 
+; Edit these to give your project's URL, authors and maintainers:
+(source (github ocurrent/ocurrent-skeleton))
+(authors "talex5@gmail.com")
+(maintainers "talex5@gmail.com")
+
 (package
  (name example)
  (synopsis "An OCurrent pipeline")
