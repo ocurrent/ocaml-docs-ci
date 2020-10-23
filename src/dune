@@ -4,7 +4,6 @@
  (libraries
    current
    current.cache
-   current.fs
    current_git
    current_web
    current_docker

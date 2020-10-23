@@ -1,12 +1,11 @@
 module Git = Current_git
 module Docker = Current_docker.Default
-module Fs = Current_fs
 
 open Current.Syntax
 
 let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
 
-let targets = ["unix"; "hvt"; "xen"; "virtio"; "spt"; "muen"]
+let targets = ["unix"; "hvt"] (*; "xen"; "virtio"; "spt"; "muen"; "genode"]*)
 let stages = [
     ("tutorial", ["noop"]);
     ("tutorial", ["noop-functor"; "hello"; "hello-key"; "app_info"; "lwt"]);
@@ -21,6 +20,12 @@ let ocaml_4_11_1 ~base =
   run "opam repo set-url default git+https://github.com/ocaml/opam-repository.git" @@
   run "opam switch create 4.11.1"
   
+
+let solo5_bindings_pkgs = 
+      ["hvt"] (* "xen"; "virtio"; "spt"; "muen"; "genode" *)
+  |> List.map (fun x -> "solo5-bindings-"^x)
+  |> String.concat " "
+
 let mirage_dev_dockerfile ~base =
   let open Dockerfile in 
   from (Docker.Image.hash base) @@
@@ -29,9 +34,9 @@ let mirage_dev_dockerfile ~base =
   run "opam repo add dune-universe git+https://github.com/dune-universe/opam-overlays.git" @@
   run "opam repo add mirage-dev /src/mirage-dev" @@
   run "opam pin add -n git+https://github.com/ocamllabs/duniverse.git" @@
-  run "opam depext ocaml-freestanding solo5-bindings-hvt mirage opam-monorepo" @@
+  run "opam depext ocaml-freestanding %s mirage opam-monorepo" solo5_bindings_pkgs @@
   run "opam install ocaml-freestanding" @@
-  run "opam install solo5-bindings-hvt mirage opam-monorepo"  
+  run "opam install %s mirage opam-monorepo" solo5_bindings_pkgs  
 
 let mirage_skeleton_dockerfile ~base=
   let open Dockerfile in
