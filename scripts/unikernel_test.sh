@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 cd $1
 eval $(opam env)
