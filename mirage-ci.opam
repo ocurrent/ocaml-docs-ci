@@ -2,10 +2,10 @@
 opam-version: "2.0"
 synopsis: "An OCurrent pipeline"
 description: "A longer description"
-maintainer: ["talex5@gmail.com"]
-authors: ["talex5@gmail.com"]
-homepage: "https://github.com/ocurrent/ocurrent-skeleton"
-bug-reports: "https://github.com/ocurrent/ocurrent-skeleton/issues"
+maintainer: ["lucas@tarides.com"]
+authors: ["lucas@tarides.com"]
+homepage: "https://github.com/TheLortex/mirage-ci"
+bug-reports: "https://github.com/TheLortex/mirage-ci/issues"
 depends: [
   "dune" {>= "1.11"}
   "current" {>= "0.3"}
@@ -30,4 +30,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/ocurrent/ocurrent-skeleton.git"
+dev-repo: "git+https://github.com/TheLortex/mirage-ci.git"

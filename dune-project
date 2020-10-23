@@ -1,15 +1,15 @@
 (lang dune 1.11)
-(name example)
+(name mirage-ci)
 
 (generate_opam_files true)
 
 ; Edit these to give your project's URL, authors and maintainers:
-(source (github ocurrent/ocurrent-skeleton))
-(authors "talex5@gmail.com")
-(maintainers "talex5@gmail.com")
+(source (github TheLortex/mirage-ci))
+(authors "lucas@tarides.com")
+(maintainers "lucas@tarides.com")
 
 (package
- (name example)
+ (name mirage-ci)
  (synopsis "An OCurrent pipeline")
  (description "A longer description")
  (depends

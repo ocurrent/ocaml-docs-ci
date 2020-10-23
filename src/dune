@@ -1,11 +1,14 @@
 (executable
- (public_name example)
- (name main)
+ (public_name mirage-ci)
+ (name mirage_ci)
  (libraries
    current
    current.cache
+   current.fs
    current_git
    current_web
+   current_docker
+   dockerfile
    cmdliner
    fmt.tty
    logs.fmt
