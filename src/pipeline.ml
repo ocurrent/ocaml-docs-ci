@@ -43,7 +43,9 @@ let mirage_skeleton_dockerfile ~base=
   let open Dockerfile in
   from (Docker.Image.hash base) @@
   env [("OCAMLFIND_CONF", "/home/opam/.opam/4.11.1/lib/findlib.conf")] @@ (* TODO: Dunified findlib is not working correctly.*)
-  run "sh -c \"echo '(lang dune 2.0)\n(cache enabled)\n' >> /home/opam/.config/dune/config\"" @@
+  shell ["/bin/bash"; "-c"] @@
+  run "mkdir -p /home/opam/.config/dune" @@
+  run "echo $'(lang dune 2.0)\\n(cache enabled)\\n' > /home/opam/.config/dune/config" @@
   copy ~chown:"opam:opam" ~src:["."] ~dst:"/src/mirage-skeleton" ()
 
 let test_unikernel_dockerfile ~base =
@@ -51,6 +53,7 @@ let test_unikernel_dockerfile ~base =
   from (Docker.Image.hash base) @@
   run "mkdir -p /home/opam/.cache/duniverse/" @@
   volume "/home/opam/.cache/duniverse/" @@
+  run "mkdir -p /home/opam/.cache/dune/" @@
   volume "/home/opam/.cache/dune/" @@
   copy ~chown:"opam:opam" ~src:["./scripts/unikernel_test.sh"] ~dst:"/" () @@ 
   entrypoint_exec ["/unikernel_test.sh"]
