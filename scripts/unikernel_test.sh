@@ -3,7 +3,7 @@ set -e
 
 cd $1
 eval $(opam env)
-mirage configure -t $2
-opam monorepo lock
-opam monorepo pull
+opam pin sexplib v0.14.0 -n
+mirage configure -t $2 --extra-repo=https://github.com/dune-universe/opam-overlays.git
+make depend
 dune build
