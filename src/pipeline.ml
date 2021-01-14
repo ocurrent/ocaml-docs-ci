@@ -10,11 +10,13 @@ let stages = [
     ("1: test-target", "tutorial", ["noop"]);
     ("2: tutorial", "tutorial", ["noop-functor"; "hello"; "hello-key"; "app_info"]);
     ("3: tutorial-lwt", "tutorial", ["lwt/echo_server"; "lwt/heads1"; "lwt/heads2";"lwt/timeout1";"lwt/timeout2"] );
-    ("4: devices", "device-usage", ["block"; "clock"; "conduit_server"; "console"; "http-fetch"; "kv_ro"; "network"; "ping6"; "prng"; "tracing"]);
+    ("4: devices", "device-usage", ["block"; "clock"; "conduit_server"; "console"; "http-fetch"; "kv_ro"; "network"; "pgx"; "ping6"; "prng"; "tracing"]);
     ("5: applications", "applications", ["dhcp"; "dns"; "static_website_tls"])]
 
+let overrides = [("tracing", ["unix"])]
+
 let solo5_bindings_pkgs = 
-      ["hvt"] (* "xen"; "virtio"; "spt"; "muen"; "genode" *)
+      ["hvt"; "xen"; "virtio"; "spt"; "muen"; "genode"]
   |> List.map (fun x -> "solo5-bindings-"^x)
   |> String.concat " "
 
@@ -75,6 +77,11 @@ let run_test ~test_image ~unikernel ~target =
 
 let test_target ~test_image ~stage ~unikernels ~target = 
   unikernels
+  |> List.filter (fun name -> overrides 
+    |> List.find_map (fun (n,t) -> if n = name then Some t else None) 
+    |> Option.map (List.mem target) 
+    |> Option.value ~default:true
+  )
   |> List.map (fun name -> run_test ~test_image ~unikernel:(stage^"/"^name) ~target)
   |> Current.all
 
