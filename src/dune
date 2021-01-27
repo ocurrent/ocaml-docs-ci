@@ -1,15 +1,6 @@
+;;
 (executable
- (public_name mirage-ci)
- (name mirage_ci)
- (libraries
-   current
-   current.cache
-   current_git
-   current_web
-   current_docker
-   dockerfile
-   cmdliner
-   fmt.tty
-   logs.fmt
-   lwt
-   lwt.unix))
+  (public_name mirage-ci)
+  (name mirage_ci)
+  ( libraries current current.cache current_git current_web current_docker astring
+      dockerfile cmdliner fmt.tty logs.fmt lwt lwt.unix obuilder-spec opam-file-format ))
