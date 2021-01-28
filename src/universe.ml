@@ -21,42 +21,38 @@ module Project = struct
           order = 1;
           name = "core";
           descr =
-            "The core libraries that form Mirage. These are primarily module \
-             type definitions for functionality such as networking and \
-             storage, as well as the frontend configuration and CLI tooling.";
+            "The core libraries that form Mirage. These are primarily module type definitions for \
+             functionality such as networking and storage, as well as the frontend configuration \
+             and CLI tooling.";
         }
     | Driver None ->
         {
           order = 2;
           name = "driver";
           descr =
-            "Library implementations for boot-related functionality not \
-             specific to a particular target.";
+            "Library implementations for boot-related functionality not specific to a particular \
+             target.";
         }
     | Driver Solo5 ->
         {
           order = 3;
           name = "driver/solo5";
           descr =
-            "Drivers for booting on the \
-             [Solo5](https://github.com/Solo5/solo5) target, which uses a \
-             slimmed down KVM hypervisor to run.";
+            "Drivers for booting on the [Solo5](https://github.com/Solo5/solo5) target, which uses \
+             a slimmed down KVM hypervisor to run.";
         }
     | Driver Xen ->
         {
           order = 4;
           name = "driver/xen";
-          descr =
-            "Drivers for booting directly on the [Xen](http://xen.org) \
-             hypervisor.";
+          descr = "Drivers for booting directly on the [Xen](http://xen.org) hypervisor.";
         }
     | Driver Unix ->
         {
           order = 5;
           name = "driver/unix";
           descr =
-            "Drivers for running as a normal Unix process on Linux, \
-             Free/Net/OpenBSD or macos.";
+            "Drivers for running as a normal Unix process on Linux, Free/Net/OpenBSD or macos.";
         }
     | Driver Windows ->
         {
@@ -81,47 +77,37 @@ module Project = struct
           order = 9;
           name = "logging";
           descr =
-            "Logging and profiling libraries for recording and analysing \
-             unikernel activities.";
+            "Logging and profiling libraries for recording and analysing unikernel activities.";
         }
     | Storage ->
         {
           order = 10;
           name = "storage";
           descr =
-            "Libraries to encode into persistent on-disk formats, often with \
-             interoperability with other systems.";
+            "Libraries to encode into persistent on-disk formats, often with interoperability with \
+             other systems.";
         }
     | Network ->
         {
           order = 11;
           name = "network";
-          descr =
-            "Libraries that implement remote network protocols, often \
-             specified in IETF RFCs.";
+          descr = "Libraries that implement remote network protocols, often specified in IETF RFCs.";
         }
     | Web ->
         {
           order = 12;
           name = "web";
-          descr =
-            "Libraries that implement web-related technologies, including the \
-             HTTP protocol.";
+          descr = "Libraries that implement web-related technologies, including the HTTP protocol.";
         }
     | VCS ->
         {
           order = 13;
           name = "vcs";
           descr =
-            "Version-controlled storage technologies, including the Irmin \
-             datastructure layer.";
+            "Version-controlled storage technologies, including the Irmin datastructure layer.";
         }
     | Security ->
-        {
-          order = 14;
-          name = "security";
-          descr = "Cryptography and encryption-related libraries.";
-        }
+        { order = 14; name = "security"; descr = "Cryptography and encryption-related libraries." }
     | Testing ->
         {
           order = 15;
@@ -129,13 +115,7 @@ module Project = struct
           descr = "Libraries to assist with building unit tests and coverage.";
         }
 
-  type t = {
-    org : string;
-    repo : string;
-    cat : category;
-    opam : string list;
-    descr : string;
-  }
+  type t = { org : string; repo : string; cat : category; opam : string list; descr : string }
 
   let v ?(org = "mirage") repo cat opam descr = { org; repo; cat; opam; descr }
 
@@ -147,8 +127,7 @@ module Project = struct
         v "irmin" VCS ["irmin"] "a library for persistent stores with built-in snapshot, branching and reverting mechanisms.";
         v ~org:"mirleft" "ocaml-tls" Security ["tls"] "a pure OCaml implementation of Transport Layer Security.";
         v "git" VCS ["git"] "Git format and protocol in pure OCaml"*)
-      v "digestif" Security [ "digestif" ]
-        "Hashing functions in pure OCaml or C.";
+      v "digestif" Security [ "digestif" ] "Hashing functions in pure OCaml or C.";
     ]
 end
 
