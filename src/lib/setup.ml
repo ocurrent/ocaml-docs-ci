@@ -12,5 +12,3 @@ let install_tools tools =
     Obuilder_spec.run ~network ~cache:[ opam_download_cache ] "opam depext %s" tools_s;
     Obuilder_spec.run ~network ~cache:[ opam_download_cache ] "opam install %s" tools_s;
   ]
-
-let install_tools ~repos ~tools = add_repositories repos @ install_tools tools

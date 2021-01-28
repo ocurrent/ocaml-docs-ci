@@ -1,5 +1,5 @@
-(* This is the main entry-point for the executable.
-   Edit [cmd] to set the text for "--help" and modify the command-line interface. *)
+open Mirage_ci_lib
+open Mirage_ci_pipelines
 
 let () = Logging.init ()
 
@@ -7,41 +7,36 @@ let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
 
 let program_name = "mirage-ci"
 
-let main config mode repo_mirage_skeleton repo_mirage_dev =
+let main config mode repo_mirage_skeleton =
   let repo_mirage_skeleton = Current_git.Local.v (Fpath.v repo_mirage_skeleton) in
-  let repo_mirage_dev = Current_git.Local.v (Fpath.v repo_mirage_dev) in
-  let repo_mirage_ci = Current_git.Local.v (Fpath.v ".") in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
   in
   let repo_overlays =
-    Current_git.clone ~schedule:daily ~gref:"add-hmap-0.8.0"
-      "https://github.com/TheLortex/opam-overlays.git"
+    Current_git.clone ~schedule:daily "https://github.com/dune-universe/opam-overlays.git"
+  in
+  let repo_mirage_dev =
+    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/TheLortex/mirage-dev.git"
   in
   let repos =
     [
       repo_opam |> Current.map (fun x -> ("opam", x));
       repo_overlays |> Current.map (fun x -> ("overlays", x));
+      repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", x));
     ]
   in
-  let _mirage_skeleton = Pipeline.v ~repo_mirage_skeleton ~repo_mirage_dev ~repo_mirage_ci in
-  let _mirage_universe =
-    Pipeline.v2 ~repo_mirage_dev ~repo_opam ~repo_overlays Universe.Project.packages
+  let mirage_skeleton =
+    Pipelines.skeleton ~repos (repo_mirage_skeleton |> Current_git.Local.head_commit)
   in
-  let mirage_analyzer =
-    let analysis = Analyse.v ~repos ~packages:Universe.Project.packages () in
-    let image = Monorepo.monorepo_main ~analysis ~repos () in
-    Current_docker.Default.run ~label:"dune build"
-      ~args:[ "opam"; "exec"; "--"; "dune"; "build"; "@install" ]
-      image
-  in
+  let mirage_released = Pipelines.monorepo_released ~repos Universe.Project.packages in
+  let mirage_edge = Pipelines.monorepo_edge ~repos Universe.Project.packages in
   let engine =
     Current.Engine.create ~config (fun () ->
         Current.all_labelled
           [
-            (*("mirage-skeleton", mirage_skeleton ());
-              ("mirage-universe", mirage_universe);*)
-            ("mirage-universe", mirage_analyzer);
+            ("mirage-skeleton", mirage_skeleton);
+            ("mirage-released", mirage_released);
+            ("mirage-edge", mirage_edge);
           ])
   in
   let site =
@@ -67,14 +62,9 @@ let mirage_skeleton =
   @@ Arg.pos 0 Arg.(some dir) None
   @@ Arg.info ~doc:"The mirage-skeleton repository." ~docv:"MIRAGE_SKELETON" []
 
-let mirage_dev =
-  Arg.required
-  @@ Arg.pos 1 Arg.(some dir) None
-  @@ Arg.info ~doc:"The mirage-dev repository." ~docv:"MIRAGE_DEV" []
-
 let cmd =
   let doc = "an OCurrent pipeline" in
-  ( Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ mirage_skeleton $ mirage_dev),
+  ( Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ mirage_skeleton),
     Term.info program_name ~doc )
 
 let () = Term.(exit @@ eval cmd)

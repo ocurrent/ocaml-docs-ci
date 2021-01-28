@@ -1,1 +1,3 @@
 (data_only_dirs "_opam" "var")
+
+(vendored_dirs vendor)

@@ -7,7 +7,7 @@ authors: ["lucas@tarides.com"]
 homepage: "https://github.com/TheLortex/mirage-ci"
 bug-reports: "https://github.com/TheLortex/mirage-ci/issues"
 depends: [
-  "dune" {>= "1.11"}
+  "dune" {>= "2.0"}
   "current" {>= "0.3"}
   "current_web"
   "current_git"

@@ -1,6 +1,8 @@
+type t = OpamParserTypes.opamfile
+
 type pkg = { name : string; version : string; repo : string }
 
-let get_packages (opam_file : OpamParserTypes.opamfile) =
+let get_packages (opam_file : t) =
   let open OpamParserTypes in
   let pin_depends =
     List.find_map
@@ -20,3 +22,9 @@ let get_packages (opam_file : OpamParserTypes.opamfile) =
           Some { name; version; repo }
       | _ -> None)
     (match pin_depends with List (_, v) -> v | _ -> failwith "failed to parse opam")
+
+let marshal = OpamPrinter.opamfile
+
+let unmarshal t = OpamParser.string t "monorepo.opam"
+
+let digest = marshal
