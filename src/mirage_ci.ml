@@ -7,19 +7,6 @@ let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
 
 let program_name = "mirage-ci"
 
-open Current.Syntax
-
-module String = Astring.String
-
-let parse_opam_dev_repo dev_repo =
-  let repo, branch = match String.cuts ~sep:"#" dev_repo with 
-    | [repo] -> repo, None
-    | [repo; branch] -> repo, Some branch
-    | _ -> failwith "String.cuts dev_repo"
-  in
-  let repo = if String.is_prefix ~affix:"git+" repo then String.drop ~max:4 repo else repo in 
-  Printf.printf "repo: %s\n" repo;
-  repo, branch
 
 let main config mode repo_mirage_skeleton repo_mirage_dev =
   let repo_mirage_skeleton =
@@ -49,25 +36,13 @@ let main config mode repo_mirage_skeleton repo_mirage_dev =
       Universe.Project.packages
   in
   let mirage_analyzer =
-    let analyzer =
+    let analysis =
       Analyse.v
         ~repos
         ~packages:Universe.Project.packages ()
     in
-    Current.component "the Universe" |>
-    let** packages = analyzer in 
-      Printf.printf "got %d projects to track.\n" (List.length packages);
-      let projects_master = List.map (fun (x: Analyse.project) -> 
-        let repo_url, repo_branch = parse_opam_dev_repo x.dev_repo in
-        let+ commit = Current_git.clone ~schedule:daily ?gref:repo_branch repo_url in 
-        (x.name, commit)
-      ) packages
-      in 
-      let image = Monorepo.monorepo_master ~projects:projects_master ~repos () in 
-      [
-        Current_docker.Default.run ~label:"dune build" ~args:["opam"; "exec"; "--"; "dune"; "build"; "@install"] image;
-      ]
-      |> Current.all
+    let image = Monorepo.monorepo_main ~analysis ~repos () in 
+    Current_docker.Default.run ~label:"dune build" ~args:["opam"; "exec"; "--"; "dune"; "build"; "@install"] image
   in
   let engine =
     Current.Engine.create ~config (fun () ->

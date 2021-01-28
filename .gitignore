@@ -1,3 +1,6 @@
 _build
 .merlin
 *.install
+var
+.vscode
+_opam
