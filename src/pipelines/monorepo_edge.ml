@@ -16,15 +16,27 @@ let v ~repos packages =
   in
   let opam = Current.return (Monorepo.opam_file ~ocaml_version:"4.11.1" packages) in
   let lock = Monorepo.lock ~base ~opam in
-  let base =
+  let base_freestanding =
     (* add ocaml-freestanding *)
     let+ base = base in
     Spec.add (Setup.install_tools [ "ocaml-freestanding"; "ocamlfind.1.8.1" ]) base
   in
-  let image = Monorepo.monorepo_main ~base ~lock () in
+  let spec = Monorepo.monorepo_main ~base ~lock () in
+  let spec_freestanding = Monorepo.monorepo_main ~base:base_freestanding ~lock () in
+  let dune_build =
+    let+ spec = spec in
+    Spec.add [ Obuilder_spec.run "opam exec -- dune build @install" ] spec
+  in
+  let dune_build_freestanding =
+    let+ spec = spec_freestanding in
+    Spec.add [ Obuilder_spec.run "opam exec -- dune build @install -x freestanding" ] spec
+  in
+  let cache_hint = "mirage-ci-monorepo-edge" in
+  let cluster = Current_ocluster.v (Current_ocluster.Connection.create Config.cap) in
   [
-    Docker.run ~label:"dune build" image ~args:[ "opam"; "exec"; "--"; "dune"; "build"; "@install" ];
-    Docker.run ~label:"dune build freestanding" image
-      ~args:[ "opam"; "exec"; "--"; "dune"; "build"; "@install"; "-x"; "freestanding" ];
+    Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src:(Current.return [])
+      (dune_build |> Config.to_ocluster_spec);
+    Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src:(Current.return [])
+      (dune_build_freestanding |> Config.to_ocluster_spec);
   ]
   |> Current.all

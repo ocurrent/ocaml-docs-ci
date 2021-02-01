@@ -7,8 +7,10 @@ let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
 
 let program_name = "mirage-ci"
 
-let main config mode repo_mirage_skeleton =
-  let repo_mirage_skeleton = Current_git.Local.v (Fpath.v repo_mirage_skeleton) in
+let main config mode =
+  let repo_mirage_skeleton =
+    Current_git.clone ~schedule:daily "https://github.com/TheLortex/mirage-skeleton.git"
+  in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
   in
@@ -25,9 +27,7 @@ let main config mode repo_mirage_skeleton =
       repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", x));
     ]
   in
-  let mirage_skeleton =
-    Pipelines.skeleton ~repos (repo_mirage_skeleton |> Current_git.Local.head_commit)
-  in
+  let mirage_skeleton = Pipelines.skeleton ~repos repo_mirage_skeleton in
   let mirage_released = Pipelines.monorepo_released ~repos Universe.Project.packages in
   let mirage_edge = Pipelines.monorepo_edge ~repos Universe.Project.packages in
   let engine =
@@ -57,14 +57,8 @@ open Cmdliner
 
 (* An example command-line argument: the repository to monitor *)
 
-let mirage_skeleton =
-  Arg.required
-  @@ Arg.pos 0 Arg.(some dir) None
-  @@ Arg.info ~doc:"The mirage-skeleton repository." ~docv:"MIRAGE_SKELETON" []
-
 let cmd =
   let doc = "an OCurrent pipeline" in
-  ( Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner $ mirage_skeleton),
-    Term.info program_name ~doc )
+  (Term.(const main $ Current.Config.cmdliner $ Current_web.cmdliner), Term.info program_name ~doc)
 
 let () = Term.(exit @@ eval cmd)
