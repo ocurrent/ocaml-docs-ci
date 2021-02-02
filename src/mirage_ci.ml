@@ -27,9 +27,22 @@ let main config mode =
       repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", x));
     ]
   in
-  let mirage_skeleton = Pipelines.skeleton ~repos repo_mirage_skeleton in
-  let mirage_released = Pipelines.monorepo_released ~repos Universe.Project.packages in
-  let mirage_edge = Pipelines.monorepo_edge ~repos Universe.Project.packages in
+  let roots = Universe.Project.packages in
+  let monorepo_lock = Mirage_ci_pipelines.Monorepo.lock ~repos roots in
+
+  let mirage_skeleton = Mirage_ci_pipelines.Skeleton.v ~repos repo_mirage_skeleton in
+  let repos = Current.list_seq repos in
+  let mirage_released = Mirage_ci_pipelines.Monorepo.released ~roots ~repos ~lock:monorepo_lock in
+  let mirage_edge = Mirage_ci_pipelines.Monorepo.edge ~roots ~repos ~lock:monorepo_lock in
+  let mirage_solver =
+    Mirage_ci_lib.Current_solver.v ~repos
+      ~packages:(Current.return [ "dune"; "mirage"; "opam-monorepo" ])
+    |> Current.map (fun res ->
+           List.map
+             (fun (yo : Mirage_ci_lib.Current_solver.resolution) ->
+               Printf.printf "%s.%s\n-> %s\n" yo.name yo.version (Opamfile.marshal yo.opamfile))
+             res)
+  in
   let engine =
     Current.Engine.create ~config (fun () ->
         Current.all_labelled

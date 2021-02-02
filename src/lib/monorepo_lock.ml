@@ -1,14 +1,4 @@
-module OpamParserType = struct
-  type opamfile = OpamParserTypes.opamfile
-
-  let opamfile_to_yojson f = `String (OpamPrinter.opamfile f)
-
-  let opamfile_of_yojson = function
-    | `String s -> Ok (OpamParser.string s "")
-    | _ -> Error "failed to parse opamfile"
-end
-
-type t = { lockfile : OpamParserType.opamfile; dev_repos_output : string list } [@@deriving yojson]
+type t = { lockfile : Opamfile.t; dev_repos_output : string list } [@@deriving yojson]
 
 let make ~opam_file ~dev_repo_output = { lockfile = opam_file; dev_repos_output = dev_repo_output }
 

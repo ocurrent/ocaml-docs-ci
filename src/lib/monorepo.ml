@@ -24,7 +24,27 @@ let fetch_rule (_, commit) =
   let clone_cmd = Fmt.str "%a" Current_git.Commit_id.pp_user_clone id in
   Obuilder_spec.run ~network:Setup.network "%s" clone_cmd
 
-let monorepo_main ~base ~lock () =
+let get_alias =
+  let pp_alias f (_, commit) =
+    let repo = commit |> Current_git.Commit.id |> Current_git.Commit_id.repo in
+    let name =
+      match Filename.basename repo |> Filename.remove_extension with "dune" -> "dune_" | ok -> ok
+    in
+    Fmt.pf f "(alias_rec %s/install)\n" name
+  in
+  Fmt.str {|
+  (alias
+  (name default)
+  (deps %a)
+  )
+  |} (Fmt.list pp_alias)
+
+let filter_roots ~(roots : Universe.Project.t list) (projects : (string * _) list) =
+  projects
+  |> List.filter (fun (name, _) ->
+         List.exists (fun { Universe.Project.opam; _ } -> List.mem name opam) roots)
+
+let monorepo_main ~roots ~base ~lock () =
   let+ projects =
     let* lock = lock in
     (* Bind: the list of tracked projects is dynamic *)
@@ -56,13 +76,48 @@ let monorepo_main ~base ~lock () =
        ]
   (* assemble monorepo sequentially *)
   |> Spec.add (List.map fetch_rule projects)
+  |> Spec.add
+       [
+         run "touch dune && mv dune dune_";
+         run "echo '%s' >> dune" (get_alias (projects |> filter_roots ~roots));
+       ]
 
 (********************************************)
 (***************   RELEASED   ***************)
 (********************************************)
 
-let monorepo_released ~base ~lock () =
+let filter_roots ~(roots : Universe.Project.t list) (projects : Monorepo_lock.project list) =
+  projects
+  |> List.filter (fun { Monorepo_lock.name; _ } ->
+         List.exists (fun { Universe.Project.opam; _ } -> List.mem name opam) roots)
+
+let get_alias =
+  let repo_name t =
+    let uri = Uri.of_string t in
+    let path = Uri.path uri in
+    let last_path_component =
+      match Astring.String.cut ~rev:true ~sep:"/" path with
+      | None -> path
+      | Some (_, last_path_component) -> last_path_component
+    in
+    match Astring.String.cut ~sep:"." last_path_component with
+    | None -> last_path_component
+    | Some (repo_name, _ext) -> repo_name
+  in
+  let pp_alias f (project : Monorepo_lock.project) =
+    let name = match repo_name project.dev_repo with "dune" -> "dune_" | ok -> ok in
+    Fmt.pf f "(alias_rec duniverse/%s/install)\n" name
+  in
+  Fmt.str {|
+  (alias
+   (name default)
+   (deps %a)
+  )
+  |} (Fmt.list pp_alias)
+
+let monorepo_released ~roots ~base ~lock () =
   let+ lock = lock and+ base = base in
+  let projects = Monorepo_lock.projects lock in
   let opamfile = Monorepo_lock.lockfile lock in
   let open Obuilder_spec in
   base
@@ -77,6 +132,7 @@ let monorepo_released ~base ~lock () =
          (* opam monorepo uses the dune project to find which lockfile to pull*)
          run ~network:Setup.network "opam exec -- opam monorepo pull -y";
          run "rm duniverse/dune" (* removed the vendored mark to allow the build *);
+         run "echo '%s' >> dune" (get_alias (projects |> filter_roots ~roots)) (* create alias *);
        ]
 
 (********************************************)
