@@ -1,14 +1,13 @@
 val lock : base:Spec.t Current.t -> opam:Opamfile.t Current.t -> Monorepo_lock.t Current.t
 
 val monorepo_main :
-  roots:Universe.Project.t list ->
+  ?name:string ->
   base:Spec.t Current.t ->
   lock:Monorepo_lock.t Current.t ->
   unit ->
   Spec.t Current.t
 
 val monorepo_released :
-  roots:Universe.Project.t list ->
   base:Spec.t Current.t ->
   lock:Monorepo_lock.t Current.t ->
   unit ->

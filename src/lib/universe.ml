@@ -121,12 +121,12 @@ module Project = struct
 
   let packages =
     [
-      (*v "mirage" Core ["mirage"; "mirage-runtime"; "functoria"; "functoria-runtime"] "This is the main repository that contains the CLI tool.";
+      (*v "mirage" Core ["mirage"; "mirage-runtime"; "functoria"; "functoria-runtime"] "This is the main repository that contains the CLI tool.";*)
         v "ocaml-cstruct" Parsing ["cstruct"] "Map OCaml arrays onto C-like structs, suitable for parsing wire protocols.";
         v "ocaml-uri" Web ["uri"] "RFC3986 URI parsing library";
         v "irmin" VCS ["irmin"] "a library for persistent stores with built-in snapshot, branching and reverting mechanisms.";
         v ~org:"mirleft" "ocaml-tls" Security ["tls"] "a pure OCaml implementation of Transport Layer Security.";
-        v "git" VCS ["git"] "Git format and protocol in pure OCaml"*)
+        v "ocaml-git" VCS ["git"] "Git format and protocol in pure OCaml";
       v "digestif" Security [ "digestif" ] "Hashing functions in pure OCaml or C.";
     ]
 end

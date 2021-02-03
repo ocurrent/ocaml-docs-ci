@@ -24,31 +24,11 @@ let fetch_rule (_, commit) =
   let clone_cmd = Fmt.str "%a" Current_git.Commit_id.pp_user_clone id in
   Obuilder_spec.run ~network:Setup.network "%s" clone_cmd
 
-let get_alias =
-  let pp_alias f (_, commit) =
-    let repo = commit |> Current_git.Commit.id |> Current_git.Commit_id.repo in
-    let name =
-      match Filename.basename repo |> Filename.remove_extension with "dune" -> "dune_" | ok -> ok
-    in
-    Fmt.pf f "(alias_rec %s/install)\n" name
-  in
-  Fmt.str {|
-  (alias
-  (name default)
-  (deps %a)
-  )
-  |} (Fmt.list pp_alias)
-
-let filter_roots ~(roots : Universe.Project.t list) (projects : (string * _) list) =
-  projects
-  |> List.filter (fun (name, _) ->
-         List.exists (fun { Universe.Project.opam; _ } -> List.mem name opam) roots)
-
-let monorepo_main ~roots ~base ~lock () =
+let monorepo_main ?(name="main") ~base ~lock () =
   let+ projects =
-    let* lock = lock in
+    let* lockv = lock in
     (* Bind: the list of tracked projects is dynamic *)
-    let projects = Monorepo_lock.projects lock in
+    let projects = Monorepo_lock.projects lockv in
     Printf.printf "got %d projects to track.\n" (List.length projects);
     List.map
       (fun (x : Monorepo_lock.project) ->
@@ -57,6 +37,7 @@ let monorepo_main ~roots ~base ~lock () =
         (x.name, commit))
       projects
     |> Current.list_seq
+    |> Current.collapse ~key:"monorepo-main" ~value:name ~input:lock
   and+ base = base
   and+ lock = lock in
   let lockfile = Monorepo_lock.lockfile lock in
@@ -71,53 +52,18 @@ let monorepo_main ~roots ~base ~lock () =
          (* External dependencies *)
          run "echo '%s' >> monorepo.opam" (Opamfile.marshal lockfile);
          run "opam pin -n add monorepo . --locked --ignore-pin-depends";
-         run "opam depext --update -y monorepo";
+         run ~network:Setup.network "opam depext --update -y monorepo";
          run "opam pin -n remove monorepo";
        ]
   (* assemble monorepo sequentially *)
   |> Spec.add (List.map fetch_rule projects)
-  |> Spec.add
-       [
-         run "touch dune && mv dune dune_";
-         run "echo '%s' >> dune" (get_alias (projects |> filter_roots ~roots));
-       ]
 
 (********************************************)
 (***************   RELEASED   ***************)
 (********************************************)
 
-let filter_roots ~(roots : Universe.Project.t list) (projects : Monorepo_lock.project list) =
-  projects
-  |> List.filter (fun { Monorepo_lock.name; _ } ->
-         List.exists (fun { Universe.Project.opam; _ } -> List.mem name opam) roots)
-
-let get_alias =
-  let repo_name t =
-    let uri = Uri.of_string t in
-    let path = Uri.path uri in
-    let last_path_component =
-      match Astring.String.cut ~rev:true ~sep:"/" path with
-      | None -> path
-      | Some (_, last_path_component) -> last_path_component
-    in
-    match Astring.String.cut ~sep:"." last_path_component with
-    | None -> last_path_component
-    | Some (repo_name, _ext) -> repo_name
-  in
-  let pp_alias f (project : Monorepo_lock.project) =
-    let name = match repo_name project.dev_repo with "dune" -> "dune_" | ok -> ok in
-    Fmt.pf f "(alias_rec duniverse/%s/install)\n" name
-  in
-  Fmt.str {|
-  (alias
-   (name default)
-   (deps %a)
-  )
-  |} (Fmt.list pp_alias)
-
-let monorepo_released ~roots ~base ~lock () =
+let monorepo_released ~base ~lock () =
   let+ lock = lock and+ base = base in
-  let projects = Monorepo_lock.projects lock in
   let opamfile = Monorepo_lock.lockfile lock in
   let open Obuilder_spec in
   base
@@ -127,12 +73,17 @@ let monorepo_released ~roots ~base ~lock () =
          user ~uid:1000 ~gid:1000;
          workdir "/src";
          run "sudo chown opam:opam /src";
-         run "echo '%s' >> monorepo.opam.locked" (Opamfile.marshal opamfile);
+         run "echo '%s' >> monorepo.opam" (Opamfile.marshal opamfile);
+         (* depexts  *)
+         run "opam pin -n add monorepo . --locked --ignore-pin-depends";
+         run ~network:Setup.network "opam depext --update -y monorepo";
+         run "opam pin -n remove monorepo";
+         (* setup lockfile *)
+         run "cp monorepo.opam monorepo.opam.locked";
          run "echo '(name monorepo)' >> dune-project";
          (* opam monorepo uses the dune project to find which lockfile to pull*)
          run ~network:Setup.network "opam exec -- opam monorepo pull -y";
          run "rm duniverse/dune" (* removed the vendored mark to allow the build *);
-         run "echo '%s' >> dune" (get_alias (projects |> filter_roots ~roots)) (* create alias *);
        ]
 
 (********************************************)
@@ -206,7 +157,7 @@ module Lock = struct
           let cmd =
             Current_docker.Raw.Cmd.docker ~docker_context:None
               ( [ "run"; "-i"; id; "opam"; "show"; "--field"; "name:,dev-repo:" ]
-              @ List.map (fun (pkg : Opamfile.pkg) -> pkg.name) packages )
+              @ List.map (fun (pkg : Opamfile.pkg) -> pkg.name ^"."^ pkg.version) packages )
           in
           Current.Process.check_output ~cancellable:true ~job cmd
         in

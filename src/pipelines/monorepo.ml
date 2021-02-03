@@ -15,6 +15,20 @@ type toolchain = Host | Freestanding
 
 let pp_toolchain () = function Host -> "" | Freestanding -> "-x freestanding"
 
+
+
+let get_alias =
+  let pp_alias f (project : Universe.Project.t) =
+    let pp_pkg f = Fmt.pf f "(package %s)\n" in
+    Fmt.pf f "%a" (Fmt.list pp_pkg) project.opam
+  in
+  Fmt.str {|
+  (alias
+   (name default)
+   (deps %a)
+  )
+  |} (Fmt.list pp_alias)
+
 let v ~roots ~mode ?(toolchain = Host) ~repos ~lock () =
   let repos =
     let+ repos = repos in
@@ -31,14 +45,19 @@ let v ~roots ~mode ?(toolchain = Host) ~repos ~lock () =
     | Freestanding ->
         Spec.add (Setup.install_tools [ "ocaml-freestanding"; "ocamlfind.1.8.1" ]) base
   in
+  let name_of_toolchain = match toolchain with | Host -> "host" | Freestanding -> "freestanding" in
   let monorepo_builder =
-    match mode with Edge -> Monorepo.monorepo_main | Released -> Monorepo.monorepo_released
+    match mode with Edge -> Monorepo.monorepo_main ~name:name_of_toolchain | Released -> Monorepo.monorepo_released
   in
-  let spec = monorepo_builder ~roots ~base ~lock () in
+  let spec = monorepo_builder ~base ~lock () in
   let dune_build =
     let+ spec = spec in
+    let open Obuilder_spec in
     Spec.add
-      [ Obuilder_spec.run "opam exec -- dune build --profile release %a" pp_toolchain toolchain ]
+      [ 
+        run "touch dune && mv dune dune_";
+        run "echo '%s' >> dune" (get_alias roots);
+        run "opam exec -- dune build --profile release %a" pp_toolchain toolchain ]
       spec
   in
   let cache_hint = "mirage-ci-monorepo" in
