@@ -93,6 +93,6 @@ module Solver_cache = Current_cache.Make (Op)
 
 let v ~repos ~packages =
   let open Current.Syntax in
-  Current.component "solver"
-  |> let> repos = repos and> packages = packages in
+  Current.component "solver (%s)" (String.concat "," packages)
+  |> let> repos = repos in
      Solver_cache.get No_context { repos; packages }

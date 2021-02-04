@@ -1,9 +1,72 @@
-open Lwt.Infix
 open Current.Syntax
 
-let or_raise = function Ok () -> () | Error (`Msg m) -> raise (Failure m)
-
 let pool = Current.Pool.create ~label:"monorepo-pool" 4
+
+
+module Docker = Current_docker.Default
+
+(********************************************)
+(*****************  LOCK  *******************)
+(********************************************)
+
+type t = Docker.Image.t
+
+let v ~repos =
+  Current_solver.v ~repos ~packages:["opam-monorepo"]
+  |> Setup.tools_image ~name:"opam-monorepo tool"
+
+let add_repos repos =
+  let remote_uri commit =
+    let commit_id = Current_git.Commit.id commit in
+    let repo = Current_git.Commit_id.repo commit_id in
+    let commit = Current_git.Commit.hash commit in
+    repo ^ "#" ^ commit
+  in
+  let open Dockerfile in
+  let repo_add (name, commit) = run "opam repo add %s %s" name (remote_uri commit)  in
+  List.fold_left (@@) (run "opam repo remove local") (List.map repo_add repos) 
+
+
+let pp_wrap =
+  Fmt.using (String.split_on_char '\n')
+    Fmt.(list ~sep:(unit " \\@\n    ") (using String.trim string))
+  
+let lock ~repos ~opam t =
+  let dockerfile =
+    let+ t = t 
+    and+ opam = opam 
+    and+ repos = repos 
+    in
+    let open Dockerfile in
+    from (Docker.Image.hash t)
+    @@ user "opam"
+    @@ copy ~chown:"opam" ~src:[ "." ] ~dst:"/src" ()
+    @@ workdir "/src"
+    @@ run "echo '%s' >> monorepo.opam" (Fmt.str "%a" pp_wrap (Opamfile.marshal opam))
+    @@ add_repos repos
+    @@ run "opam monorepo lock"
+    |> fun dockerfile -> `Contents dockerfile
+  in
+  let image =
+    Docker.build ~dockerfile
+      ~label:("opam monorepo lock")
+      ~pool ~pull:false (`No_context)
+  in   
+  Current.component "monorepo lockfile" |>     
+  let** lockfile_str = Docker.pread ~label:"lockfile" ~args:["cat"; "/src/monorepo.opam.locked"] image in
+  let lockfile = OpamParser.string lockfile_str "monorepo.opam.locked" in
+  let packages = Opamfile.get_packages lockfile in
+  let+ dev_repos_str = Docker.pread ~label:"dev repos" ~args:(["opam"; "show"; "--field"; "name:,dev-repo:"]
+    @ List.map (fun (pkg : Opamfile.pkg) -> pkg.name ^ "." ^ pkg.version) packages ) image in
+  Monorepo_lock.make ~opam_file:lockfile
+  ~dev_repo_output:(String.split_on_char '\n' dev_repos_str)
+
+  let lock ~value ~repos ~opam t =
+    Current.collapse ~key:"monorepo-lock" ~value ~input:opam (lock ~repos ~opam t)
+
+(********************************************)
+(*****************  EDGE  *******************)
+(********************************************)
 
 let parse_opam_dev_repo dev_repo =
   let module String = Astring.String in
@@ -24,9 +87,10 @@ let fetch_rule (_, commit) =
   let clone_cmd = Fmt.str "%a" Current_git.Commit_id.pp_user_clone id in
   Obuilder_spec.run ~network:Setup.network "%s" clone_cmd
 
-let monorepo_main ?(name="main") ~base ~lock () =
+let monorepo_main ?(name = "main") ~base ~lock () =
   let+ projects =
-    let* lockv = lock in
+    Current.component "track projects from lockfile" |>
+    let** lockv = lock in
     (* Bind: the list of tracked projects is dynamic *)
     let projects = Monorepo_lock.projects lockv in
     Printf.printf "got %d projects to track.\n" (List.length projects);
@@ -56,7 +120,15 @@ let monorepo_main ?(name="main") ~base ~lock () =
          run "opam pin -n remove monorepo";
        ]
   (* assemble monorepo sequentially *)
-  |> Spec.add (List.map fetch_rule projects)
+  |> Spec.add (
+    (workdir "/src/duniverse")::
+    (run "sudo chown opam:opam /src/duniverse")::(List.map fetch_rule projects))
+  (* rename dune to dune_ to mimic opam-monorepo behavior *)
+  |> Spec.add [
+    run "touch dune && mv dune dune_";
+    run "echo '(vendored_dirs *)' >> dune";
+    workdir "/src"
+  ]
 
 (********************************************)
 (***************   RELEASED   ***************)
@@ -83,100 +155,11 @@ let monorepo_released ~base ~lock () =
          run "echo '(name monorepo)' >> dune-project";
          (* opam monorepo uses the dune project to find which lockfile to pull*)
          run ~network:Setup.network "opam exec -- opam monorepo pull -y";
-         run "rm duniverse/dune" (* removed the vendored mark to allow the build *);
        ]
 
 (********************************************)
-(*****************  LOCK  *******************)
 (********************************************)
-
-let ( let>> ) = Lwt_result.bind
-
-module Lock = struct
-  type t = unit
-
-  module Key = struct
-    type t = { base : Spec.t; opam : Opamfile.t }
-
-    let digest { base; opam } =
-      let json =
-        `Assoc [ ("spec", Spec.to_json base); ("opam", `String (Opamfile.marshal opam)) ]
-      in
-      Yojson.to_string json
-  end
-
-  module Value = Monorepo_lock
-
-  let id = "mirage-ci-monorepo-lock"
-
-  let generate_monorepo =
-    let open Obuilder_spec in
-    [
-      workdir "/src/";
-      run "sudo chown opam /src";
-      copy [ "monorepo.opam" ] ~dst:"/src/";
-      run "opam monorepo lock";
-    ]
-
-  let build () job { Key.base; opam } =
-    let switch = Current.Switch.create ~label:"monorepo-lock-switch" () in
-    Lwt.finalize
-      (fun () ->
-        Current.Job.use_pool ~switch job pool >>= fun () ->
-        Current.Job.start ~level:Harmless job >>= fun () ->
-        let spec =
-          base
-          |> Spec.add (Setup.install_tools [ "opam-monorepo" ])
-          |> Spec.add generate_monorepo |> Spec.finish
-        in
-        let dockerfile = Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true spec in
-        Current.Job.log job "Starting docker build to generate lockfile.";
-        let>> id =
-          Current.Process.with_tmpdir (fun tmpdir ->
-              Bos.OS.File.write Fpath.(tmpdir / "Dockerfile") (dockerfile ^ "\n") |> or_raise;
-              Bos.OS.File.write Fpath.(tmpdir / "monorepo.opam") (Opamfile.marshal opam) |> or_raise;
-              Current.Job.log job "----\nUsing opam file:\n%s\n----" (Opamfile.marshal opam);
-              let iidfile = Fpath.(tmpdir / "iidfile") in
-              let cmd =
-                Current_docker.Raw.Cmd.docker ~docker_context:None
-                  [ "build"; "--iidfile"; Fpath.to_string iidfile; "--"; Fpath.to_string tmpdir ]
-              in
-              Current.Process.exec ~cancellable:true ~job cmd >|= fun res ->
-              Result.bind res (fun () -> Bos.OS.File.read iidfile))
-        in
-        let>> lockfile_str =
-          let cmd =
-            Current_docker.Raw.Cmd.docker ~docker_context:None
-              [ "run"; "-i"; id; "cat"; "/src/monorepo.opam.locked" ]
-          in
-          Current.Process.check_output ~cancellable:true ~job cmd
-        in
-        let lockfile = OpamParser.string lockfile_str "monorepo.opam.locked" in
-        let packages = Opamfile.get_packages lockfile in
-        let>> dev_repos_str =
-          let cmd =
-            Current_docker.Raw.Cmd.docker ~docker_context:None
-              ( [ "run"; "-i"; id; "opam"; "show"; "--field"; "name:,dev-repo:" ]
-              @ List.map (fun (pkg : Opamfile.pkg) -> pkg.name ^"."^ pkg.version) packages )
-          in
-          Current.Process.check_output ~cancellable:true ~job cmd
-        in
-        Lwt.return_ok
-          (Monorepo_lock.make ~opam_file:lockfile
-             ~dev_repo_output:(String.split_on_char '\n' dev_repos_str)))
-      (fun () -> Current.Switch.turn_off switch)
-
-  let pp f _ = Fmt.string f "opam-monorepo lock"
-
-  let auto_cancel = true
-end
-
-module Lock_cache = Current_cache.Make (Lock)
-
-let lock ~base ~opam =
-  Current.component "opam-monorepo lock"
-  |> let> base = base and> opam = opam in
-     Lock_cache.get () { base; opam }
+(********************************************)
 
 let opam_file ~ocaml_version (projects : Universe.Project.t list) =
   let pp_project f (proj : Universe.Project.t) =
