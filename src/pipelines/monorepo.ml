@@ -20,7 +20,7 @@ let get_alias =
    (deps %a)
   )
   |} (Fmt.list pp_alias)
- 
+
 let repo_name t =
   let uri = Uri.of_string t in
   let path = Uri.path uri in
@@ -36,15 +36,15 @@ let repo_name t =
 let unvendor_roots ~roots lock =
   let pkgs = Monorepo_lock.projects lock in
   let rootrepos = List.map Universe.Project.repo roots in
-  let unvendor_dir (project: Monorepo_lock.project) = 
+  let unvendor_dir (project : Monorepo_lock.project) =
     let repo = repo_name project.dev_repo in
-    if List.mem repo rootrepos then 
-      Some repo 
-    else None
+    if List.mem repo rootrepos then Some repo else None
   in
   List.filter_map unvendor_dir pkgs
 
-let v ~roots ~mode ?(toolchain = Host) ~repos ~lock () =
+let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
+
+let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock () =
   let base =
     let+ repos = repos in
     Spec.make "ocaml/opam:ubuntu-ocaml-4.11" |> Spec.add (Setup.add_repositories repos)
@@ -64,13 +64,12 @@ let v ~roots ~mode ?(toolchain = Host) ~repos ~lock () =
   in
   let spec = monorepo_builder ~base ~lock () in
   let dune_build =
-    let+ spec = spec 
-    and+ lock = lock
-    in
+    let+ spec = spec and+ lock = lock in
     let open Obuilder_spec in
     Spec.add
       [
-        run "mv %s ." (unvendor_roots ~roots lock |> List.map (fun n -> "duniverse/"^n) |> String.concat " ");
+        run "mv %s ."
+          (unvendor_roots ~roots lock |> List.map (fun n -> "duniverse/" ^ n) |> String.concat " ");
         run "echo '%s' >> dune" (get_alias roots);
         run "opam exec -- dune build --profile release %a" pp_toolchain toolchain;
       ]
@@ -78,7 +77,7 @@ let v ~roots ~mode ?(toolchain = Host) ~repos ~lock () =
   in
   let cache_hint = "mirage-ci-monorepo" in
   let cluster = Current_ocluster.v (Current_ocluster.Connection.create Config.cap) in
-  Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src:(Current.return [])
+  Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src
     (dune_build |> Config.to_ocluster_spec)
 
 let lock ~value ~monorepo ~repos (projects : Universe.Project.t list) =
@@ -86,10 +85,17 @@ let lock ~value ~monorepo ~repos (projects : Universe.Project.t list) =
       let configuration = Monorepo.opam_file ~ocaml_version:"4.11.1" projects in
       Monorepo.lock ~value ~repos ~opam:(Current.return configuration) monorepo)
 
-let edge ~roots ~repos ~lock =
+let edge ~remote_pull ~remote_push ~roots ~repos ~lock =
+  let src =
+    let+ src =
+      Mirage_ci_lib.Monorepo_git_push.v ~remote_pull ~remote_push ~branch:"master"
+        (Monorepo_lock.commits lock)
+    in
+    [ src ]
+  in
   [
-    ("edge-freestanding", v ~roots ~mode:Edge ~toolchain:Freestanding ~repos ~lock ());
-    ("edge-host", v ~roots ~mode:Edge ~repos ~lock ());
+    ("edge-freestanding", v ~src ~roots ~mode:Edge ~toolchain:Freestanding ~repos ~lock ());
+    ("edge-host", v ~src ~roots ~mode:Edge ~repos ~lock ());
   ]
   |> Current.all_labelled
 

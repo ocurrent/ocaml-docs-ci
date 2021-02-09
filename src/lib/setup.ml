@@ -9,13 +9,13 @@ let remote_uri commit =
   let commit = Current_git.Commit.hash commit in
   repo ^ "#" ^ commit
 
-let add_repositories = List.map (fun (name, commit) -> Obuilder_spec.run ~network "opam repo add %s %s" name (remote_uri commit))
+let add_repositories =
+  List.map (fun (name, commit) ->
+      Obuilder_spec.run ~network "opam repo add %s %s" name (remote_uri commit))
 
 let install_tools tools =
   let tools_s = String.concat " " tools in
-  [
-    Obuilder_spec.run ~network ~cache:[ opam_download_cache ] "opam depext -i %s" tools_s;
-  ]
+  [ Obuilder_spec.run ~network ~cache:[ opam_download_cache ] "opam depext -i %s" tools_s ]
 
 module Op = struct
   type t = No_context

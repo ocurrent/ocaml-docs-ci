@@ -56,3 +56,32 @@ let build_project_list (packages : Opamfile.pkg list) dev_repos_output =
 let projects t =
   let packages = Opamfile.get_packages t.lockfile in
   build_project_list packages t.dev_repos_output
+
+let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
+
+let parse_opam_dev_repo dev_repo =
+  let module String = Astring.String in
+  let repo, branch =
+    match String.cuts ~sep:"#" dev_repo with
+    | [ repo ] -> (repo, None)
+    | [ repo; branch ] -> (repo, Some branch)
+    | _ -> failwith "String.cuts dev_repo"
+  in
+  let repo = if String.is_prefix ~affix:"git+" repo then String.drop ~max:4 repo else repo in
+  Printf.printf "repo: %s\n" repo;
+  (repo, branch)
+
+let commits lock =
+  let open Current.Syntax in
+  Current.component "track projects from lockfile"
+  |> let** lockv = lock in
+     (* Bind: the list of tracked projects is dynamic *)
+     let projects = projects lockv in
+     Printf.printf "got %d projects to track.\n" (List.length projects);
+     List.map
+       (fun (x : project) ->
+         let repo_url, repo_branch = parse_opam_dev_repo x.dev_repo in
+         Current_git.clone ~schedule:daily ?gref:repo_branch repo_url)
+       projects
+     |> Current.list_seq
+     |> Current.collapse ~key:"lock" ~value:"" ~input:lock

@@ -6,10 +6,11 @@ module Docker = Current_docker.Default
 type t = Docker.Image.t
 
 let v ~repos =
-  Current_solver.v ~repos ~packages:["mirage"]
-  |> Setup.tools_image ~name:"mirage tool"
+  Current_solver.v ~repos ~packages:[ "mirage" ] |> Setup.tools_image ~name:"mirage tool"
 
-let unikernel_find_cmd = "find . -maxdepth 1 -type f -not -name *install.opam -name *.opam -exec cat {} +" |> String.split_on_char ' '
+let unikernel_find_cmd =
+  "find . -maxdepth 1 -type f -not -name *install.opam -name *.opam -exec cat {} +"
+  |> String.split_on_char ' '
 
 let configure ~project ~unikernel ~target t =
   let dockerfile =
@@ -27,7 +28,9 @@ let configure ~project ~unikernel ~target t =
       ~label:("mirage configure " ^ unikernel ^ " @" ^ target)
       ~pool ~pull:false (`Git project)
   in
-  let+ opamfile = Docker.pread ~label:"read mirage configure output" image ~args:unikernel_find_cmd in
+  let+ opamfile =
+    Docker.pread ~label:"read mirage configure output" image ~args:unikernel_find_cmd
+  in
   OpamParser.string opamfile "monorepo.opam"
 
 let build ~base ~project ~unikernel ~target =

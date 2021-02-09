@@ -24,15 +24,18 @@ let main config mode =
       repo_opam |> Current.map (fun x -> ("opam", x));
       repo_overlays |> Current.map (fun x -> ("overlays", x));
       repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", x));
-    ] |> Current.list_seq
+    ]
+    |> Current.list_seq
   in
   let roots = Universe.Project.packages in
   let monorepo = Monorepo.v ~repos in
   let monorepo_lock = Mirage_ci_pipelines.Monorepo.lock ~value:"universe" ~monorepo ~repos roots in
-
   let mirage_skeleton = Mirage_ci_pipelines.Skeleton.v ~monorepo ~repos repo_mirage_skeleton in
   let mirage_released = Mirage_ci_pipelines.Monorepo.released ~roots ~repos ~lock:monorepo_lock in
-  let mirage_edge = Mirage_ci_pipelines.Monorepo.edge ~roots ~repos ~lock:monorepo_lock in
+  let mirage_edge =
+    Mirage_ci_pipelines.Monorepo.edge ~remote_pull:Config.v.remote_pull
+      ~remote_push:Config.v.remote_push ~roots ~repos ~lock:monorepo_lock
+  in
   let engine =
     Current.Engine.create ~config (fun () ->
         Current.all_labelled
@@ -57,8 +60,6 @@ let main config mode =
 (* Command-line parsing *)
 
 open Cmdliner
-
-(* An example command-line argument: the repository to monitor *)
 
 let cmd =
   let doc = "an OCurrent pipeline" in

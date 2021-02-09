@@ -134,8 +134,7 @@ module Project = struct
       v "digestif" Security [ "digestif" ] "Hashing functions in pure OCaml or C.";
     ]
 
-  let repo {repo; _} = repo
-
+  let repo { repo; _ } = repo
 end
 
 (* 

@@ -2,8 +2,6 @@ type t
 
 val v : repos:(string * Current_git.Commit.t) list Current.t -> t Current.t
 
-
-
 val configure :
   project:Current_git.Commit.t Current.t ->
   unikernel:string ->

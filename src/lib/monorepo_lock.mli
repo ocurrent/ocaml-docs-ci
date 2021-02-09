@@ -11,3 +11,5 @@ val lockfile : t -> Opamfile.t
 type project = { name : string; dev_repo : string; repo : string; packages : string list }
 
 val projects : t -> project list
+
+val commits : t Current.t -> Current_git.Commit.t list Current.t

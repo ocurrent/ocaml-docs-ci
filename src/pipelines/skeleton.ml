@@ -49,7 +49,11 @@ let run_test ~mirage ~monorepo ~repos ~skeleton ~unikernel ~target =
   in
   let skeleton =
     (* add a fake dep to the lockfile (only rebuild if lockfile changed.)*)
-    let+ _ = Monorepo.lock ~value:("mirage-"^unikernel^"-"^target) ~repos ~opam:configuration monorepo and+ skeleton = skeleton in
+    let+ _ =
+      Monorepo.lock
+        ~value:("mirage-" ^ unikernel ^ "-" ^ target)
+        ~repos ~opam:configuration monorepo
+    and+ skeleton = skeleton in
     skeleton
   in
   Mirage.build ~base ~project:skeleton ~unikernel ~target
@@ -61,7 +65,8 @@ let test_stage ~mirage ~monorepo ~repos ~skeleton ~stage ~unikernels ~target =
          |> List.find_map (fun (n, t) -> if n = name then Some t else None)
          |> Option.map (List.mem target)
          |> Option.value ~default:true)
-  |> List.map (fun name -> run_test ~repos ~mirage ~monorepo ~skeleton ~unikernel:(stage ^ "/" ^ name) ~target)
+  |> List.map (fun name ->
+         run_test ~repos ~mirage ~monorepo ~skeleton ~unikernel:(stage ^ "/" ^ name) ~target)
   |> Current.all
 
 let v ~repos ~monorepo mirage_skeleton =
@@ -79,7 +84,8 @@ let v ~repos ~monorepo mirage_skeleton =
             test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels ~target
         | (_, stage, unikernels) :: q ->
             let test_stage =
-              test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels ~target
+              test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels
+                ~target
             in
             aux ~target (Current.gate ~on:test_stage gate) q
       in
