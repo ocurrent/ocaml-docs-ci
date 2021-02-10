@@ -48,21 +48,6 @@ let user_restrictions t name = OpamPackage.Name.Map.find_opt name t.constraints
 
 let dev = OpamPackage.Version.of_string "dev"
 
-let std_env ?(ocaml_native = true) ?sys_ocaml_version ~arch ~os ~os_distribution ~os_family
-    ~os_version () = function
-  | "arch" -> Some (OpamTypes.S arch)
-  | "os" -> Some (OpamTypes.S os)
-  | "os-distribution" -> Some (OpamTypes.S os_distribution)
-  | "os-version" -> Some (OpamTypes.S os_version)
-  | "os-family" -> Some (OpamTypes.S os_family)
-  | "opam-version" -> Some (OpamVariable.string OpamVersion.(to_string current))
-  | "sys-ocaml-version" -> sys_ocaml_version |> Option.map (fun v -> OpamTypes.S v)
-  | "ocaml:native" -> Some (OpamTypes.B ocaml_native)
-  | "enable-ocaml-beta-repository" -> None (* Fake variable? *)
-  | v ->
-      OpamConsole.warning "Unknown variable %S" v;
-      None
-
 let env t pkg v =
   if List.mem v OpamPackageVar.predefined_depends_variables then None
   else

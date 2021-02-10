@@ -10,11 +10,7 @@ val lock :
   Monorepo_lock.t Current.t
 
 val monorepo_main :
-  ?name:string ->
-  base:Spec.t Current.t ->
-  lock:Monorepo_lock.t Current.t ->
-  unit ->
-  Spec.t Current.t
+  base:Spec.t Current.t -> lock:Monorepo_lock.t Current.t -> unit -> Spec.t Current.t
 
 val monorepo_released :
   base:Spec.t Current.t -> lock:Monorepo_lock.t Current.t -> unit -> Spec.t Current.t

@@ -35,10 +35,7 @@ module Op = struct
 
   let pp f _ = Fmt.string f "Opam solver"
 
-  let ( let** ) = Lwt_result.bind
-
   open Lwt.Syntax
-  open Lwt.Infix
 
   let env =
     Opam_0install.Dir_context.std_env ~arch:"x86_64" ~os:"linux" ~os_distribution:"linux"

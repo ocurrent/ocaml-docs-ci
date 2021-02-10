@@ -57,10 +57,9 @@ let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock (
         Spec.add (Setup.install_tools [ "ocaml-freestanding"; "ocamlfind.1.8.1" ]) base
   in
   let name_of_toolchain = match toolchain with Host -> "host" | Freestanding -> "freestanding" in
+  let name_of_mode = match mode with Edge -> "edge" | Released -> "released" in
   let monorepo_builder =
-    match mode with
-    | Edge -> Monorepo.monorepo_main ~name:name_of_toolchain
-    | Released -> Monorepo.monorepo_released
+    match mode with Edge -> Monorepo.monorepo_main | Released -> Monorepo.monorepo_released
   in
   let spec = monorepo_builder ~base ~lock () in
   let dune_build =
@@ -71,13 +70,17 @@ let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock (
         run "mv %s ."
           (unvendor_roots ~roots lock |> List.map (fun n -> "duniverse/" ^ n) |> String.concat " ");
         run "echo '%s' >> dune" (get_alias roots);
+        run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
+        (* Dune issue with strict_package_deps *)
         run "opam exec -- dune build --profile release %a" pp_toolchain toolchain;
       ]
       spec
   in
   let cache_hint = "mirage-ci-monorepo" in
   let cluster = Current_ocluster.v (Current_ocluster.Connection.create Config.cap) in
-  Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src
+  Current_ocluster.build_obuilder
+    ~label:(name_of_toolchain ^ "-" ^ name_of_mode)
+    ~cache_hint cluster ~pool:"linux-arm64" ~src
     (dune_build |> Config.to_ocluster_spec)
 
 let lock ~value ~monorepo ~repos (projects : Universe.Project.t list) =

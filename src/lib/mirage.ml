@@ -49,6 +49,7 @@ let build ~base ~project ~unikernel ~target =
            run "opam exec -- dune build";
          ]
   in
+  let label = unikernel ^ "@" ^ target in
   let src =
     let+ project = project in
     [ Current_git.Commit.id project ]
@@ -56,9 +57,9 @@ let build ~base ~project ~unikernel ~target =
   let cache_hint = "mirage-ci-skeleton" in
   let cluster = Current_ocluster.v (Current_ocluster.Connection.create Config.cap) in
   [
-    Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-arm64" ~src
+    Current_ocluster.build_obuilder ~label ~cache_hint cluster ~pool:"linux-arm64" ~src
       (spec |> Config.to_ocluster_spec);
-    Current_ocluster.build_obuilder ~cache_hint cluster ~pool:"linux-x86_64" ~src
+    Current_ocluster.build_obuilder ~label ~cache_hint cluster ~pool:"linux-x86_64" ~src
       (spec |> Config.to_ocluster_spec);
   ]
   |> Current.all

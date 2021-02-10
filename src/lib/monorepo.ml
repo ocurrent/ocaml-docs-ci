@@ -65,26 +65,7 @@ let lock ~value ~repos ~opam t =
 (*****************  EDGE  *******************)
 (********************************************)
 
-let parse_opam_dev_repo dev_repo =
-  let module String = Astring.String in
-  let repo, branch =
-    match String.cuts ~sep:"#" dev_repo with
-    | [ repo ] -> (repo, None)
-    | [ repo; branch ] -> (repo, Some branch)
-    | _ -> failwith "String.cuts dev_repo"
-  in
-  let repo = if String.is_prefix ~affix:"git+" repo then String.drop ~max:4 repo else repo in
-  Printf.printf "repo: %s\n" repo;
-  (repo, branch)
-
-let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
-
-let fetch_rule (_, commit) =
-  let id = Current_git.Commit.id commit in
-  let clone_cmd = Fmt.str "%a" Current_git.Commit_id.pp_user_clone id in
-  Obuilder_spec.run ~network:Setup.network "%s" clone_cmd
-
-let monorepo_main ?(name = "main") ~base ~lock () =
+let monorepo_main ~base ~lock () =
   let+ lock = lock and+ base = base in
   let lockfile = Monorepo_lock.lockfile lock in
   let open Obuilder_spec in
