@@ -70,22 +70,20 @@ let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~targ
 
 let v ~repos ~monorepo mirage_skeleton =
   let mirage = Mirage.v ~repos in
-  let rec aux ~target gate =
-    let mirage_skeleton =
-      (* create some fake dependency on the gate *)
-      let+ _ = gate and+ s = mirage_skeleton in
-      s
-    in
+  let rec aux ~target skeleton =
     function
-    | [] -> gate
-    | [ (name, stage, unikernels) ] ->
-        test_stage ~mirage ~monorepo ~repos ~name ~skeleton:mirage_skeleton ~stage ~unikernels ~target
+    | [] -> skeleton |> Current.ignore_value
     | (name, stage, unikernels) :: q ->
         let test_stage =
-          test_stage ~mirage ~monorepo ~repos ~name ~skeleton:mirage_skeleton ~stage ~unikernels
+          test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels
             ~target
         in
-        aux ~target (Current.gate ~on:test_stage gate) q
+        let mirage_skeleton =
+          let+ _ = test_stage 
+          and+ skeleton = skeleton
+          in skeleton 
+        in
+        aux ~target mirage_skeleton q
   in
-  List.map (fun target -> (target, aux ~target (Current.return ()) stages)) targets
+  List.map (fun target -> (target, aux ~target mirage_skeleton stages)) targets
   |> Current.all_labelled
