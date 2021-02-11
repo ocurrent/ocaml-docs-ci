@@ -55,6 +55,7 @@ let run_test ~mirage ~monorepo ~repos ~skeleton ~unikernel ~target =
     skeleton
   in
   Mirage.build ~base ~project:skeleton ~unikernel ~target
+  |> Current.collapse ~key:("Unikernel "^unikernel^"@"^target) ~value:"" ~input:repos
 
 let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~target =
   unikernels
