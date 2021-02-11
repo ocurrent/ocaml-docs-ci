@@ -84,9 +84,8 @@ let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock (
     (dune_build |> Config.to_ocluster_spec)
 
 let lock ~value ~monorepo ~repos (projects : Universe.Project.t list) =
-  Current.with_context repos (fun () ->
-      let configuration = Monorepo.opam_file ~ocaml_version:"4.11.1" projects in
-      Monorepo.lock ~value ~repos ~opam:(Current.return configuration) monorepo)
+  let configuration = Monorepo.opam_file ~ocaml_version:"4.11.1" projects in
+  Monorepo.lock ~value ~repos ~opam:(Current.return configuration) monorepo
 
 let edge ~remote_pull ~remote_push ~roots ~repos ~lock =
   let src =

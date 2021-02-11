@@ -71,23 +71,22 @@ let test_stage ~mirage ~monorepo ~repos ~skeleton ~stage ~unikernels ~target =
 
 let v ~repos ~monorepo mirage_skeleton =
   let mirage = Mirage.v ~repos in
-  Current.with_context repos (fun () ->
-      let rec aux ~target gate =
-        let mirage_skeleton =
-          (* create some fake dependency on the gate *)
-          let+ _ = gate and+ s = mirage_skeleton in
-          s
+  let rec aux ~target gate =
+    let mirage_skeleton =
+      (* create some fake dependency on the gate *)
+      let+ _ = gate and+ s = mirage_skeleton in
+      s
+    in
+    function
+    | [] -> gate
+    | [ (_, stage, unikernels) ] ->
+        test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels ~target
+    | (_, stage, unikernels) :: q ->
+        let test_stage =
+          test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels
+            ~target
         in
-        function
-        | [] -> gate
-        | [ (_, stage, unikernels) ] ->
-            test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels ~target
-        | (_, stage, unikernels) :: q ->
-            let test_stage =
-              test_stage ~mirage ~monorepo ~repos ~skeleton:mirage_skeleton ~stage ~unikernels
-                ~target
-            in
-            aux ~target (Current.gate ~on:test_stage gate) q
-      in
-      List.map (fun target -> (target, aux ~target (Current.return ()) stages)) targets
-      |> Current.all_labelled)
+        aux ~target (Current.gate ~on:test_stage gate) q
+  in
+  List.map (fun target -> (target, aux ~target (Current.return ()) stages)) targets
+  |> Current.all_labelled
