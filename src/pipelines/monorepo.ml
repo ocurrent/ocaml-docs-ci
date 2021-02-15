@@ -72,6 +72,7 @@ let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock (
         run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
         (* Dune issue with strict_package_deps *)
         run "opam exec -- dune build --profile release --debug-dependency-path %a" pp_toolchain toolchain;
+        run "du -sh _build/";
       ]
       spec
   in

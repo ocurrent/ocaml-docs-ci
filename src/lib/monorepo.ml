@@ -133,6 +133,12 @@ opam-version: "2.0"
 depends: [
   "ocaml" { = "%s"}
   %a
-]|} ocaml_version
+]
+conflicts: [
+  "parsexp" { < "v0.14.0"}
+  "sexplib" { < "v0.14.0"}
+  "base" { < "v0.14.0"}
+]
+|} ocaml_version
     (Fmt.list pp_project) projects
   |> Opamfile.unmarshal
