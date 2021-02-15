@@ -9,17 +9,17 @@ type toolchain = Host | Freestanding
 
 let pp_toolchain () = function Host -> "" | Freestanding -> "-x freestanding"
 
-let get_alias =
-  let pp_alias f (project : Universe.Project.t) =
-    let pp_pkg f = Fmt.pf f "(package %s)\n" in
-    Fmt.pf f "%a" (Fmt.list pp_pkg) project.opam
+let get_monorepo_library =
+  let pp_lib f (project : Universe.Project.t) =
+    Fmt.pf f "@[%a @,@]" (Fmt.(list ~sep:(fun f () -> Fmt.pf f " ") string)) project.opam
   in
   Fmt.str {|
-  (alias
-   (name default)
-   (deps %a)
+  (library
+   (name monorepo)
+   (public_name monorepo)
+   (libraries %a)
   )
-  |} (Fmt.list pp_alias)
+  |} (Fmt.list pp_lib)
 
 let repo_name t =
   let uri = Uri.of_string t in
@@ -63,16 +63,15 @@ let v ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos ~lock (
   in
   let spec = monorepo_builder ~base ~lock () in
   let dune_build =
-    let+ spec = spec and+ lock = lock in
+    let+ spec = spec in
     let open Obuilder_spec in
     Spec.add
       [
-        run "mv %s ."
-          (unvendor_roots ~roots lock |> List.map (fun n -> "duniverse/" ^ n) |> String.concat " ");
-        run "echo '%s' >> dune" (get_alias roots);
+        run "echo '%s' >> dune" (get_monorepo_library roots);
+        run "touch monorepo.opam; touch monorepo.ml";
         run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
         (* Dune issue with strict_package_deps *)
-        run "opam exec -- dune build --profile release %a" pp_toolchain toolchain;
+        run "opam exec -- dune build --profile release --debug-dependency-path %a" pp_toolchain toolchain;
       ]
       spec
   in
