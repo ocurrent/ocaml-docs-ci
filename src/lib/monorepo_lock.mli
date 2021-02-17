@@ -12,4 +12,4 @@ type project = { name : string; dev_repo : string; repo : string; packages : str
 
 val projects : t -> project list
 
-val commits : t Current.t -> Current_git.Commit.t list Current.t
+val commits : ?filter:(project -> bool) -> t Current.t -> Current_git.Commit.t list Current.t

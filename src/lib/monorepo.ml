@@ -76,11 +76,16 @@ let monorepo_main ~base ~lock () =
          user ~uid:1000 ~gid:1000;
          workdir "/src";
          run "sudo chown opam:opam /src";
-         (* External dependencies *)
          run "echo '%s' >> monorepo.opam" (Opamfile.marshal lockfile);
+         (* External dependencies *)
          run "opam pin -n add monorepo . --locked --ignore-pin-depends";
          run ~network:Setup.network "opam depext --update -y monorepo";
          run "opam pin -n remove monorepo";
+         (* setup lockfile *)
+         run "cp monorepo.opam monorepo.opam.locked";
+         run "echo '(name monorepo)' >> dune-project";
+         (* opam monorepo uses the dune project to find which lockfile to pull*)
+         run ~network:Setup.network "opam exec -- opam monorepo pull -y";
        ]
   (* assemble monorepo sequentially *)
   |> Spec.add
@@ -90,14 +95,13 @@ let monorepo_main ~base ~lock () =
          copy [ "." ] ~dst:"/src/duniverse/";
        ]
   (* rename dune to dune_ to mimic opam-monorepo behavior *)
-  |> Spec.add
-       [ run "touch dune && mv dune dune_"; run "echo '(vendored_dirs *)' >> dune"; workdir "/src" ]
+  |> Spec.add [ workdir "/src" ]
 
 (********************************************)
 (***************   RELEASED   ***************)
 (********************************************)
 
-let monorepo_released ~base ~lock () =
+let spec ~base ~lock () =
   let+ lock = lock and+ base = base in
   let opamfile = Monorepo_lock.lockfile lock in
   let open Obuilder_spec in
@@ -105,7 +109,6 @@ let monorepo_released ~base ~lock () =
   |> Spec.add (Setup.install_tools [ "dune"; "opam-monorepo" ])
   |> Spec.add
        [
-         user ~uid:1000 ~gid:1000;
          workdir "/src";
          run "sudo chown opam:opam /src";
          run "echo '%s' >> monorepo.opam" (Opamfile.marshal opamfile);
@@ -128,7 +131,8 @@ let opam_file ~ocaml_version (projects : Universe.Project.t list) =
   let pp_project f (proj : Universe.Project.t) =
     List.iter (fun opam -> Fmt.pf f "\"%s\"\n" opam) proj.opam
   in
-  Fmt.str {|
+  Fmt.str
+    {|
 opam-version: "2.0"
 depends: [
   "ocaml" { = "%s"}
@@ -139,6 +143,6 @@ conflicts: [
   "sexplib" { < "v0.14.0"}
   "base" { < "v0.14.0"}
 ]
-|} ocaml_version
-    (Fmt.list pp_project) projects
+|}
+    ocaml_version (Fmt.list pp_project) projects
   |> Opamfile.unmarshal

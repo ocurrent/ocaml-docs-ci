@@ -33,7 +33,11 @@ let main config mode =
   let mirage_skeleton = Mirage_ci_pipelines.Skeleton.v ~monorepo ~repos repo_mirage_skeleton in
   let mirage_released = Mirage_ci_pipelines.Monorepo.released ~roots ~repos ~lock:monorepo_lock in
   let mirage_edge =
-    Mirage_ci_pipelines.Monorepo.edge ~remote_pull:Config.v.remote_pull
+    Mirage_ci_pipelines.Monorepo.mirage_edge ~remote_pull:Config.v.remote_pull
+      ~remote_push:Config.v.remote_push ~roots ~repos ~lock:monorepo_lock
+  in
+  let universe_edge =
+    Mirage_ci_pipelines.Monorepo.universe_edge ~remote_pull:Config.v.remote_pull
       ~remote_push:Config.v.remote_push ~roots ~repos ~lock:monorepo_lock
   in
   let engine =
@@ -43,6 +47,7 @@ let main config mode =
             ("mirage-skeleton", mirage_skeleton);
             ("mirage-released", mirage_released);
             ("mirage-edge", mirage_edge);
+            ("universe-edge", universe_edge);
           ])
   in
   let site =

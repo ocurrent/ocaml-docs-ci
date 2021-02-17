@@ -49,7 +49,6 @@ let build_project_list (packages : Opamfile.pkg list) dev_repos_output =
           None packages
         |> Option.get
       in
-      Printf.printf "%s -> %s\n" name repo;
       { name; dev_repo = StringMap.find name !dev_repo_map; repo = clean repo; packages } :: aux)
     !repo_map []
 
@@ -71,17 +70,16 @@ let parse_opam_dev_repo dev_repo =
   Printf.printf "repo: %s\n" repo;
   (repo, branch)
 
-let commits lock =
+let commits ?(filter = fun _ -> true) lock =
   let open Current.Syntax in
   Current.component "track projects from lockfile"
   |> let** lockv = lock in
      (* Bind: the list of tracked projects is dynamic *)
      let projects = projects lockv in
      Printf.printf "got %d projects to track.\n" (List.length projects);
-     List.map
-       (fun (x : project) ->
-         let repo_url, repo_branch = parse_opam_dev_repo x.dev_repo in
-         Current_git.clone ~schedule:daily ?gref:repo_branch repo_url)
-       projects
+     projects |> List.filter filter
+     |> List.map (fun (x : project) ->
+            let repo_url, repo_branch = parse_opam_dev_repo x.dev_repo in
+            Current_git.clone ~schedule:daily ?gref:repo_branch repo_url)
      |> Current.list_seq
      |> Current.collapse ~key:"lock" ~value:"" ~input:lock

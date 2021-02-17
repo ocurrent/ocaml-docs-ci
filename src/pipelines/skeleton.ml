@@ -8,25 +8,25 @@ let stages =
     ("1: test-target", "tutorial", [ "noop" ]);
     ("2: tutorial", "tutorial", [ "noop-functor"; "hello"; "hello-key"; "app_info" ]);
     ( "3: tutorial-lwt",
-       "tutorial",
-       [ "lwt/echo_server"; "lwt/heads1"; "lwt/heads2"; "lwt/timeout1"; "lwt/timeout2" ] );
-     ( "4: devices",
-       "device-usage",
-       [
-         "block";
-         "clock";
-         "conduit_server";
-         "console";
-         "http-fetch";
-         "kv_ro";
-         "network";
-         "pgx";
-         "ping6";
-         "prng";
-       ] );
-     (* removed tracing: not supported anywhere. *)
-     ("5: applications", "applications", [ "dhcp"; "dns"; "static_website_tls" ]);
-   ]
+      "tutorial",
+      [ "lwt/echo_server"; "lwt/heads1"; "lwt/heads2"; "lwt/timeout1"; "lwt/timeout2" ] );
+    ( "4: devices",
+      "device-usage",
+      [
+        "block";
+        "clock";
+        "conduit_server";
+        "console";
+        "http-fetch";
+        "kv_ro";
+        "network";
+        "pgx";
+        "ping6";
+        "prng";
+      ] );
+    (* removed tracing: not supported anywhere. *)
+    ("5: applications", "applications", [ "dhcp"; "dns"; "static_website_tls" ]);
+  ]
 
 (* muen: no support for block *)
 let overrides = [ ("block", targets |> List.filter (( <> ) "muen")) ]
@@ -55,7 +55,7 @@ let run_test ~mirage ~monorepo ~repos ~skeleton ~unikernel ~target =
     skeleton
   in
   Mirage.build ~base ~project:skeleton ~unikernel ~target
-  |> Current.collapse ~key:("Unikernel "^unikernel^"@"^target) ~value:"" ~input:repos
+  |> Current.collapse ~key:("Unikernel " ^ unikernel ^ "@" ^ target) ~value:"" ~input:repos
 
 let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~target =
   unikernels
@@ -67,22 +67,19 @@ let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~targ
   |> List.map (fun name ->
          run_test ~repos ~mirage ~monorepo ~skeleton ~unikernel:(stage ^ "/" ^ name) ~target)
   |> Current.all
-  |> Current.collapse ~key:("Test stage "^name) ~value:"" ~input:skeleton
+  |> Current.collapse ~key:("Test stage " ^ name) ~value:"" ~input:skeleton
 
 let v ~repos ~monorepo mirage_skeleton =
   let mirage = Mirage.v ~repos in
-  let rec aux ~target skeleton =
-    function
+  let rec aux ~target skeleton = function
     | [] -> skeleton |> Current.ignore_value
     | (name, stage, unikernels) :: q ->
         let test_stage =
-          test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels
-            ~target
+          test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~target
         in
         let mirage_skeleton =
-          let+ _ = test_stage 
-          and+ skeleton = skeleton
-          in skeleton 
+          let+ _ = test_stage and+ skeleton = skeleton in
+          skeleton
         in
         aux ~target mirage_skeleton q
   in
