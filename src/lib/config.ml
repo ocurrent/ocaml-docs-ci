@@ -1,4 +1,10 @@
-type config = { cap_file : string; remote_pull : string; remote_push : string } [@@deriving yojson]
+type config = {
+  cap_file : string;
+  remote_pull : string;
+  remote_push : string;
+  enable_commit_status : bool;
+}
+[@@deriving yojson]
 
 let v = Yojson.Safe.from_file "config.json" |> config_of_yojson |> Result.get_ok
 

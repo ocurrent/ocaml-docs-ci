@@ -1,7 +1,7 @@
 open Mirage_ci_lib
 open Current.Syntax
 
-let targets = [ "unix"; "hvt" ] (*"xen"; "virtio"; "spt"; "muen" ]*)
+let targets = [ "unix"; "hvt"; "xen" ] (* "virtio"; "spt"; "muen" ]*)
 
 let stages =
   [
@@ -34,12 +34,22 @@ let overrides = [ ("block", targets |> List.filter (( <> ) "muen")) ]
 let solo5_bindings_pkgs =
   [ "hvt"; "xen"; "virtio"; "spt"; "muen" ] |> List.map (fun x -> "solo5-bindings-" ^ x)
 
-let run_test ~mirage ~monorepo ~repos ~skeleton ~unikernel ~target =
+type configuration_4 = {
+  mirage : Mirage.t Current.t;
+  monorepo : Mirage_ci_lib.Monorepo.t Current.t;
+  repos : (string * Current_git.Commit_id.t) list Current.t;
+  skeleton : Current_git.Commit.t Current.t;
+}
+
+type test = { platform : Matrix.platform; unikernel : string; target : string }
+
+let run_test_mirage_4 { unikernel; platform; target } configuration =
+  let c = configuration in
   let base =
-    let+ repos = repos in
-    Spec.make "ocaml/opam:ubuntu-ocaml-4.11" |> Spec.add (Setup.add_repositories repos)
+    let+ repos = c.repos in
+    Matrix.spec platform.system |> Spec.add (Setup.add_repositories repos)
   in
-  let configuration = Mirage.configure ~project:skeleton ~unikernel ~target mirage in
+  let configuration = Mirage.configure ~project:c.skeleton ~unikernel ~target c.mirage in
   let base =
     let+ base = base in
     (* pre-install ocaml-freestanding *)
@@ -50,14 +60,36 @@ let run_test ~mirage ~monorepo ~repos ~skeleton ~unikernel ~target =
     let+ _ =
       Monorepo.lock
         ~value:("mirage-" ^ unikernel ^ "-" ^ target)
-        ~repos ~opam:configuration monorepo
-    and+ skeleton = skeleton in
-    skeleton
+        ~repos:c.repos ~opam:configuration c.monorepo
+    and+ skeleton = c.skeleton in
+    Current_git.Commit.id skeleton
   in
-  Mirage.build ~base ~project:skeleton ~unikernel ~target
-  |> Current.collapse ~key:("Unikernel " ^ unikernel ^ "@" ^ target) ~value:"" ~input:repos
+  Mirage.build ~platform ~base ~project:skeleton ~unikernel ~target ()
+  |> Current.collapse ~key:("Unikernel " ^ unikernel ^ "@" ^ target) ~value:"" ~input:c.repos
 
-let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~target =
+type configuration_main = {
+  mirage : Current_git.Commit_id.t Current.t;
+  repos : (string * Current_git.Commit_id.t) list Current.t;
+  skeleton : Current_git.Commit_id.t Current.t;
+}
+
+let run_test_mirage_main { unikernel; platform; target } configuration =
+  let c = configuration in
+  let base =
+    let+ repos = c.repos in
+    Matrix.spec platform.system |> Spec.add (Setup.add_repositories repos)
+  in
+  let base =
+    let+ base = base and+ mirage = c.mirage in
+    (* pre-install ocaml-freestanding *)
+    Spec.add (Setup.install_tools [ "ocaml-freestanding" ]) base
+    |> Spec.add
+         [ Obuilder_spec.run ~network:Setup.network "opam pin -n -y %s" (Setup.remote_uri mirage) ]
+  in
+  Mirage.build ~platform ~cmd:"mirage build" ~base ~project:c.skeleton ~unikernel ~target ()
+  |> Current.collapse ~key:("Unikernel " ^ unikernel ^ "@" ^ target) ~value:"" ~input:c.repos
+
+let test_stage ~stage ~unikernels ~target ~platform ~run_test configuration =
   unikernels
   |> List.filter (fun name ->
          overrides
@@ -65,17 +97,17 @@ let test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~targ
          |> Option.map (List.mem target)
          |> Option.value ~default:true)
   |> List.map (fun name ->
-         run_test ~repos ~mirage ~monorepo ~skeleton ~unikernel:(stage ^ "/" ^ name) ~target)
+         run_test { unikernel = stage ^ "/" ^ name; target; platform } configuration)
   |> Current.all
-  |> Current.collapse ~key:("Test stage " ^ name) ~value:"" ~input:skeleton
 
-let v ~repos ~monorepo mirage_skeleton =
-  let mirage = Mirage.v ~repos in
+let multi_stage_test ~platform ~configure ~run_test mirage_skeleton =
   let rec aux ~target skeleton = function
     | [] -> skeleton |> Current.ignore_value
     | (name, stage, unikernels) :: q ->
+        let configuration = configure skeleton in
         let test_stage =
-          test_stage ~mirage ~monorepo ~repos ~name ~skeleton ~stage ~unikernels ~target
+          test_stage ~run_test ~stage ~unikernels ~target ~platform configuration
+          |> Current.collapse ~key:("Test stage " ^ name) ~value:"" ~input:skeleton
         in
         let mirage_skeleton =
           let+ _ = test_stage and+ skeleton = skeleton in
@@ -85,3 +117,18 @@ let v ~repos ~monorepo mirage_skeleton =
   in
   List.map (fun target -> (target, aux ~target mirage_skeleton stages)) targets
   |> Current.all_labelled
+
+(* MIRAGE 4 TEST *)
+
+let v_4 ~repos ~monorepo ~(platform : Matrix.platform) mirage_skeleton =
+  let mirage = Mirage.v ~system:platform.system ~repos in
+  multi_stage_test ~platform ~run_test:run_test_mirage_4
+    ~configure:(fun skeleton -> { mirage; monorepo; repos; skeleton })
+    mirage_skeleton
+
+(* MIRAGE MAIN TEST *)
+
+let v_main ~platform ~mirage ~repos mirage_skeleton =
+  multi_stage_test ~platform ~run_test:run_test_mirage_main
+    ~configure:(fun skeleton -> { mirage; repos; skeleton })
+    mirage_skeleton

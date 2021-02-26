@@ -1,10 +1,11 @@
 type t
 
-val v : repos:(string * Current_git.Commit.t) list Current.t -> t Current.t
+val v :
+  system:Matrix.system -> repos:(string * Current_git.Commit_id.t) list Current.t -> t Current.t
 
 val lock :
   value:string ->
-  repos:(string * Current_git.Commit.t) list Current.t ->
+  repos:(string * Current_git.Commit_id.t) list Current.t ->
   opam:Opamfile.t Current.t ->
   t Current.t ->
   Monorepo_lock.t Current.t

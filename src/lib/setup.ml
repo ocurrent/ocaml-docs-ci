@@ -1,12 +1,11 @@
 let opam_download_cache =
-  Obuilder_spec.Cache.v "opam-download-cache" ~target:"/home/opam/.opam/download-cache"
+  Obuilder_spec.Cache.v "download-cache" ~target:"/home/opam/.opam/download-cache"
 
 let network = [ "host" ]
 
 let remote_uri commit =
-  let commit_id = Current_git.Commit.id commit in
-  let repo = Current_git.Commit_id.repo commit_id in
-  let commit = Current_git.Commit.hash commit in
+  let repo = Current_git.Commit_id.repo commit in
+  let commit = Current_git.Commit_id.hash commit in
   repo ^ "#" ^ commit
 
 let add_repositories =
@@ -21,12 +20,17 @@ module Op = struct
   type t = No_context
 
   module Key = struct
-    type t = Current_solver.resolution list
+    type t = { system : Matrix.system; packages : Current_solver.resolution list }
 
     let digest t =
       let open Current_solver in
       let json =
-        `Assoc (List.map (fun a -> (a.name ^ a.version, Opamfile.to_yojson a.opamfile)) t)
+        `List
+          [
+            `Assoc
+              (List.map (fun a -> (a.name ^ a.version, Opamfile.to_yojson a.opamfile)) t.packages);
+            `String (Fmt.str "%a" Matrix.pp_system t.system);
+          ]
       in
       Yojson.Safe.to_string json
   end
@@ -35,21 +39,22 @@ module Op = struct
 
   let id = "docker-tools-setup"
 
-  let pp f _ = Fmt.string f "docker tools setup"
+  let pp f t = Fmt.pf f "docker tools setup %a" Matrix.pp_system t.Key.system
 
   let auto_cancel = true
 
-  let spec ~pkgs =
+  let spec ~system ~pkgs =
     let open Obuilder_spec in
-    stage ~from:"ocaml/opam:ubuntu-ocaml-4.11"
-    @@ [
-         user ~uid:1000 ~gid:1000;
-         workdir "/repo";
-         copy [ "." ] ~dst:"/repo";
-         run "opam repo remove default";
-         run "opam repo add local /repo";
-         run "opam depext -i %s" (String.concat " " pkgs);
-       ]
+    Matrix.spec system
+    |> Spec.add
+         [
+           workdir "/repo";
+           copy [ "." ] ~dst:"/repo";
+           run "opam repo remove default";
+           run "opam repo add local /repo";
+           run "opam depext -i %s" (String.concat " " pkgs);
+         ]
+    |> Spec.finish
 
   let setup_package (package : Current_solver.resolution) =
     let open Fpath in
@@ -57,7 +62,7 @@ module Op = struct
     let _ = Bos.OS.Dir.create dirname |> Result.get_ok in
     Bos.OS.File.write (dirname / "opam") (Opamfile.marshal package.opamfile) |> Result.get_ok
 
-  let build No_context job packages =
+  let build No_context job { Key.system; packages } =
     let open Lwt.Syntax in
     let open Fpath in
     let* () = Current.Job.start ~level:Harmless job in
@@ -70,7 +75,7 @@ module Op = struct
     let pkgs =
       List.map (fun (pkg : Current_solver.resolution) -> pkg.name ^ "." ^ pkg.version) packages
     in
-    let dockerfile = Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (spec ~pkgs) in
+    let dockerfile = Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (spec ~system ~pkgs) in
     Bos.OS.File.write (tmpdir / "Dockerfile") dockerfile |> Result.get_ok;
     (* use docker build *)
     let iidfile = tmpdir / "iidfile" in
@@ -85,8 +90,9 @@ end
 
 module SetupCache = Current_cache.Make (Op)
 
-let tools_image ?(name = "setup tools") (resolutions : Current_solver.resolution list Current.t) =
+let tools_image ~system ?(name = "setup tools")
+    (resolutions : Current_solver.resolution list Current.t) =
   let open Current.Syntax in
   Current.component "%s" name
   |> let> resolutions = resolutions in
-     SetupCache.get No_context resolutions
+     SetupCache.get No_context { Op.Key.packages = resolutions; system }

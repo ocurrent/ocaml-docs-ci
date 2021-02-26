@@ -10,19 +10,13 @@ module Docker = Current_docker.Default
 
 type t = Docker.Image.t
 
-let v ~repos =
-  Current_solver.v ~repos ~packages:[ "opam-monorepo" ]
-  |> Setup.tools_image ~name:"opam-monorepo tool"
+let v ~system ~repos =
+  Current_solver.v ~system ~repos ~packages:[ "opam-monorepo" ]
+  |> Setup.tools_image ~system ~name:"opam-monorepo tool"
 
 let add_repos repos =
-  let remote_uri commit =
-    let commit_id = Current_git.Commit.id commit in
-    let repo = Current_git.Commit_id.repo commit_id in
-    let commit = Current_git.Commit.hash commit in
-    repo ^ "#" ^ commit
-  in
   let open Dockerfile in
-  let repo_add (name, commit) = run "opam repo add %s %s" name (remote_uri commit) in
+  let repo_add (name, commit) = run "opam repo add %s %s" name (Setup.remote_uri commit) in
   List.fold_left ( @@ ) (run "opam repo remove local") (List.map repo_add repos)
 
 let pp_wrap =

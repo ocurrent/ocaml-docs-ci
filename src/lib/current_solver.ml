@@ -6,9 +6,13 @@ module Op = struct
   type t = No_context
 
   module Key = struct
-    type t = { repos : (string * Current_git.Commit.t) list; packages : string list }
+    type t = {
+      repos : (string * Current_git.Commit.t) list;
+      packages : string list;
+      system : Matrix.system;
+    }
 
-    let digest { repos; packages } =
+    let digest { repos; packages; system } =
       let json =
         `Assoc
           [
@@ -16,6 +20,7 @@ module Op = struct
               `List (List.map (fun (_, commit) -> `String (Current_git.Commit.hash commit)) repos)
             );
             ("packages", `List (List.map (fun p -> `String p) packages));
+            ("system", `String (Fmt.str "%a" Matrix.pp_system system));
           ]
       in
       Yojson.to_string json
@@ -37,9 +42,9 @@ module Op = struct
 
   open Lwt.Syntax
 
-  let env =
+  let env ~(system : Matrix.system) =
     Opam_0install.Dir_context.std_env ~arch:"x86_64" ~os:"linux" ~os_distribution:"linux"
-      ~os_version:"20.04" ~os_family:"debian" ()
+      ~os_version:(Matrix.os_version system.os) ~os_family:(Matrix.os_family system.os) ()
 
   let with_checkouts ~job commits fn =
     let rec aux acc = function
@@ -49,17 +54,19 @@ module Op = struct
     in
     aux [] commits
 
-  let build No_context job { Key.repos; packages } =
+  let build No_context job { Key.repos; packages; system } =
     let* () = Current.Job.start ~level:Harmless job in
     let repos = List.map snd repos in
     with_checkouts ~job repos @@ fun dirs ->
     let ocaml_package = OpamPackage.Name.of_string "ocaml" in
-    let ocaml_version = OpamPackage.Version.of_string "4.11.1" in
+    let ocaml_version =
+      OpamPackage.Version.of_string (Fmt.str "%a" Matrix.pp_exact_ocaml system.ocaml)
+    in
     let dirs = List.map (fun dir -> Fpath.(to_string (dir / "packages"))) dirs in
     let solver_context =
       Dirs_context.create
         ~constraints:(OpamPackage.Name.Map.singleton ocaml_package (`Eq, ocaml_version))
-        ~env ~test:OpamPackage.Name.Set.empty dirs
+        ~env:(env ~system) ~test:OpamPackage.Name.Set.empty dirs
     in
     let t0 = Unix.gettimeofday () in
     let r =
@@ -88,8 +95,39 @@ end
 
 module Solver_cache = Current_cache.Make (Op)
 
-let v ~repos ~packages =
+module Pair (M1 : Current_term.S.ORDERED) (M2 : Current_term.S.ORDERED) = struct
+  type t = M1.t * M2.t
+
+  let pp f (v1, v2) = Fmt.pf f "%a%a%a" M1.pp v1 Fmt.cut () M2.pp v2
+
+  let compare (a1, b1) (a2, b2) = match M1.compare a1 a2 with 0 -> M2.compare b1 b2 | v -> v
+end
+
+module StringCommit =
+  Pair
+    (struct
+      include Current.String
+      include String
+    end)
+    (Current_git.Commit_id)
+
+let v ~system ~repos ~packages =
   let open Current.Syntax in
   Current.component "solver (%s)" (String.concat "," packages)
-  |> let> repos = repos in
-     Solver_cache.get No_context { repos; packages }
+  |> let> repos =
+       Current.list_map
+         (module StringCommit)
+         (fun c ->
+           let name =
+             let+ name, _ = c in
+             name
+           in
+           let id =
+             let+ _, id = c in
+             id
+           in
+           let commit = Current_git.fetch id in
+           Current.pair name commit)
+         repos
+     in
+     Solver_cache.get No_context { system; repos; packages }

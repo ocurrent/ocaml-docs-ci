@@ -2,5 +2,6 @@
 {
     "cap_file": "capability file for ocluster",
     "remote_pull": "remote from which ocluster nodes can git pull",
-    "remote_push": "remote to which the master node can git push"
+    "remote_push": "remote to which the master node can git push",
+    "enable_commit_status": false
 }
