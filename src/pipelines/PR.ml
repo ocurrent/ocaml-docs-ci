@@ -37,7 +37,7 @@ let perform_test ~platform ~mirage_dev ~mirage_skeleton ~mirage ~repos kind gh_c
   let id =
     Fmt.str "%s-%s"
       (Github.Api.Commit.id gh_commit' |> Git.Commit_id.hash)
-      (Mirage_ci_lib.Matrix.platform_id platform)
+      (Mirage_ci_lib.Platform.platform_id platform)
   in
   let pipeline = Skeleton.v_main ~platform ~mirage ~repos mirage_skeleton in
   let result =
@@ -50,7 +50,7 @@ let perform_test ~platform ~mirage_dev ~mirage_skeleton ~mirage ~repos kind gh_c
         pipeline |> Current.state ~hidden:true
         |> Current.map (github_status_of_state kind id)
         |> Github.Api.Commit.set_status gh_commit
-             (Fmt.str "Mirage CI - %a" Mirage_ci_lib.Matrix.pp_platform platform)
+             (Fmt.str "Mirage CI - %a" Mirage_ci_lib.Platform.pp_platform platform)
   and+ result = result in
   result
 
@@ -79,12 +79,12 @@ let make github repos =
         (module Github.Api.Commit)
         (fun gh_mirage_skeleton ->
           let mirage_skeleton = id_of gh_mirage_skeleton in
-          Mirage_ci_lib.Matrix.[ platform_amd64; platform_arm64 ]
+          Mirage_ci_lib.Platform.[ platform_amd64; platform_arm64 ]
           |> List.map (fun platform ->
                  perform_test ~platform ~mirage_dev ~mirage_skeleton ~mirage ~repos
                    "mirage-skeleton" gh_mirage_skeleton
                  |> Current.collapse
-                      ~key:(Fmt.str "%a" Mirage_ci_lib.Matrix.pp_platform platform)
+                      ~key:(Fmt.str "%a" Mirage_ci_lib.Platform.pp_platform platform)
                       ~value:"" ~input:gh_mirage_skeleton)
           |> Current.list_seq)
         gh_mirage_skeleton.ci

@@ -9,7 +9,7 @@ module Op = struct
     type t = {
       repos : (string * Current_git.Commit.t) list;
       packages : string list;
-      system : Matrix.system;
+      system : Platform.system;
     }
 
     let digest { repos; packages; system } =
@@ -20,7 +20,7 @@ module Op = struct
               `List (List.map (fun (_, commit) -> `String (Current_git.Commit.hash commit)) repos)
             );
             ("packages", `List (List.map (fun p -> `String p) packages));
-            ("system", `String (Fmt.str "%a" Matrix.pp_system system));
+            ("system", `String (Fmt.str "%a" Platform.pp_system system));
           ]
       in
       Yojson.to_string json
@@ -42,9 +42,9 @@ module Op = struct
 
   open Lwt.Syntax
 
-  let env ~(system : Matrix.system) =
+  let env ~(system : Platform.system) =
     Opam_0install.Dir_context.std_env ~arch:"x86_64" ~os:"linux" ~os_distribution:"linux"
-      ~os_version:(Matrix.os_version system.os) ~os_family:(Matrix.os_family system.os) ()
+      ~os_version:(Platform.os_version system.os) ~os_family:(Platform.os_family system.os) ()
 
   let with_checkouts ~job commits fn =
     let rec aux acc = function
@@ -60,7 +60,7 @@ module Op = struct
     with_checkouts ~job repos @@ fun dirs ->
     let ocaml_package = OpamPackage.Name.of_string "ocaml" in
     let ocaml_version =
-      OpamPackage.Version.of_string (Fmt.str "%a" Matrix.pp_exact_ocaml system.ocaml)
+      OpamPackage.Version.of_string (Fmt.str "%a" Platform.pp_exact_ocaml system.ocaml)
     in
     let dirs = List.map (fun dir -> Fpath.(to_string (dir / "packages"))) dirs in
     let solver_context =

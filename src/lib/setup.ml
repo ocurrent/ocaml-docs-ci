@@ -20,7 +20,7 @@ module Op = struct
   type t = No_context
 
   module Key = struct
-    type t = { system : Matrix.system; packages : Current_solver.resolution list }
+    type t = { system : Platform.system; packages : Current_solver.resolution list }
 
     let digest t =
       let open Current_solver in
@@ -29,7 +29,7 @@ module Op = struct
           [
             `Assoc
               (List.map (fun a -> (a.name ^ a.version, Opamfile.to_yojson a.opamfile)) t.packages);
-            `String (Fmt.str "%a" Matrix.pp_system t.system);
+            `String (Fmt.str "%a" Platform.pp_system t.system);
           ]
       in
       Yojson.Safe.to_string json
@@ -39,13 +39,13 @@ module Op = struct
 
   let id = "docker-tools-setup"
 
-  let pp f t = Fmt.pf f "docker tools setup %a" Matrix.pp_system t.Key.system
+  let pp f t = Fmt.pf f "docker tools setup %a" Platform.pp_system t.Key.system
 
   let auto_cancel = true
 
   let spec ~system ~pkgs =
     let open Obuilder_spec in
-    Matrix.spec system
+    Platform.spec system
     |> Spec.add
          [
            workdir "/repo";

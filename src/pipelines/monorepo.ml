@@ -23,35 +23,12 @@ let get_monorepo_library =
   |}
     (Fmt.list pp_lib)
 
-let repo_name t =
-  let uri = Uri.of_string t in
-  let path = Uri.path uri in
-  let last_path_component =
-    match Astring.String.cut ~rev:true ~sep:"/" path with
-    | None -> path
-    | Some (_, last_path_component) -> last_path_component
-  in
-  match Astring.String.cut ~sep:"." last_path_component with
-  | None -> last_path_component
-  | Some (repo_name, _ext) -> repo_name
-
-let unvendor_roots ~roots lock =
-  let pkgs = Monorepo_lock.projects lock in
-  let rootrepos = List.map Universe.Project.repo roots in
-  let unvendor_dir (project : Monorepo_lock.project) =
-    let repo = repo_name project.dev_repo in
-    if List.mem repo rootrepos then Some repo else None
-  in
-  List.filter_map unvendor_dir pkgs
-
-let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
-
-let v ~(platform : Matrix.platform) ~roots ~mode ?(src = Current.return []) ?(toolchain = Host)
-    ~repos ~lock () =
+let v ~(platform : Platform.t) ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos
+    ~lock () =
   let open Obuilder_spec in
   let base =
     let+ repos = repos in
-    Matrix.spec platform.system |> Spec.add (Setup.add_repositories repos)
+    Platform.spec platform.system |> Spec.add (Setup.add_repositories repos)
   in
   let base =
     let+ base = base in
@@ -115,17 +92,19 @@ let v ~(platform : Matrix.platform) ~roots ~mode ?(src = Current.return []) ?(to
       ]
       spec
   in
-  let cache_hint = "mirage-ci-monorepo-" ^ Fmt.str "%a" Matrix.pp_system platform.system in
+  let cache_hint = "mirage-ci-monorepo-" ^ Fmt.str "%a" Platform.pp_system platform.system in
   let cluster = Current_ocluster.v (Current_ocluster.Connection.create Config.cap) in
   Current_ocluster.build_obuilder
     ~label:(name_of_toolchain ^ "-" ^ name_of_mode)
-    ~cache_hint cluster ~pool:(Matrix.ocluster_pool platform) ~src
+    ~cache_hint cluster ~pool:(Platform.ocluster_pool platform) ~src
     (dune_build |> Config.to_ocluster_spec)
 
-let lock ~(system : Matrix.system) ~value ~monorepo ~repos (projects : Universe.Project.t list) =
+let lock ~(system : Platform.system) ~value ~monorepo ~repos (projects : Universe.Project.t list) =
   Current.with_context repos (fun () ->
       let configuration =
-        Monorepo.opam_file ~ocaml_version:(Fmt.str "%a" Matrix.pp_exact_ocaml system.ocaml) projects
+        Monorepo.opam_file
+          ~ocaml_version:(Fmt.str "%a" Platform.pp_exact_ocaml system.ocaml)
+          projects
       in
       Monorepo.lock ~value ~repos ~opam:(Current.return configuration) monorepo)
 

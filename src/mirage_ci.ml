@@ -10,7 +10,7 @@ let program_name = "mirage-ci"
 
 let main config github mode =
   let repo_mirage_skeleton =
-    Current_git.clone ~schedule:daily "https://github.com/TheLortex/mirage-skeleton.git"
+    Current_git.clone ~schedule:daily "https://github.com/mirage/mirage-skeleton.git"
   in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
@@ -19,7 +19,7 @@ let main config github mode =
     Current_git.clone ~schedule:daily "https://github.com/dune-universe/opam-overlays.git"
   in
   let repo_mirage_dev =
-    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/TheLortex/mirage-dev.git"
+    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/mirage/mirage-dev.git"
   in
   let repos =
     [
@@ -37,25 +37,26 @@ let main config github mode =
     |> Current.list_seq
   in
   let roots = Universe.Project.packages in
-  let monorepo = Monorepo.v ~system:Matrix.system ~repos in
+  let monorepo = Monorepo.v ~system:Platform.system ~repos in
   let monorepo_lock =
-    Mirage_ci_pipelines.Monorepo.lock ~system:Matrix.system ~value:"universe" ~monorepo ~repos roots
+    Mirage_ci_pipelines.Monorepo.lock ~system:Platform.system ~value:"universe" ~monorepo ~repos
+      roots
   in
   let mirage_skeleton =
-    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Matrix.platform_arm64 ~monorepo ~repos
+    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_arm64 ~monorepo ~repos
       repo_mirage_skeleton
   in
   let mirage_released =
-    Mirage_ci_pipelines.Monorepo.released ~platform:Matrix.platform_arm64 ~roots ~repos
+    Mirage_ci_pipelines.Monorepo.released ~platform:Platform.platform_arm64 ~roots ~repos
       ~lock:monorepo_lock
   in
   let mirage_edge =
-    Mirage_ci_pipelines.Monorepo.mirage_edge ~platform:Matrix.platform_arm64
+    Mirage_ci_pipelines.Monorepo.mirage_edge ~platform:Platform.platform_arm64
       ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots ~repos
       ~lock:monorepo_lock
   in
   let universe_edge =
-    Mirage_ci_pipelines.Monorepo.universe_edge ~platform:Matrix.platform_arm64
+    Mirage_ci_pipelines.Monorepo.universe_edge ~platform:Platform.platform_arm64
       ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots ~repos
       ~lock:monorepo_lock
   in

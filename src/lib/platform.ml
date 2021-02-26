@@ -22,7 +22,7 @@ let pp_system f { ocaml; os } = Fmt.pf f "%a-ocaml-%a" pp_os os pp_ocaml ocaml
 
 let spec t = Spec.make @@ Fmt.str "ocaml/opam:%a" pp_system t
 
-type platform = { system : system; arch : arch }
+type t = { system : system; arch : arch }
 
 let platform_id t =
   match t.arch with

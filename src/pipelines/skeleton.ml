@@ -31,23 +31,20 @@ let stages =
 (* muen: no support for block *)
 let overrides = [ ("block", targets |> List.filter (( <> ) "muen")) ]
 
-let solo5_bindings_pkgs =
-  [ "hvt"; "xen"; "virtio"; "spt"; "muen" ] |> List.map (fun x -> "solo5-bindings-" ^ x)
-
 type configuration_4 = {
   mirage : Mirage.t Current.t;
   monorepo : Mirage_ci_lib.Monorepo.t Current.t;
-  repos : (string * Current_git.Commit_id.t) list Current.t;
+  repos : Repository.t list Current.t;
   skeleton : Current_git.Commit.t Current.t;
 }
 
-type test = { platform : Matrix.platform; unikernel : string; target : string }
+type test = { platform : Platform.t; unikernel : string; target : string }
 
 let run_test_mirage_4 { unikernel; platform; target } configuration =
   let c = configuration in
   let base =
     let+ repos = c.repos in
-    Matrix.spec platform.system |> Spec.add (Setup.add_repositories repos)
+    Platform.spec platform.system |> Spec.add (Setup.add_repositories repos)
   in
   let configuration = Mirage.configure ~project:c.skeleton ~unikernel ~target c.mirage in
   let base =
@@ -69,7 +66,7 @@ let run_test_mirage_4 { unikernel; platform; target } configuration =
 
 type configuration_main = {
   mirage : Current_git.Commit_id.t Current.t;
-  repos : (string * Current_git.Commit_id.t) list Current.t;
+  repos : Repository.t list Current.t;
   skeleton : Current_git.Commit_id.t Current.t;
 }
 
@@ -77,7 +74,7 @@ let run_test_mirage_main { unikernel; platform; target } configuration =
   let c = configuration in
   let base =
     let+ repos = c.repos in
-    Matrix.spec platform.system |> Spec.add (Setup.add_repositories repos)
+    Platform.spec platform.system |> Spec.add (Setup.add_repositories repos)
   in
   let base =
     let+ base = base and+ mirage = c.mirage in
@@ -120,7 +117,7 @@ let multi_stage_test ~platform ~configure ~run_test mirage_skeleton =
 
 (* MIRAGE 4 TEST *)
 
-let v_4 ~repos ~monorepo ~(platform : Matrix.platform) mirage_skeleton =
+let v_4 ~repos ~monorepo ~(platform : Platform.t) mirage_skeleton =
   let mirage = Mirage.v ~system:platform.system ~repos in
   multi_stage_test ~platform ~run_test:run_test_mirage_4
     ~configure:(fun skeleton -> { mirage; monorepo; repos; skeleton })

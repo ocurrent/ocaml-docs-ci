@@ -8,5 +8,6 @@ val create :
   env:(string -> OpamVariable.variable_contents option) ->
   string list ->
   t
+(** create a directory context for the 0install solver. *)
 
 val get_opamfile : t -> OpamPackage.t -> OpamFile.OPAM.t

@@ -1,8 +1,11 @@
 type config = {
   cap_file : string;
+  (* Capability file for ocluster submissions *)
   remote_pull : string;
+  (* Git remote from which monorepos can be pulled. *)
   remote_push : string;
-  enable_commit_status : bool;
+  (* Git remote on which assembled monorepos should be pushed. *)
+  enable_commit_status : bool; (* Whether PR commit statuses should be updated. *)
 }
 [@@deriving yojson]
 

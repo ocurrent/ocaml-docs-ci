@@ -56,43 +56,7 @@ let lock ~value ~repos ~opam t =
   Current.collapse ~key:"monorepo-lock" ~value ~input:opam (lock ~repos ~opam t)
 
 (********************************************)
-(*****************  EDGE  *******************)
-(********************************************)
-
-let monorepo_main ~base ~lock () =
-  let+ lock = lock and+ base = base in
-  let lockfile = Monorepo_lock.lockfile lock in
-  let open Obuilder_spec in
-  base
-  |> Spec.add (Setup.install_tools [ "dune"; "opam-monorepo" ])
-  |> Spec.add
-       [
-         user ~uid:1000 ~gid:1000;
-         workdir "/src";
-         run "sudo chown opam:opam /src";
-         run "echo '%s' >> monorepo.opam" (Opamfile.marshal lockfile);
-         (* External dependencies *)
-         run "opam pin -n add monorepo . --locked --ignore-pin-depends";
-         run ~network:Setup.network "opam depext --update -y monorepo";
-         run "opam pin -n remove monorepo";
-         (* setup lockfile *)
-         run "cp monorepo.opam monorepo.opam.locked";
-         run "echo '(name monorepo)' >> dune-project";
-         (* opam monorepo uses the dune project to find which lockfile to pull*)
-         run ~network:Setup.network "opam exec -- opam monorepo pull -y";
-       ]
-  (* assemble monorepo sequentially *)
-  |> Spec.add
-       [
-         workdir "/src/duniverse";
-         run "sudo chown opam:opam /src/duniverse";
-         copy [ "." ] ~dst:"/src/duniverse/";
-       ]
-  (* rename dune to dune_ to mimic opam-monorepo behavior *)
-  |> Spec.add [ workdir "/src" ]
-
-(********************************************)
-(***************   RELEASED   ***************)
+(***************   SPEC       ***************)
 (********************************************)
 
 let spec ~base ~lock () =

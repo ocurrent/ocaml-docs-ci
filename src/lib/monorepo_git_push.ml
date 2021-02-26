@@ -39,14 +39,6 @@ module GitPush = struct
 
   let id = "mirage-ci-monorepo-git-push"
 
-  let fold_ok res =
-    Lwt.map (fun value ->
-        match (res, value) with
-        | Ok a, Ok b -> Ok (b :: a)
-        | Ok _, Error b -> Error b
-        | Error (`Msg a), Error (`Msg b) -> Error (`Msg (a ^ "\n" ^ b))
-        | Error a, _ -> Error a)
-
   let publish No_context job { Key.remote_pull; remote_push; branch } commits =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
