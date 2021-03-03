@@ -10,13 +10,22 @@ type t = {
   pipeline : unit Current.t;
 }
 
-type gh_repo = { ci : Github.Api.Commit.t list Current.t; main : Github.Api.Commit.t Current.t }
+type gh_repo = {
+  ci : Github.Api.Commit.t list Current.t;
+  main : Github.Api.Commit.t Current.t;
+  refs : Github.Api.refs Current.t;
+}
+
+let repo_refs ~github repo =
+  let refs = Github.Api.refs github repo in
+  Current.primitive ~info:(Current.component "repository refs") (fun () -> refs) (Current.return ())
 
 let github_setup ~github owner name =
   let gh = { Github.Repo_id.owner; name } in
   let ci_refs = Github.Api.ci_refs ~staleness:(Duration.of_day 30) github gh in
+  let repo_refs = repo_refs ~github gh in
   let default_branch = Github.Api.head_commit github gh in
-  { ci = ci_refs; main = default_branch }
+  { ci = ci_refs; refs = repo_refs; main = default_branch }
 
 let url kind id = Uri.of_string (Fmt.str "https://ci.mirage.io/github/%s/prs/%s" kind id)
 
@@ -59,6 +68,32 @@ let update lst value =
   let+ value = value in
   lst := List.flatten value
 
+module CommitUrl = struct
+  type t = Github.Api.Commit.t * (string * string)
+
+  let pp f (_, (text, _)) = Fmt.pf f "%s" text
+
+  let url f (_, (_, url)) = Fmt.pf f "%s" url
+
+  let compare (a, _) (b, _) = Github.Api.Commit.compare a b
+end
+
+let pp_url ~(repo : Github.Repo_id.t) f ref =
+  match ref with
+  | `Ref ref -> Fmt.pf f "https://github.com/%s/%s/tree/%s" repo.owner repo.name ref
+  | `PR pr -> Fmt.pf f "https://github.com/%s/%s/pull/%d" repo.owner repo.name pr
+
+let url_of_commit (commit : Github.Api.Commit.t) (refs : Github.Api.refs) =
+  let open Github in
+  let map = Api.all_refs refs in
+  let repo = Api.Commit.repo_id commit in
+  let commit_refs =
+    Api.Ref_map.filter (fun _ commit' -> Api.Commit.(hash commit' = hash commit)) map
+  in
+  Api.Ref_map.bindings commit_refs |> function
+  | [] -> ("no refs point to this commit", "")
+  | (ref, _) :: _ -> (Fmt.str "Github: %a" Api.Ref.pp ref, Fmt.to_to_string (pp_url ~repo) ref)
+
 let make github repos =
   let id_of gh_commit = Current.map Github.Api.Commit.id gh_commit in
   let gh_mirage_skeleton = github_setup ~github "mirage" "mirage-skeleton" in
@@ -75,19 +110,22 @@ let make github repos =
     Current.with_context mirage @@ fun () ->
     Current.with_context mirage_dev @@ fun () ->
     let mirage_skeleton =
-      Current.list_map
-        (module Github.Api.Commit)
-        (fun gh_mirage_skeleton ->
-          let mirage_skeleton = id_of gh_mirage_skeleton in
-          Mirage_ci_lib.Platform.[ platform_amd64; platform_arm64 ]
-          |> List.map (fun platform ->
-                 perform_test ~platform ~mirage_dev ~mirage_skeleton ~mirage ~repos
-                   "mirage-skeleton" gh_mirage_skeleton
-                 |> Current.collapse
-                      ~key:(Fmt.str "%a" Mirage_ci_lib.Platform.pp_platform platform)
-                      ~value:"" ~input:gh_mirage_skeleton)
-          |> Current.list_seq)
-        gh_mirage_skeleton.ci
+      gh_mirage_skeleton.ci
+      |> Current.pair gh_mirage_skeleton.refs
+      |> Current.map (fun (refs, commits) -> List.map (fun c -> (c, url_of_commit c refs)) commits)
+      |> Current.list_map_url
+           (module CommitUrl)
+           (fun commit ->
+             let commit = Current.map fst commit in
+             let mirage_skeleton = id_of commit in
+             Mirage_ci_lib.Platform.[ platform_amd64; platform_arm64 ]
+             |> List.map (fun platform ->
+                    perform_test ~platform ~mirage_dev ~mirage_skeleton ~mirage ~repos
+                      "mirage-skeleton" commit
+                    |> Current.collapse
+                         ~key:(Fmt.str "%a" Mirage_ci_lib.Platform.pp_platform platform)
+                         ~value:"" ~input:commit)
+             |> Current.list_seq)
       |> update mirage_skeleton_prs
       (*and mirage_dev = Current.list_map (module Github.Api.Commit) (fun gh_mirage_dev ->
           let mirage_dev = id_of gh_mirage_dev in
