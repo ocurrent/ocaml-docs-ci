@@ -4,11 +4,11 @@ let pp_ocaml f = function V4_10 -> Fmt.pf f "4.10" | V4_11 -> Fmt.pf f "4.11"
 
 let pp_exact_ocaml f = function V4_10 -> Fmt.pf f "4.10.2" | V4_11 -> Fmt.pf f "4.11.2"
 
-type os = Ubuntu | Fedora
+type os = Debian | Ubuntu | Fedora
 
-let os_version = function Ubuntu -> "20.04" | Fedora -> "33"
+let os_version = function Ubuntu -> "20.04" | Fedora -> "33" | Debian -> "10"
 
-let os_family = function Ubuntu -> "ubuntu" | Fedora -> "fedora"
+let os_family = function Ubuntu -> "ubuntu" | Fedora -> "fedora" | Debian -> "debian"
 
 let pp_os f t = Fmt.pf f "%s-%s" (os_family t) (os_version t)
 
@@ -36,7 +36,7 @@ let ocluster_pool { arch; _ } = match arch with Arm64 -> "linux-arm64" | Amd64 -
 
 (* Base configuration.. *)
 
-let system = { ocaml = V4_11; os = Ubuntu }
+let system = { ocaml = V4_11; os = Debian }
 
 let platform_amd64 = { system; arch = Amd64 }
 
