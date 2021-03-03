@@ -1,6 +1,7 @@
 open Mirage_ci_lib
 module Github = Current_github
 module Git = Current_git
+open Current.Syntax
 
 let () = Logging.init ()
 
@@ -8,19 +9,26 @@ let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
 
 let program_name = "mirage-ci"
 
+let gh_mirage_skeleton = { Github.Repo_id.owner = "mirage"; name = "mirage-skeleton" }
+
+let gh_mirage_dev = { Github.Repo_id.owner = "mirage"; name = "mirage-dev" }
+
 let main config github mode =
   let repo_mirage_skeleton =
-    Current_git.clone ~schedule:daily ~gref:"mirage-4"
-      "https://github.com/mirage/mirage-skeleton.git"
+    let+ repo_gh = Github.Api.head_of github gh_mirage_skeleton (`Ref "refs/heads/mirage-4") in
+    Github.Api.Commit.id repo_gh
   in
+  let repo_mirage_skeleton = Git.fetch repo_mirage_skeleton in
+  let repo_mirage_dev =
+    let+ repo_gh = Github.Api.head_of github gh_mirage_dev (`Ref "refs/heads/mirage-4") in
+    Github.Api.Commit.id repo_gh
+  in
+  let repo_mirage_dev = Git.fetch repo_mirage_dev in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
   in
   let repo_overlays =
     Current_git.clone ~schedule:daily "https://github.com/dune-universe/opam-overlays.git"
-  in
-  let repo_mirage_dev =
-    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/mirage/mirage-dev.git"
   in
   let repos =
     [
