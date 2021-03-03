@@ -97,7 +97,7 @@ let test_stage ~stage ~unikernels ~target ~platform ~run_test configuration =
          run_test { unikernel = stage ^ "/" ^ name; target; platform } configuration)
   |> Current.all
 
-let multi_stage_test ~platform ~configure ~run_test mirage_skeleton =
+let multi_stage_test ~platform ~targets ~configure ~run_test mirage_skeleton =
   let rec aux ~target skeleton = function
     | [] -> skeleton |> Current.ignore_value
     | (name, stage, unikernels) :: q ->
@@ -117,15 +117,15 @@ let multi_stage_test ~platform ~configure ~run_test mirage_skeleton =
 
 (* MIRAGE 4 TEST *)
 
-let v_4 ~repos ~monorepo ~(platform : Platform.t) mirage_skeleton =
+let v_4 ~repos ~monorepo ~(platform : Platform.t) ~targets mirage_skeleton =
   let mirage = Mirage.v ~system:platform.system ~repos in
-  multi_stage_test ~platform ~run_test:run_test_mirage_4
+  multi_stage_test ~platform ~targets ~run_test:run_test_mirage_4
     ~configure:(fun skeleton -> { mirage; monorepo; repos; skeleton })
     mirage_skeleton
 
 (* MIRAGE MAIN TEST *)
 
 let v_main ~platform ~mirage ~repos mirage_skeleton =
-  multi_stage_test ~platform ~run_test:run_test_mirage_main
+  multi_stage_test ~platform ~targets ~run_test:run_test_mirage_main
     ~configure:(fun skeleton -> { mirage; repos; skeleton })
     mirage_skeleton

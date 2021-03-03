@@ -42,9 +42,13 @@ let main config github mode =
     Mirage_ci_pipelines.Monorepo.lock ~system:Platform.system ~value:"universe" ~monorepo ~repos
       roots
   in
-  let mirage_skeleton =
-    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_arm64 ~monorepo ~repos
-      repo_mirage_skeleton
+  let mirage_skeleton_arm64 =
+    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_arm64 ~targets:[ "unix"; "hvt" ]
+      ~monorepo ~repos repo_mirage_skeleton
+  in
+  let mirage_skeleton_amd64 =
+    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_amd64 ~targets:[ "xen"; "spt" ]
+      ~monorepo ~repos repo_mirage_skeleton
   in
   let mirage_released =
     Mirage_ci_pipelines.Monorepo.released ~platform:Platform.platform_arm64 ~roots ~repos
@@ -65,7 +69,8 @@ let main config github mode =
     Current.Engine.create ~config (fun () ->
         Current.all_labelled
           [
-            ("mirage-skeleton", mirage_skeleton);
+            ("mirage-skeleton-arm64", mirage_skeleton_arm64);
+            ("mirage-skeleton-amd64", mirage_skeleton_amd64);
             ("mirage-released", mirage_released);
             ("mirage-edge", mirage_edge);
             ("universe-edge", universe_edge);
