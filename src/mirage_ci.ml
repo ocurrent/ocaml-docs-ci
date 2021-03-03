@@ -10,7 +10,7 @@ let program_name = "mirage-ci"
 
 let main config github mode =
   let repo_mirage_skeleton =
-    Current_git.clone ~schedule:daily "https://github.com/mirage/mirage-skeleton.git"
+    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/mirage/mirage-skeleton.git"
   in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
