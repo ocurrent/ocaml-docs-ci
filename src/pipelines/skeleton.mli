@@ -9,7 +9,7 @@ val v_main :
 (** Test mirage-skeleton using the current mirage workflow. *)
 
 val v_4 :
-  repos:Repository.t list Current.t ->
+  repos:Repository.fetched list Current.t ->
   monorepo:Monorepo.t Current.t ->
   platform:Platform.t ->
   targets:string list ->

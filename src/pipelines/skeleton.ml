@@ -34,7 +34,7 @@ let overrides = [ ("block", targets |> List.filter (( <> ) "muen")) ]
 type configuration_4 = {
   mirage : Mirage.t Current.t;
   monorepo : Mirage_ci_lib.Monorepo.t Current.t;
-  repos : Repository.t list Current.t;
+  repos : Repository.fetched list Current.t;
   skeleton : Current_git.Commit.t Current.t;
 }
 
@@ -42,8 +42,12 @@ type test = { platform : Platform.t; unikernel : string; target : string }
 
 let run_test_mirage_4 { unikernel; platform; target } configuration =
   let c = configuration in
-  let base =
+  let repos =
     let+ repos = c.repos in
+    List.map Repository.unfetch repos
+  in
+  let base =
+    let+ repos = repos in
     Platform.spec platform.system |> Spec.add (Setup.add_repositories repos)
   in
   let configuration = Mirage.configure ~project:c.skeleton ~unikernel ~target c.mirage in
@@ -57,7 +61,7 @@ let run_test_mirage_4 { unikernel; platform; target } configuration =
     let+ _ =
       Monorepo.lock
         ~value:("mirage-" ^ unikernel ^ "-" ^ target)
-        ~repos:c.repos ~opam:configuration c.monorepo
+        ~repos ~opam:configuration c.monorepo
     and+ skeleton = c.skeleton in
     Current_git.Commit.id skeleton
   in

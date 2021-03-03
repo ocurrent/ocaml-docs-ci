@@ -1,7 +1,7 @@
 type t
 (** The type representing the mirage tool. *)
 
-val v : system:Platform.system -> repos:Repository.t list Current.t -> t Current.t
+val v : system:Platform.system -> repos:Repository.fetched list Current.t -> t Current.t
 (** [v ~system ~repos] Build the mirage tool on [system] using [repos]. It's always built for the host 
 machine. *)
 

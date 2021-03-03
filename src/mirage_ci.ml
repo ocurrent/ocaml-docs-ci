@@ -10,7 +10,8 @@ let program_name = "mirage-ci"
 
 let main config github mode =
   let repo_mirage_skeleton =
-    Current_git.clone ~schedule:daily ~gref:"mirage-4" "https://github.com/mirage/mirage-skeleton.git"
+    Current_git.clone ~schedule:daily ~gref:"mirage-4"
+      "https://github.com/mirage/mirage-skeleton.git"
   in
   let repo_opam =
     Current_git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git"
@@ -23,59 +24,66 @@ let main config github mode =
   in
   let repos =
     [
-      repo_opam |> Current.map (fun x -> ("opam", Current_git.Commit.id x));
-      repo_overlays |> Current.map (fun x -> ("overlays", Current_git.Commit.id x));
-      repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", Current_git.Commit.id x));
+      repo_opam |> Current.map (fun x -> ("opam", x));
+      repo_overlays |> Current.map (fun x -> ("overlays", x));
+      repo_mirage_dev |> Current.map (fun x -> ("mirage-dev", x));
     ]
     |> Current.list_seq
   in
+  let repos_unfetched = Repository.current_list_unfetch repos in
   let repos_mirage_main =
     [
-      repo_opam |> Current.map (fun x -> ("opam", Current_git.Commit.id x));
-      repo_overlays |> Current.map (fun x -> ("overlays", Current_git.Commit.id x));
+      repo_opam |> Current.map (fun x -> ("opam", x));
+      repo_overlays |> Current.map (fun x -> ("overlays", x));
     ]
     |> Current.list_seq
   in
   let roots = Universe.Project.packages in
   let monorepo = Monorepo.v ~system:Platform.system ~repos in
   let monorepo_lock =
-    Mirage_ci_pipelines.Monorepo.lock ~system:Platform.system ~value:"universe" ~monorepo ~repos
-      roots
+    Mirage_ci_pipelines.Monorepo.lock ~system:Platform.system ~value:"universe" ~monorepo
+      ~repos:repos_unfetched roots
   in
-  let mirage_skeleton_arm64 =
-    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_arm64 ~targets:[ "unix"; "hvt" ]
-      ~monorepo ~repos repo_mirage_skeleton
+  let mirage_4 =
+    Current.with_context repos @@ fun () ->
+    let mirage_skeleton_arm64 =
+      Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_arm64 ~targets:[ "unix"; "hvt" ]
+        ~monorepo ~repos repo_mirage_skeleton
+    in
+    let mirage_skeleton_amd64 =
+      Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_amd64 ~targets:[ "xen"; "spt" ]
+        ~monorepo ~repos repo_mirage_skeleton
+    in
+    let mirage_released =
+      Mirage_ci_pipelines.Monorepo.released ~platform:Platform.platform_arm64 ~roots
+        ~repos:repos_unfetched ~lock:monorepo_lock
+    in
+    let mirage_edge =
+      Mirage_ci_pipelines.Monorepo.mirage_edge ~platform:Platform.platform_arm64
+        ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots
+        ~repos:repos_unfetched ~lock:monorepo_lock
+    in
+    let universe_edge =
+      Mirage_ci_pipelines.Monorepo.universe_edge ~platform:Platform.platform_arm64
+        ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots
+        ~repos:repos_unfetched ~lock:monorepo_lock
+    in
+    Current.all_labelled
+      [
+        ("mirage-skeleton-arm64", mirage_skeleton_arm64);
+        ("mirage-skeleton-amd64", mirage_skeleton_amd64);
+        ("mirage-released", mirage_released);
+        ("mirage-edge", mirage_edge);
+        ("universe-edge", universe_edge);
+      ]
   in
-  let mirage_skeleton_amd64 =
-    Mirage_ci_pipelines.Skeleton.v_4 ~platform:Platform.platform_amd64 ~targets:[ "xen"; "spt" ]
-      ~monorepo ~repos repo_mirage_skeleton
+  let prs =
+    Mirage_ci_pipelines.PR.make github (Repository.current_list_unfetch repos_mirage_main)
   in
-  let mirage_released =
-    Mirage_ci_pipelines.Monorepo.released ~platform:Platform.platform_arm64 ~roots ~repos
-      ~lock:monorepo_lock
-  in
-  let mirage_edge =
-    Mirage_ci_pipelines.Monorepo.mirage_edge ~platform:Platform.platform_arm64
-      ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots ~repos
-      ~lock:monorepo_lock
-  in
-  let universe_edge =
-    Mirage_ci_pipelines.Monorepo.universe_edge ~platform:Platform.platform_arm64
-      ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots ~repos
-      ~lock:monorepo_lock
-  in
-  let prs = Mirage_ci_pipelines.PR.make github repos_mirage_main in
   let engine =
     Current.Engine.create ~config (fun () ->
         Current.all_labelled
-          [
-            ("mirage-skeleton-arm64", mirage_skeleton_arm64);
-            ("mirage-skeleton-amd64", mirage_skeleton_amd64);
-            ("mirage-released", mirage_released);
-            ("mirage-edge", mirage_edge);
-            ("universe-edge", universe_edge);
-            ("mirage-main-ci", Mirage_ci_pipelines.PR.to_current prs);
-          ])
+          [ ("mirage 4", mirage_4); ("mirage-main-ci", Mirage_ci_pipelines.PR.to_current prs) ])
   in
   let site =
     let routes =

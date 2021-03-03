@@ -1,7 +1,7 @@
 type t
 (** The opam monorepo tool*)
 
-val v : system:Platform.system -> repos:Repository.t list Current.t -> t Current.t
+val v : system:Platform.system -> repos:Repository.fetched list Current.t -> t Current.t
 (** Build the opam monorepo tool on [system] using [repos]. *)
 
 val lock :

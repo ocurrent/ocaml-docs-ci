@@ -95,39 +95,8 @@ end
 
 module Solver_cache = Current_cache.Make (Op)
 
-module Pair (M1 : Current_term.S.ORDERED) (M2 : Current_term.S.ORDERED) = struct
-  type t = M1.t * M2.t
-
-  let pp f (v1, v2) = Fmt.pf f "%a%a%a" M1.pp v1 Fmt.cut () M2.pp v2
-
-  let compare (a1, b1) (a2, b2) = match M1.compare a1 a2 with 0 -> M2.compare b1 b2 | v -> v
-end
-
-module StringCommit =
-  Pair
-    (struct
-      include Current.String
-      include String
-    end)
-    (Current_git.Commit_id)
-
 let v ~system ~repos ~packages =
   let open Current.Syntax in
   Current.component "solver (%s)" (String.concat "," packages)
-  |> let> repos =
-       Current.list_map
-         (module StringCommit)
-         (fun c ->
-           let name =
-             let+ name, _ = c in
-             name
-           in
-           let id =
-             let+ _, id = c in
-             id
-           in
-           let commit = Current_git.fetch id in
-           Current.pair name commit)
-         repos
-     in
+  |> let> repos = repos in
      Solver_cache.get No_context { system; repos; packages }
