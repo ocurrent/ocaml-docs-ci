@@ -154,9 +154,6 @@ let to_current t = t.pipeline
 
 open Current_web
 open Tyxml.Html
-
-let render_pipeline ~job_info a = Fmt.str "%a" (Current.Analysis.pp_html ~job_info) a
-
 let r (pr : pr_info) =
   object
     inherit Current_web.Resource.t
@@ -169,6 +166,7 @@ let r (pr : pr_info) =
         let url = job_id |> Option.map (fun id -> Fmt.str "/job/%s" id) in
         (update, url)
       in
+      let html, css = Current.Analysis.to_html_css ~job_info pipeline in
       Context.respond_ok ctx
         [
           style
@@ -193,7 +191,7 @@ let r (pr : pr_info) =
             ];
           div ~a:[ a_id "pipeline_container" ]
             [
-              div ~a:[ a_id "pipeline" ] [ Unsafe.data (render_pipeline ~job_info pipeline) ];
+              div ~a:[ a_id "pipeline" ] [ html ];
               Unsafe.data "<iframe id='logs_iframe' ></iframe>";
             ];
           script
