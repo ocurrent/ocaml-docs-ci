@@ -41,7 +41,7 @@ module ConfigureOp = struct
     let cmd =
       Current_docker.Raw.Cmd.docker ~docker_context:None
         [
-          "run";
+          "run"; "--rm";
           "-v"; Fmt.str "%a:/src" Fpath.pp dir;
           "-u"; "opam";
           Docker.Image.hash tool;
