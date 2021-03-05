@@ -17,7 +17,7 @@ let install_tools tools =
   [ Obuilder_spec.run ~network ~cache:[ opam_download_cache ] "opam depext -i %s" tools_s ]
 
 module Op = struct
-  type t = No_context
+  type t = Name of string
 
   module Key = struct
     type t = { system : Platform.system; packages : Current_solver.resolution list }
@@ -62,7 +62,7 @@ module Op = struct
     let _ = Bos.OS.Dir.create dirname |> Result.get_ok in
     Bos.OS.File.write (dirname / "opam") (Opamfile.marshal package.opamfile) |> Result.get_ok
 
-  let build No_context job { Key.system; packages } =
+  let build (Name tool_name) job { Key.system; packages } =
     let open Lwt.Syntax in
     let open Fpath in
     let* () = Current.Job.start ~level:Harmless job in
@@ -78,14 +78,14 @@ module Op = struct
     let dockerfile = Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (spec ~system ~pkgs) in
     Bos.OS.File.write (tmpdir / "Dockerfile") dockerfile |> Result.get_ok;
     (* use docker build *)
-    let iidfile = tmpdir / "iidfile" in
+    let tool_name = Astring.String.map (function | ' ' -> '-' | c -> c) tool_name in
+    let tag = Fmt.str "%s-%a" tool_name Platform.pp_system system in
     let cmd =
       Current_docker.Raw.Cmd.docker ~docker_context:None
-        [ "build"; "--iidfile"; to_string iidfile; "--"; to_string tmpdir ]
+        [ "build"; "-t"; tag; "--"; to_string tmpdir ]
     in
-    let+ res = Current.Process.exec ~cancellable:true ~job cmd in
-    Result.bind res (fun () -> Bos.OS.File.read iidfile)
-    |> Result.map (fun iid -> Current_docker.Default.Image.of_hash iid)
+    let+ _ = Current.Process.exec ~cancellable:true ~job cmd in
+    Ok (Current_docker.Default.Image.of_hash tag)
 end
 
 module SetupCache = Current_cache.Make (Op)
@@ -95,4 +95,4 @@ let tools_image ~system ?(name = "setup tools")
   let open Current.Syntax in
   Current.component "%s" name
   |> let> resolutions = resolutions in
-     SetupCache.get No_context { Op.Key.packages = resolutions; system }
+     SetupCache.get (Name name) { Op.Key.packages = resolutions; system }
