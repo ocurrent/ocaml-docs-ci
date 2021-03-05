@@ -2,6 +2,7 @@ let pool = Current.Pool.create ~label:"mirage-pool" 4
 
 open Current.Syntax
 module Docker = Current_docker.Default
+module Git = Current_git
 
 type t = Docker.Image.t
 
@@ -9,30 +10,55 @@ let v ~system ~repos =
   Current_solver.v ~system ~repos ~packages:[ "mirage" ]
   |> Setup.tools_image ~system ~name:"mirage tool"
 
-let unikernel_find_cmd =
-  "find . -maxdepth 1 -type f -not -name *install.opam -name *.opam -exec cat {} +"
-  |> String.split_on_char ' '
+module ConfigureOp = struct
+  type t = No_context
+
+  let id = "mirage-tool-configure"
+
+  let pp f _ = Fmt.pf f "mirage configure"
+
+  module Key = struct
+    type t = { tool : Docker.Image.t; project : Git.Commit.t; unikernel : string; target : string }
+
+    let digest { tool; project; unikernel; target } =
+      Fmt.str "%s-%s-%s-%s" (Docker.Image.digest tool) (Git.Commit.hash project) unikernel target
+  end
+
+  module Value = Opamfile
+
+  let auto_cancel = true
+
+  let cmd ~unikernel ~target =
+    Fmt.str
+      "cd /src/%s && mirage configure -t %s && find /src/%s -maxdepth 1 -type f -not -name \
+       \"*install.opam\" -name \"*.opam\" -exec cat {} +"
+      unikernel target unikernel
+
+  let build No_context job { Key.tool; project; unikernel; target } =
+    let open Lwt.Syntax in
+    let* () = Current.Job.start ~level:Harmless job in
+    Git.with_checkout ~pool ~job project @@ fun dir ->
+    let cmd =
+      Current_docker.Raw.Cmd.docker ~docker_context:None
+        [
+          "run";
+          "-v"; Fmt.str "%a:/src" Fpath.pp dir;
+          "-u"; "opam";
+          Docker.Image.hash tool;
+          "bash"; "-c";
+          cmd ~unikernel ~target;
+        ]
+    in
+    let+ result = Current.Process.check_output ~cancellable:true ~job cmd in
+    Result.map (fun opamfile -> OpamParser.string opamfile "monorepo.opam") result
+end
+
+module ConfigureCache = Current_cache.Make (ConfigureOp)
 
 let configure ~project ~unikernel ~target t =
-  let dockerfile =
-    let+ t = t in
-    let open Dockerfile in
-    from (Docker.Image.hash t)
-    @@ user "opam"
-    @@ copy ~chown:"opam" ~src:[ "." ] ~dst:"/src" ()
-    @@ workdir "/src/%s" unikernel
-    @@ run "opam exec -- mirage configure -t %s" target
-    |> fun dockerfile -> `Contents dockerfile
-  in
-  let image =
-    Docker.build ~dockerfile
-      ~label:("mirage configure " ^ unikernel ^ " @" ^ target)
-      ~pool ~pull:false (`Git project)
-  in
-  let+ opamfile =
-    Docker.pread ~label:"read mirage configure output" image ~args:unikernel_find_cmd
-  in
-  OpamParser.string opamfile "monorepo.opam"
+  Current.component "mirage configure"
+  |> let> project = project and> t = t in
+     ConfigureCache.get No_context { ConfigureOp.Key.tool = t; project; unikernel; target }
 
 let build ?(cmd = "dune build") ~(platform : Platform.t) ~base ~project ~unikernel ~target () =
   let spec =

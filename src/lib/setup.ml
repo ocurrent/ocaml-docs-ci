@@ -84,8 +84,8 @@ module Op = struct
       Current_docker.Raw.Cmd.docker ~docker_context:None
         [ "build"; "-t"; tag; "--"; to_string tmpdir ]
     in
-    let+ _ = Current.Process.exec ~cancellable:true ~job cmd in
-    Ok (Current_docker.Default.Image.of_hash tag)
+    let+ res = Current.Process.exec ~cancellable:true ~job cmd in
+    Result.map (fun () -> Current_docker.Default.Image.of_hash tag) res
 end
 
 module SetupCache = Current_cache.Make (Op)
