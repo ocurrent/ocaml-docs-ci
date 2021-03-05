@@ -30,7 +30,7 @@ module ConfigureOp = struct
 
   let cmd ~unikernel ~target =
     Fmt.str
-      "cd /src/%s && mirage configure -t %s && find /src/%s -maxdepth 1 -type f -not -name \
+      "cp -R /src/ /home/opam/src/ && cd /home/opam/src/%s && mirage configure -t %s && find /home/opam/src/%s -maxdepth 1 -type f -not -name \
        \"*install.opam\" -name \"*.opam\" -exec cat {} +"
       unikernel target unikernel
 
