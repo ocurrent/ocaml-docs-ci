@@ -30,27 +30,39 @@ module ConfigureOp = struct
 
   let cmd ~unikernel ~target =
     Fmt.str
-      "cp -R /src/ /home/opam/src/ && cd /home/opam/src/%s && mirage configure -t %s && find /home/opam/src/%s -maxdepth 1 -type f -not -name \
-       \"*install.opam\" -name \"*.opam\" -exec cat {} +"
+      "cp -R /src/ /home/opam/src/ && cd /home/opam/src/%s && mirage configure -t %s && find \
+       /home/opam/src/%s -maxdepth 1 -type f -not -name \"*install.opam\" -name \"*.opam\" -exec \
+       cat {} +"
       unikernel target unikernel
 
   let build No_context job { Key.tool; project; unikernel; target } =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~pool ~job project @@ fun dir ->
-    let cmd =
-      Current_docker.Raw.Cmd.docker ~docker_context:None
-        [
-          "run"; "--rm";
-          "-v"; Fmt.str "%a:/src" Fpath.pp dir;
-          "-u"; "opam";
-          Docker.Image.hash tool;
-          "bash"; "-c";
-          cmd ~unikernel ~target;
-        ]
+    let* res =
+      Current.Process.exec ~cancellable:true ~job
+        ("", [| "chmod"; "-R"; "777"; Fpath.to_string dir |])
     in
-    let+ result = Current.Process.check_output ~cancellable:true ~job cmd in
-    Result.map (fun opamfile -> OpamParser.string opamfile "monorepo.opam") result
+    match res with
+    | Ok () ->
+        let cmd =
+          Current_docker.Raw.Cmd.docker ~docker_context:None
+            [
+              "run";
+              "--rm";
+              "-v";
+              Fmt.str "%a:/src" Fpath.pp dir;
+              "-u";
+              "opam";
+              Docker.Image.hash tool;
+              "bash";
+              "-c";
+              cmd ~unikernel ~target;
+            ]
+        in
+        let+ result = Current.Process.check_output ~cancellable:true ~job cmd in
+        Result.map (fun opamfile -> OpamParser.string opamfile "monorepo.opam") result
+    | Error e -> Lwt.return_error e
 end
 
 module ConfigureCache = Current_cache.Make (ConfigureOp)

@@ -154,6 +154,7 @@ let to_current t = t.pipeline
 
 open Current_web
 open Tyxml.Html
+
 let r (pr : pr_info) =
   object
     inherit Current_web.Resource.t
@@ -191,8 +192,7 @@ let r (pr : pr_info) =
             ];
           div ~a:[ a_id "pipeline_container" ]
             [
-              div ~a:[ a_id "pipeline" ] [ html ];
-              Unsafe.data "<iframe id='logs_iframe' ></iframe>";
+              div ~a:[ a_id "pipeline" ] [ html ]; Unsafe.data "<iframe id='logs_iframe' ></iframe>";
             ];
           script
             (Unsafe.data

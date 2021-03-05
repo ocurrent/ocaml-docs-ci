@@ -78,7 +78,7 @@ module Op = struct
     let dockerfile = Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (spec ~system ~pkgs) in
     Bos.OS.File.write (tmpdir / "Dockerfile") dockerfile |> Result.get_ok;
     (* use docker build *)
-    let tool_name = Astring.String.map (function | ' ' -> '-' | c -> c) tool_name in
+    let tool_name = Astring.String.map (function ' ' -> '-' | c -> c) tool_name in
     let tag = Fmt.str "%s-%a" tool_name Platform.pp_system system in
     let cmd =
       Current_docker.Raw.Cmd.docker ~docker_context:None
