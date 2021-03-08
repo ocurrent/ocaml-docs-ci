@@ -13,6 +13,12 @@ val lock :
 (** [lock ~system ~value ~monorepo ~repos projects] Obtain the lockfile of [projects] using the
 [monorepo] tool with the repositories [repos].    *)
 
+val docs :
+  system:Platform.system ->
+  repos:Repository.t list Current.t ->
+  lock:Monorepo_lock.t Current.t ->
+  unit Current.t
+
 val released :
   platform:Platform.t ->
   roots:Universe.Project.t list ->

@@ -76,6 +76,10 @@ let main config github mode =
         ~remote_pull:Config.v.remote_pull ~remote_push:Config.v.remote_push ~roots
         ~repos:repos_unfetched ~lock:monorepo_lock
     in
+    let mirage_docs =
+      Mirage_ci_pipelines.Monorepo.docs ~system:Platform.system ~repos:repos_unfetched
+        ~lock:monorepo_lock
+    in
     Current.all_labelled
       [
         ("mirage-skeleton-arm64", mirage_skeleton_arm64);
@@ -83,6 +87,7 @@ let main config github mode =
         ("mirage-released", mirage_released);
         ("mirage-edge", mirage_edge);
         ("universe-edge", universe_edge);
+        ("mirage-docs", mirage_docs);
       ]
   in
   let prs =

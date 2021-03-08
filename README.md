@@ -21,3 +21,9 @@ Copy `config.sample.json` to `config.json` and edit it accordingly:
 Obtain a Github personal access token that has the `repo:status` authorisation and save it in a file. 
 
 Then, use `dune exec -- mirage-ci --github-token-file <TOKEN_FILE>` to launch the CI pipeline. 
+
+
+## Mirage docs
+
+A docker service needs to be created to serve the docs, based on the `mirage-docs` image:
+`docker service create --name mirage-docs -p 8081:80 mirage-docs`
