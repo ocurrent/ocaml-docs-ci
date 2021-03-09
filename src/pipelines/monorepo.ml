@@ -159,17 +159,17 @@ let docs ~(system : Platform.system) ~repos ~lock =
     let open Obuilder_spec in
     let+ spec = spec in
     Spec.add
-      ( Setup.install_tools [ "odoc" ]
-      @ [
-          run "rm duniverse/dune";
-          (* disable vendoring *)
-          run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
-          (* Dune issue with strict_package_deps *)
-          run
-            "opam exec -- dune build @doc --profile release --debug-dependency-path || echo \
-             \"Build failed. It's ok.\"";
-          run "du -sh _build/";
-        ] )
+      [
+        run "opam pin add odoc --dev -y";
+        run "rm duniverse/dune";
+        (* disable vendoring *)
+        run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
+        (* Dune issue with strict_package_deps *)
+        run
+          "opam exec -- dune build @doc --profile release --debug-dependency-path || echo \"Build \
+           failed. It's ok.\"";
+        run "du -sh _build/";
+      ]
       spec
     |> Spec.finish
   in
