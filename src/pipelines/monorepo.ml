@@ -9,9 +9,15 @@ type toolchain = Host | Freestanding
 
 let pp_toolchain () = function Host -> "" | Freestanding -> "-x freestanding"
 
-let get_monorepo_library =
-  let pp_lib f (project : Universe.Project.t) =
-    Fmt.pf f "@[%a @,@]" Fmt.(list ~sep:(fun f () -> Fmt.pf f " ") string) project.opam
+let get_monorepo_library ~mirage_only =
+  let pp_libraries f Universe.{ name; sublibs; mirage } =
+    if mirage && not mirage_only then
+      let names = name :: List.map (fun sublibname -> name ^ "." ^ sublibname) sublibs in
+      Fmt.pf f "%a" Fmt.(list ~sep:(const string " ") string) names
+    else ()
+  in
+  let pp_project f (project : Universe.Project.t) =
+    Fmt.pf f "@[%a @,@]" Fmt.(list ~sep:(const string " ") pp_libraries) project.opam
   in
   Fmt.str
     {|
@@ -21,7 +27,7 @@ let get_monorepo_library =
    (libraries %a)
   )
   |}
-    (Fmt.list pp_lib)
+    (Fmt.list pp_project)
 
 let spec ~mode ~repos ~system ~toolchain ~lock =
   let open Obuilder_spec in
@@ -71,12 +77,13 @@ let spec ~mode ~repos ~system ~toolchain ~lock =
 let v ~(platform : Platform.t) ~roots ~mode ?(src = Current.return []) ?(toolchain = Host) ~repos
     ~lock () =
   let spec = spec ~system:platform.system ~mode ~repos ~toolchain ~lock in
+  let mirage_only = match toolchain with Host -> false | _ -> true in
   let dune_build =
     let+ spec = spec in
     let open Obuilder_spec in
     Spec.add
       [
-        run "echo '%s' >> dune" (get_monorepo_library roots);
+        run "echo '%s' >> dune" (get_monorepo_library ~mirage_only roots);
         run "touch monorepo.opam; touch monorepo.ml";
         run "find . -type f -name 'dune-project' -exec sed 's/(strict_package_deps)//g' -i {} \\;";
         (* Dune issue with strict_package_deps *)

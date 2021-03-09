@@ -1,137 +1,54 @@
+type target = Unix | Mirage
+
+type package = { name : string; mirage : bool; sublibs : string list }
+
+let opam ?(mirage = true) ?(sublibs = []) name = { name; mirage; sublibs }
+
 module Project = struct
-  type driver_kind = None | Solo5 | Xen | Unix | Windows | OSX
+  type t = { org : string; repo : string; opam : package list; descr : string }
 
-  type category =
-    | Core
-    | Driver of driver_kind
-    | Parsing
-    | Logging
-    | Storage
-    | Network
-    | Web
-    | VCS
-    | Security
-    | Testing
-
-  type category_description = { order : int; name : string; descr : string }
-
-  let category_description = function
-    | Core ->
-        {
-          order = 1;
-          name = "core";
-          descr =
-            "The core libraries that form Mirage. These are primarily module type definitions for \
-             functionality such as networking and storage, as well as the frontend configuration \
-             and CLI tooling.";
-        }
-    | Driver None ->
-        {
-          order = 2;
-          name = "driver";
-          descr =
-            "Library implementations for boot-related functionality not specific to a particular \
-             target.";
-        }
-    | Driver Solo5 ->
-        {
-          order = 3;
-          name = "driver/solo5";
-          descr =
-            "Drivers for booting on the [Solo5](https://github.com/Solo5/solo5) target, which uses \
-             a slimmed down KVM hypervisor to run.";
-        }
-    | Driver Xen ->
-        {
-          order = 4;
-          name = "driver/xen";
-          descr = "Drivers for booting directly on the [Xen](http://xen.org) hypervisor.";
-        }
-    | Driver Unix ->
-        {
-          order = 5;
-          name = "driver/unix";
-          descr =
-            "Drivers for running as a normal Unix process on Linux, Free/Net/OpenBSD or macos.";
-        }
-    | Driver Windows ->
-        {
-          order = 6;
-          name = "driver/windows";
-          descr = "Drivers for bindings to Windows-specific APIs and services.";
-        }
-    | Driver OSX ->
-        {
-          order = 7;
-          name = "driver/osx";
-          descr = "Drivers for bindings to macos specific APIs and services.";
-        }
-    | Parsing ->
-        {
-          order = 8;
-          name = "parsing";
-          descr = "Libraries to help parsing and pickling into various formats.";
-        }
-    | Logging ->
-        {
-          order = 9;
-          name = "logging";
-          descr =
-            "Logging and profiling libraries for recording and analysing unikernel activities.";
-        }
-    | Storage ->
-        {
-          order = 10;
-          name = "storage";
-          descr =
-            "Libraries to encode into persistent on-disk formats, often with interoperability with \
-             other systems.";
-        }
-    | Network ->
-        {
-          order = 11;
-          name = "network";
-          descr = "Libraries that implement remote network protocols, often specified in IETF RFCs.";
-        }
-    | Web ->
-        {
-          order = 12;
-          name = "web";
-          descr = "Libraries that implement web-related technologies, including the HTTP protocol.";
-        }
-    | VCS ->
-        {
-          order = 13;
-          name = "vcs";
-          descr =
-            "Version-controlled storage technologies, including the Irmin datastructure layer.";
-        }
-    | Security ->
-        { order = 14; name = "security"; descr = "Cryptography and encryption-related libraries." }
-    | Testing ->
-        {
-          order = 15;
-          name = "testing";
-          descr = "Libraries to assist with building unit tests and coverage.";
-        }
-
-  type t = { org : string; repo : string; cat : category; opam : string list; descr : string }
-
-  let v ?(org = "mirage") repo cat opam descr = { org; repo; cat; opam; descr }
+  let v ?(org = "mirage") repo opam descr = { org; repo; opam; descr }
 
   let packages =
     [
       (*v "mirage" Core ["mirage"; "mirage-runtime"; "functoria"; "functoria-runtime"] "This is the main repository that contains the CLI tool.";*)
-      v "ocaml-cstruct" Parsing [ "cstruct" ]
+      v "ocaml-cstruct"
+        [
+          opam "cstruct";
+          opam "cstruct-sexp";
+          opam ~mirage:false "cstruct-unix";
+          opam ~mirage:false "cstruct-lwt";
+          opam ~mirage:false "cstruct-async";
+        ]
         "Map OCaml arrays onto C-like structs, suitable for parsing wire protocols.";
-      v "ocaml-uri" Web [ "uri" ] "RFC3986 URI parsing library";
-      v "irmin" VCS [ "irmin" ]
+      v "ocaml-uri" [ opam "uri"; opam "uri-sexp" ] "RFC3986 URI parsing library";
+      v "irmin"
+        [
+          opam "irmin";
+          opam "irmin-mirage";
+          opam "irmin-mirage-git";
+          opam ~mirage:false "irmin-unix";
+        ]
         "a library for persistent stores with built-in snapshot, branching and reverting \
          mechanisms.";
-      v ~org:"mirleft" "ocaml-tls" Security [ "tls" ]
+      v ~org:"mirleft" "ocaml-tls"
+        [ opam "tls" ~sublibs:[ "lwt" ]; opam "tls-mirage" ]
         "a pure OCaml implementation of Transport Layer Security.";
-      v "ocaml-git" VCS [ "git" ] "Git format and protocol in pure OCaml";
-      v "digestif" Security [ "digestif" ] "Hashing functions in pure OCaml or C.";
+      v "ocaml-git"
+        [
+          opam "git";
+          opam "git-mirage" ~sublibs:[ "dns"; "tcp"; "ssh" ];
+          opam "git-cohttp";
+          opam "git-cohttp-mirage";
+          opam "mimic";
+          opam "carton";
+          opam "carton-lwt";
+          opam ~mirage:false "carton-git";
+          opam ~mirage:false "git-cohttp-unix";
+          opam ~mirage:false "git-unix";
+        ]
+        "Git format and protocol in pure OCaml";
+      v "digestif" [ opam "digestif" ] "Hashing functions in pure OCaml or C.";
     ]
 
   let repo { repo; _ } = repo

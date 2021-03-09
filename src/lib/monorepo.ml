@@ -87,7 +87,7 @@ let spec ~base ~lock () =
 
 let opam_file ~ocaml_version (projects : Universe.Project.t list) =
   let pp_project f (proj : Universe.Project.t) =
-    List.iter (fun opam -> Fmt.pf f "\"%s\"\n" opam) proj.opam
+    List.iter (fun opam -> Fmt.pf f "\"%s\"\n" opam.Universe.name) proj.opam
   in
   Fmt.str
     {|
