@@ -1,10 +1,10 @@
 ;;
 
 (executable
- (public_name mirage-ci)
- (name mirage_ci)
+ (public_name docs-ci)
+ (name docs_ci)
  (libraries current current.cache current_git current_github current_web
    current_docker astring dockerfile cmdliner fmt.tty logs.fmt lwt lwt.unix
-   obuilder-spec opam-file-format mirage_ci_pipelines mirage_ci_lib)
+   obuilder-spec opam-file-format docs_ci_pipelines docs_ci_lib)
  (preprocess
   (pps ppx_deriving_yojson)))

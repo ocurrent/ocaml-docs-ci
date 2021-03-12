@@ -4,8 +4,8 @@ synopsis: "An OCurrent pipeline"
 description: "A longer description"
 maintainer: ["lucas@tarides.com"]
 authors: ["lucas@tarides.com"]
-homepage: "https://github.com/TheLortex/mirage-ci"
-bug-reports: "https://github.com/TheLortex/mirage-ci/issues"
+homepage: "https://github.com/TheLortex/docs-ci"
+bug-reports: "https://github.com/TheLortex/docs-ci/issues"
 depends: [
   "dune" {>= "2.0"}
   "current" {>= "0.3"}
@@ -30,4 +30,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/TheLortex/mirage-ci.git"
+dev-repo: "git+https://github.com/TheLortex/docs-ci.git"

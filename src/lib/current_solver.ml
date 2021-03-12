@@ -1,33 +1,38 @@
-type resolution = { name : string; version : string; opamfile : Opamfile.t } [@@deriving yojson]
+module Solver = Opam_0install.Solver.Make (Opam_0install.Dir_context)
 
-module Solver = Opam_0install.Solver.Make (Dirs_context)
+let pool = Current.Pool.create ~label:"solver" 4
 
 module Op = struct
   type t = No_context
 
   module Key = struct
     type t = {
-      repos : (string * Current_git.Commit.t) list;
+      repo : Current_git.Commit.t;
       packages : string list;
       system : Platform.system;
+      constraints : (OpamParserTypes.relop * OpamTypes.version) OpamTypes.name_map;
     }
 
-    let digest { repos; packages; system } =
+    let digest { packages; system; constraints; _ } =
       let json =
         `Assoc
           [
-            ( "repos",
-              `List (List.map (fun (_, commit) -> `String (Current_git.Commit.hash commit)) repos)
-            );
+            (*("repo", `String (Current_git.Commit.hash repo)); we omit repo the key. once a solve is successful,
+              we should keep the universe. *)
             ("packages", `List (List.map (fun p -> `String p) packages));
             ("system", `String (Fmt.str "%a" Platform.pp_system system));
+            ( "constraints",
+              `String
+                (OpamPackage.Name.Map.to_string
+                   (fun (_, version) -> OpamPackage.Version.to_string version)
+                   constraints) );
           ]
       in
       Yojson.to_string json
   end
 
   module Value = struct
-    type t = resolution list [@@deriving yojson]
+    type t = O.OpamPackage.t list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -46,57 +51,41 @@ module Op = struct
     Opam_0install.Dir_context.std_env ~arch:"x86_64" ~os:"linux" ~os_distribution:"linux"
       ~os_version:(Platform.os_version system.os) ~os_family:(Platform.os_family system.os) ()
 
-  let with_checkouts ~job commits fn =
-    let rec aux acc = function
-      | [] -> fn (List.rev acc)
-      | commit :: next ->
-          Current_git.with_checkout ~job commit (fun tmpdir -> aux (tmpdir :: acc) next)
-    in
-    aux [] commits
-
-  let build No_context job { Key.repos; packages; system } =
-    let* () = Current.Job.start ~level:Harmless job in
-    let repos = List.map snd repos in
-    with_checkouts ~job repos @@ fun dirs ->
-    let ocaml_package = OpamPackage.Name.of_string "ocaml" in
-    let ocaml_version =
-      OpamPackage.Version.of_string (Fmt.str "%a" Platform.pp_exact_ocaml system.ocaml)
-    in
-    let dirs = List.map (fun dir -> Fpath.(to_string (dir / "packages"))) dirs in
+  let build No_context job { Key.repo; packages; system; constraints } =
+    let* () = Current.Job.start ~pool ~level:Harmless job in
+    Current_git.with_checkout ~job repo @@ fun dir ->
+    let dir = Fpath.(to_string (dir / "packages")) in
     let solver_context =
-      Dirs_context.create
-        ~constraints:(OpamPackage.Name.Map.singleton ocaml_package (`Eq, ocaml_version))
-        ~env:(env ~system) ~test:OpamPackage.Name.Set.empty dirs
+      Opam_0install.Dir_context.create ~constraints ~env:(env ~system)
+        ~test:OpamPackage.Name.Set.empty dir
     in
     let t0 = Unix.gettimeofday () in
-    let r =
-      Solver.solve solver_context
-        (ocaml_package :: (packages |> List.map OpamPackage.Name.of_string))
-    in
+    let r = Solver.solve solver_context (packages |> List.map OpamPackage.Name.of_string) in
     let t1 = Unix.gettimeofday () in
-    Printf.printf "%.2f\n" (t1 -. t0);
     match r with
     | Ok sels ->
         let pkgs = Solver.packages_of_result sels in
-        Lwt.return_ok
-          (List.map
-             (fun pk ->
-               {
-                 name = OpamPackage.name pk |> OpamPackage.Name.to_string;
-                 version = OpamPackage.version pk |> OpamPackage.Version.to_string;
-                 opamfile =
-                   Dirs_context.get_opamfile solver_context pk
-                   |> OpamFile.OPAM.write_to_string |> Opamfile.unmarshal
-                   (* hmm *);
-               })
-             pkgs)
+        Current.Job.log job "Solver succeeded! (%.2fs)" (t1 -. t0);
+        List.iter
+          (fun pk ->
+            let name = OpamPackage.name pk |> OpamPackage.Name.to_string in
+            let version = OpamPackage.version pk |> OpamPackage.Version.to_string in
+            Current.Job.log job "> %s=%s " name version)
+          pkgs;
+        Lwt.return_ok pkgs
     | Error diagnostics -> Lwt.return (Error (`Msg (Solver.diagnostics diagnostics)))
 end
 
 module Solver_cache = Current_cache.Make (Op)
 
-let v ~system ~repos ~packages =
+let v ~system ~repo ~packages ~constraints =
   let open Current.Syntax in
-  Current.component "solver (%s)" (String.concat "," packages)
-  |> let> repos = repos in
-     Solver_cache.get No_context { system; repos; packages }
+  Current.component "solver"
+  |> let> repo = repo and> constraints = constraints and> packages = packages in
+     Solver_cache.get No_context { system; repo; packages; constraints }
+
+(*
+   ( constraints |> OpamPackage.Name.Map.bindings
+   |> List.map (fun (name, c) -> OpamFormula.string_of_atom (name, Some c))
+   |> String.concat ", " )
+*)

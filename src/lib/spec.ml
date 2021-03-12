@@ -6,4 +6,7 @@ let finish { base; ops } = Obuilder_spec.stage ~from:base ops
 
 let make base =
   let open Obuilder_spec in
-  { base; ops = [ user ~uid:1000 ~gid:1000; workdir "/src"; run "sudo chown opam:opam /src" ] }
+  {
+    base;
+    ops = [ user ~uid:1000 ~gid:1000; workdir "/home/opam"; run "sudo chown opam:opam /home/opam" ];
+  }

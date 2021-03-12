@@ -1,17 +1,17 @@
 (lang dune 2.0)
-(name mirage-ci)
+(name docs-ci)
 
 
 
 (generate_opam_files true)
 
 ; Edit these to give your project's URL, authors and maintainers:
-(source (github TheLortex/mirage-ci))
+(source (github TheLortex/docs-ci))
 (authors "lucas@tarides.com")
 (maintainers "lucas@tarides.com")
 
 (package
- (name mirage-ci)
+ (name docs-ci)
  (synopsis "An OCurrent pipeline")
  (description "A longer description")
  (depends
