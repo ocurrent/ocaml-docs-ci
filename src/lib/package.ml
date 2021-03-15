@@ -1,16 +1,20 @@
-type t = { opam : OpamPackage.t; universe : Universe.t }
+type t = { opam : OpamPackage.t; universe : Universe.t; commit : string }
 
 let universe t = t.universe
 
 let opam t = t.opam
 
-let v opam deps = { opam; universe = Universe.v deps }
+let commit t = t.commit
+
+let digest t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
+
+let v opam deps commit = { opam; universe = Universe.v deps; commit }
 
 module Blessed = struct
   type nonrec t = t
 end
 
-let pp f { universe; opam } = Fmt.pf f "%s; %a" (OpamPackage.to_string opam) Universe.pp universe
+let pp f { universe; opam; _ } = Fmt.pf f "%s; %a" (OpamPackage.to_string opam) Universe.pp universe
 
 let compare t t2 =
   match OpamPackage.compare t.opam t2.opam with

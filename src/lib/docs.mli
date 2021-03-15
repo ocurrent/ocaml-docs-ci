@@ -12,10 +12,12 @@ val explode : opam:Git.Commit.t -> Universe.t Current.t -> Package.t list Curren
 val bless_packages : Package.t list Current.t -> Package.Blessed.t list Current.t
 (** Find which packages are blessed *)
 
-val get_jobs :
-  targets:(Universe.t * Package.t list) list Current.t ->
+type job = Jobs.t
+
+val select_jobs :
+  targets:job list Current.t ->
   blessed:Package.Blessed.t list Current.t ->
-  (Universe.t * Package.Blessed.t list) list Current.t
+  job list Current.t
 (** The list of jobs to perform, along with the blessed packages *)
 
 module Prep : sig
@@ -23,8 +25,14 @@ module Prep : sig
   (** The type for prepped universes *)
 end
 
-val build_and_prep : opam:Git.Commit.t -> Package.t Current.t -> Prep.t Current.t
+val build_and_prep : Package.t Current.t -> Prep.t Current.t
 (** Install package, run voodoo-prep and push obtained universes. *)
+
+module Linked : sig 
+  type t
+end
+
+val link : Prep.t Current.t -> Package.Blessed.t list Current.t -> Linked.t Current.t
 
 module Assemble : sig
   type t

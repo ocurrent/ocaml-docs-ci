@@ -5,6 +5,6 @@
  (libraries current current.cache current_github current_git current_web
    current_docker astring dockerfile cmdliner fmt.tty logs.fmt lwt lwt.unix
    obuilder-spec opam-file-format capnp-rpc-lwt capnp-rpc-unix
-   current_ocluster opam-0install)
+   current_ocluster opam-0install solver_api)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))

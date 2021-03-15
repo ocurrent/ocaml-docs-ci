@@ -51,9 +51,7 @@ module Track = struct
     Git.with_checkout ~job repo @@ fun dir ->
     Bos.OS.Dir.contents Fpath.(dir / "packages")
     >>= (fun packages ->
-          packages |> List.filter filter |> List.rev_map get_versions |> List.flatten
-          |> (function a :: b :: c :: _ -> [ a; b; c ] | r -> r)
-          |> Result.ok)
+          packages |> List.filter filter |> List.rev_map get_versions |> List.flatten |> Result.ok)
     |> Lwt.return
 end
 
@@ -61,6 +59,6 @@ module TrackCache = Current_cache.Make (Track)
 
 let track_packages ~(filter : string list) (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
-  Current.component "Track packages"
+  Current.component "Track packages - %a" Fmt.(list string) filter
   |> let> repo = repo in
      TrackCache.get No_context { filter; repo }
