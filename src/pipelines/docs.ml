@@ -39,7 +39,7 @@ let v ~opam () =
        in
        List.filter_map Result.to_option res
   in
-  let linked =
+  let compiled =
     Current.collapse ~key:"link" ~value:"" ~input:prepped
     @@ Current.list_map
          ( module struct
@@ -55,7 +55,7 @@ let v ~opam () =
              let+ job, _ = prepped_job in
              job.Jobs.pkgs
            in
-           link prep blessed)
+           compile prep blessed)
          prepped
   in
-  assemble_and_link (Current.map (List.map snd) prepped) linked
+  assemble_and_link (Current.map (List.map snd) prepped) compiled

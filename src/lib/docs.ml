@@ -53,9 +53,9 @@ let build_and_prep package =
   in
   Builder.v ~commit ~base pkg deps
 
-module Linked = Git.Commit_id
+module Compiled = Git.Commit_id
 
-let link prep blessed_packages =
+let compile prep blessed_packages =
   let open Current.Syntax in
   let base =
     let+ bp = blessed_packages in
@@ -65,7 +65,7 @@ let link prep blessed_packages =
     let+ blessed = blessed_packages in
     List.map Package.opam blessed
   in
-  Linker.v ~base prep packages
+  Compiler.v ~base prep packages
 
 module Assemble = Unit
 

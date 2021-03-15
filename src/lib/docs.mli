@@ -25,16 +25,16 @@ end
 val build_and_prep : Package.t Current.t -> Prep.t Current.t
 (** Install package, run voodoo-prep and push obtained universes. *)
 
-module Linked : sig 
+module Compiled : sig 
   type t
 end
 
-val link : Prep.t Current.t -> Package.Blessed.t list Current.t -> Linked.t Current.t
+val compile : Prep.t Current.t -> Package.Blessed.t list Current.t -> Compiled.t Current.t
 
 module Assemble : sig
   type t
   (** The type for an assembled repository *)
 end
 
-val assemble_and_link : Prep.t list Current.t -> Linked.t list Current.t -> Assemble.t Current.t
+val assemble_and_link : Prep.t list Current.t -> Compiled.t list Current.t -> Assemble.t Current.t
 (** Perform the assemble / link / html steps *)
