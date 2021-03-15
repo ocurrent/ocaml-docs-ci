@@ -39,5 +39,5 @@ module Assemble : sig
   (** The type for an assembled repository *)
 end
 
-val assemble_and_link : Prep.t list Current.t -> Assemble.t Current.t
+val assemble_and_link : Prep.t list Current.t -> Linked.t list Current.t -> Assemble.t Current.t
 (** Perform the assemble / link / html steps *)

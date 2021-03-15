@@ -46,6 +46,9 @@ module Track = struct
       >>| (fun versions ->
             versions |> List.rev_map (fun path -> path |> Fpath.basename |> OpamPackage.of_string))
       |> Result.get_ok
+      |> function (* take 3 versions *)
+      | a::b::c::_ -> [a; b; c]
+      | r -> r
     in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->

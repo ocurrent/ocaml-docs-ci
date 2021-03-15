@@ -62,7 +62,7 @@ let v ~commit ~base (root : OpamPackage.t Current.t) (packages : OpamPackage.t l
   let cluster = Current_ocluster.v conn in
   let+ () =
     Current_ocluster.build_obuilder ~label:"cluster build" ~src:opam_context
-      ~pool:"linux-x86_64" ~cache_hint:"docs-universe-build" cluster
+      ~pool:"linux-arm64" ~cache_hint:"docs-universe-build" cluster
       (spec |> Config.to_ocluster_spec)
   and+ branch = branch in
   let open Bos in

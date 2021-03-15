@@ -35,34 +35,34 @@ let v ~opam () =
   in
   let jobs = select_jobs ~targets:all_packages_jobs ~blessed:blessed_packages in
   let prepped =
-    Current.collapse ~key:"prep" ~value:"" ~input:jobs @@
-    let+ res =
-      Current.list_map
-        (module Jobs)
-        (fun job ->
-          Current.pair job (build_and_prep (Current.map (fun x -> x.Jobs.root) job))
-          |> Current.catch ~hidden:true)
-        jobs
-    in
-    List.filter_map Result.to_option res
+    Current.collapse ~key:"prep" ~value:"" ~input:jobs
+    @@ let+ res =
+         Current.list_map
+           (module Jobs)
+           (fun job ->
+             Current.pair job (build_and_prep (Current.map (fun x -> x.Jobs.root) job))
+             |> Current.catch ~hidden:true)
+           jobs
+       in
+       List.filter_map Result.to_option res
   in
   let linked =
-    Current.collapse ~key:"link" ~value:"" ~input:prepped @@
-    Current.list_map
-      ( module struct
-        type t = Jobs.t * Prep.t
+    Current.collapse ~key:"link" ~value:"" ~input:prepped
+    @@ Current.list_map
+         ( module struct
+           type t = Jobs.t * Prep.t
 
-        let pp f (job, _) = Fmt.pf f "%a" Jobs.pp job
+           let pp f (job, _) = Fmt.pf f "%a" Jobs.pp job
 
-        let compare (j1, _) (j2, _) = Jobs.compare j1 j2
-      end )
-      (fun prepped_job ->
-        let prep = Current.map snd prepped_job in
-        let blessed =
-          let+ job, _ = prepped_job in
-          job.Jobs.pkgs
-        in
-        link prep blessed)
-      prepped
+           let compare (j1, _) (j2, _) = Jobs.compare j1 j2
+         end )
+         (fun prepped_job ->
+           let prep = Current.map snd prepped_job in
+           let blessed =
+             let+ job, _ = prepped_job in
+             job.Jobs.pkgs
+           in
+           link prep blessed)
+         prepped
   in
-  Current.ignore_value linked
+  assemble_and_link (Current.map (List.map snd) prepped) linked

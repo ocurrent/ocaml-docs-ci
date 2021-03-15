@@ -10,7 +10,7 @@ let spec ~branch ~base (blessed : OpamPackage.t list) =
        ( Worker_git.ops
        @ [
            (* Install required packages *)
-           run ~network:Builder.network ~cache:Builder.cache "opam pin add odoc --dev -ny";
+           run ~network:Builder.network ~cache:Builder.cache "opam pin add odoc %s -ny" Config.odoc;
            run ~network:Builder.network ~cache:Builder.cache "opam depext -iy odoc";
            copy ~from:`Context [ "." ] ~dst:"/src/";
            run ~network:Builder.network "sudo apt-get install time";
@@ -24,6 +24,7 @@ let spec ~branch ~base (blessed : OpamPackage.t list) =
            workdir "/src/docs-ocaml-artifacts";
            run "git checkout -b %s" branch;
            run "mv ../compile/ .";
+           run "rm compile/*.mld compile/*.odoc compile/packages/*.mld compile/packages/*.odoc";
            run "git add *";
            run "git commit -m 'Docs CI' --author 'Docs CI pipeline <ci@docs.ocaml.org>'";
            run ~network "git push -v -f origin %s" branch;
@@ -49,7 +50,7 @@ let v ~base (prep : Current_git.Commit_id.t Current.t) (blessed : OpamPackage.t 
   let+ () =
     Current_ocluster.build_obuilder ~label:"cluster build"
       ~src:(Current.map (fun x -> [ x ]) prep)
-      ~pool:"linux-x86_64" ~cache_hint:"docs-universe-build" cluster
+      ~pool:"linux-arm64" ~cache_hint:"docs-universe-build" cluster
       (spec |> Config.to_ocluster_spec)
   and+ branch = branch in
   let open Bos in

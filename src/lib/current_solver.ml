@@ -75,7 +75,7 @@ module Op = struct
             [("base", 
               Solver_api.Worker.Vars.
                 {
-                  arch = "x86_64";
+                  arch = "arm64";
                   os = "linux";
                   os_family = Platform.os_family system.os;
                   os_distribution = "linux";

@@ -19,3 +19,5 @@ let to_ocluster_spec build_spec =
   let spec_str = Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish) in
   let open Cluster_api.Obuilder_job.Spec in
   { spec = `Contents spec_str }
+
+let odoc = "https://github.com/ocaml/odoc.git#50fcb86ae66bb7d223b0d5e90488c7a911d22541"
