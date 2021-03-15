@@ -7,10 +7,39 @@ let env (vars : Worker.Vars.t) =
   Opam_0install.Dir_context.std_env ~arch:vars.arch ~os:vars.os
     ~os_distribution:vars.os_distribution ~os_version:vars.os_version ~os_family:vars.os_family ()
 
-let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
-  let context =
-    Git_context.create () ~packages ~env:(env vars) ~constraints
+let get_names = OpamFormula.fold_left (fun a (name, _) -> name :: a) []
+
+let universes ~packages (resolutions : OpamPackage.t list) =
+  let memo = Hashtbl.create (List.length resolutions) in
+
+  let rec aux root =
+    match Hashtbl.find_opt memo root with
+    | Some universe -> universe
+    | None ->
+        let name, version = (OpamPackage.name root, OpamPackage.version root) in
+        let opamfile : OpamFile.OPAM.t =
+          packages |> OpamPackage.Name.Map.find name |> OpamPackage.Version.Map.find version
+        in
+        let deps = opamfile |> OpamFile.OPAM.depends |> get_names |> OpamPackage.Name.Set.of_list in
+        let depopts =
+          opamfile |> OpamFile.OPAM.depopts |> get_names |> OpamPackage.Name.Set.of_list
+        in
+        Hashtbl.add memo root OpamPackage.Set.empty;
+        let deps =
+          resolutions
+          |> List.filter (fun res ->
+                 let name = OpamPackage.name res in
+                 OpamPackage.Name.Set.mem name deps || OpamPackage.Name.Set.mem name depopts)
+          |> List.map (fun pkg -> OpamPackage.Set.add pkg (aux pkg))
+        in
+        let result = List.fold_left OpamPackage.Set.union OpamPackage.Set.empty deps in
+        Hashtbl.add memo root result;
+        result
   in
+  List.map (fun pkg -> (pkg, aux pkg |> OpamPackage.Set.elements)) resolutions
+
+let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
+  let context = Git_context.create () ~packages ~env:(env vars) ~constraints in
   let t0 = Unix.gettimeofday () in
   let r = Solver.solve context root_pkgs in
   let t1 = Unix.gettimeofday () in
@@ -18,8 +47,14 @@ let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
   match r with
   | Ok sels ->
       let pkgs = Solver.packages_of_result sels in
-      Ok (List.map OpamPackage.to_string pkgs)
+      let universes = universes ~packages pkgs in
+      Ok
+        (List.map
+           (fun (pkg, univ) -> (OpamPackage.to_string pkg, List.map OpamPackage.to_string univ))
+           universes)
   | Error diagnostics -> Error (Solver.diagnostics diagnostics)
+
+type solve_result = (string * string list) list [@@deriving yojson]
 
 let main commit =
   let packages =
@@ -51,7 +86,7 @@ let main commit =
         |> List.iter (fun (_id, platform) ->
                let msg =
                  match solve ~packages ~constraints ~root_pkgs platform with
-                 | Ok packages -> "+" ^ String.concat " " packages
+                 | Ok packages -> "+" ^ (solve_result_to_yojson packages |> Yojson.Safe.to_string)
                  | Error msg -> "-" ^ msg
                in
                Printf.printf "%d\n%s%!" (String.length msg) msg);

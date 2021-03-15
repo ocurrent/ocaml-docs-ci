@@ -14,9 +14,9 @@ end
 (** A set of packages for a single build. *)
 module Selection = struct
   type t = {
-    id : string;                        (** The platform ID from the request. *)
-    packages : string list;             (** The selected packages ("name.version"). *)
-    commit : string;                    (** A commit in opam-repository to use. *)
+    id : string;                            (** The platform ID from the request. *)
+    packages : (string * string list) list; (** The selected packages ("name.version") and their universes. *)
+    commit : string;                        (** A commit in opam-repository to use. *)
   } [@@deriving yojson, ord]
 end
 

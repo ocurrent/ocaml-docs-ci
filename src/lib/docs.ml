@@ -2,9 +2,7 @@ module Git = Current_git
 
 let track = Track.track_packages
 
-let solve = Solver.v ?universe:None
-
-let explode = Solver.explode
+let solve = Solver.v
 
 let bless_packages = Current.map Package.bless
 
@@ -40,14 +38,14 @@ let build_and_prep package =
   let pkg =
     let+ package = package in
     Package.opam package
-  in 
+  in
   let commit =
-    let+ package = package in 
-    Package.commit package 
+    let+ package = package in
+    Package.commit package
   in
   let deps =
     let+ package = package in
-    Package.universe package |> Universe.deps
+    Package.opam package :: (Package.universe package |> Universe.deps)
   in
   let base =
     let+ package = package in

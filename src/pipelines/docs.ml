@@ -12,21 +12,14 @@ let v ~opam () =
   let* opam = opam in
   let all_packages_jobs =
     let tracked = track ~filter:[ "uri"; "result" ] (Current.return opam) in
-    let solved =
-      Current.collapse ~key:"solve" ~value:"" ~input:tracked
-        (Current.list_map (module OpamPackage) (solve ~opam) tracked)
-    in
-    Current.collapse ~key:"explode" ~value:"" ~input:solved
+    Current.collapse ~key:"solve" ~value:"" ~input:tracked
       (Current.list_map
-         (module Package)
-         (fun pkg ->
-           let universe =
-             let+ pkg = pkg in
-             Package.universe pkg
-           in
-           let+ ex = explode ~opam universe and+ pkg = pkg in
-           { Jobs.root = pkg; pkgs = pkg :: ex })
-         solved)
+         (module OpamPackage)
+         (fun opam_pkg ->
+           let+ packages = solve ~opam opam_pkg and+ opam_pkg = opam_pkg in
+           let root = List.find (fun pkg -> Package.opam pkg = opam_pkg) packages in
+           { Jobs.root; pkgs = packages })
+         tracked)
   in
   let blessed_packages =
     all_packages_jobs

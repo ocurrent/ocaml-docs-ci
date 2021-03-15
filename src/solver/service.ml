@@ -65,11 +65,7 @@ end = struct
       match results.[0] with
       | '+' ->
         Log.info log "%s: found solution in %s s" id time;
-        let packages =
-          Astring.String.with_range ~first:1 results
-          |> Astring.String.cuts ~sep:" "
-        in
-        Ok packages
+        Astring.String.with_range ~first:1 results |> Yojson.Safe.from_string |> Solver.solve_result_of_yojson
       | '-' ->
         Log.info log "%s: eliminated all possibilities in %s s" id time;
         let msg = results |> Astring.String.with_range ~first:1 in
@@ -92,7 +88,7 @@ end = struct
         | Error _ as e -> Lwt.return (id, e)
         | Ok packages ->
           let repo_packages =
-            packages |> List.filter_map (fun pkg ->
+            packages |> List.filter_map (fun (pkg, _) ->
                 let pkg = OpamPackage.of_string pkg in
                 if OpamPackage.Name.Set.mem pkg.name req_packages then None
                 else Some pkg
@@ -105,7 +101,7 @@ end = struct
         Log.info log "= %s =" id;
         match result with
         | Ok result ->
-          Log.info log "-> @[<hov>%a@]" Fmt.(list ~sep:sp string) result.Selection.packages;
+          Log.info log "-> @[<hov>%a@]" Fmt.(list ~sep:sp string) (List.map fst result.Selection.packages);
           Log.info log "(valid since opam-repository commit %s)" result.Selection.commit;
           Some result
         | Error msg ->

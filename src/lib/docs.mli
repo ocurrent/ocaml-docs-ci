@@ -3,11 +3,8 @@ module Git = Current_git
 val track : filter:string list -> Git.Commit.t Current.t -> OpamPackage.t list Current.t
 (** Get the list of all packages *)
 
-val solve : opam:Git.Commit.t -> OpamPackage.t Current.t -> Package.t Current.t
-(** Get the universe associated to this package *)
-
-val explode : opam:Git.Commit.t -> Universe.t Current.t -> Package.t list Current.t
-(** Get all universes contained in this universe *)
+val solve : opam:Git.Commit.t -> OpamPackage.t Current.t -> Package.t list Current.t
+(** Get the list of packages obtained when installing this package *)
 
 val bless_packages : Package.t list Current.t -> Package.Blessed.t list Current.t
 (** Find which packages are blessed *)

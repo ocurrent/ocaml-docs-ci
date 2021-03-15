@@ -31,12 +31,11 @@ module Op = struct
       constraints : (string * string) list;
     }
 
-    let digest { packages; system; constraints; _ } =
+    let digest { packages; system; constraints; repo } =
       let json =
         `Assoc
           [
-            (*("repo", `String (Current_git.Commit.hash repo)); we omit repo the key. once a solve is successful,
-              we should keep the universe. *)
+            ("repo", `String (Current_git.Commit.hash repo));
             ("packages", `List (List.map (fun p -> `String p) packages));
             ("system", `String (Fmt.str "%a" Platform.pp_system system));
             ("constraints", `List (List.map (fun (a, b) -> `String (a ^ "=" ^ b)) constraints));
@@ -46,7 +45,7 @@ module Op = struct
   end
 
   module Value = struct
-    type t = O.OpamPackage.t list * commit [@@deriving yojson]
+    type t = (O.OpamPackage.t * O.OpamPackage.t list) list * commit [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -61,7 +60,6 @@ module Op = struct
 
   open Lwt.Syntax
 
-
   let build No_context job { Key.repo; packages; system; constraints } =
     let open Lwt.Infix in
     let* () = Current.Job.start ~pool ~level:Harmless job in
@@ -72,7 +70,8 @@ module Op = struct
         pkgs = packages;
         constraints;
         platforms =
-            [("base", 
+          [
+            ( "base",
               Solver_api.Worker.Vars.
                 {
                   arch = "arm64";
@@ -80,13 +79,21 @@ module Op = struct
                   os_family = Platform.os_family system.os;
                   os_distribution = "linux";
                   os_version = Platform.os_version system.os;
-                } )];
+                } );
+          ];
       }
     in
     Capnp_rpc_lwt.Capability.with_ref (job_log job) @@ fun log ->
     Solver_api.Solver.solve solver request ~log >|= function
     | Ok [] -> Fmt.error_msg "no platform"
-    | Ok [x] -> Ok (List.map OpamPackage.of_string x.packages, x.commit)
+    | Ok [ x ] ->
+        Ok
+          ( List.map
+              (fun (a, b) ->
+                Current.Job.log job "%s: %s" a (String.concat "; " b);
+                (OpamPackage.of_string a, List.map OpamPackage.of_string b))
+              x.packages,
+            x.commit )
     | Ok _ -> Fmt.error_msg "??"
     | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
 end
@@ -98,9 +105,3 @@ let v ~system ~repo ~packages ~constraints =
   Current.component "solver"
   |> let> repo = repo and> constraints = constraints and> packages = packages in
      Solver_cache.get No_context { system; repo; packages; constraints }
-
-(*
-   ( constraints |> OpamPackage.Name.Map.bindings
-   |> List.map (fun (name, c) -> OpamFormula.string_of_atom (name, Some c))
-   |> String.concat ", " )
-*)
