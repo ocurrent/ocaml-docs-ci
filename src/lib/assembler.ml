@@ -4,10 +4,10 @@ let spec ~base =
   |> Spec.add
        ( Worker_git.ops
        @ [
-           run ~network:Builder.network ~cache:Builder.cache "opam pin add odoc %s -ny" Config.odoc;
-           run ~network:Builder.network ~cache:Builder.cache "opam depext -iy odoc";
+           run ~network:Voodoo.network ~cache:Voodoo.cache "opam pin add odoc %s -ny" Config.odoc;
+           run ~network:Voodoo.network ~cache:Voodoo.cache "opam depext -iy odoc";
            copy ~from:`Context [ "." ] ~dst:"/src/";
-           run ~network:Builder.network "sudo apt-get install time";
+           run ~network:Voodoo.network "sudo apt-get install time";
            workdir "/src";
            run "opam exec -- ~/voodoo-link compile";
            run "make -t -f Makefile.gen compile";
@@ -25,7 +25,7 @@ let spec ~base =
            run "git checkout -b main";
            run "git add *";
            run "git commit -m 'Docs CI' --author 'Docs CI pipeline <ci@docs.ocaml.org>'";
-           run ~network:Builder.network "git push -v -f origin main";
+           run ~network:Voodoo.network "git push -v -f origin main";
          ] )
 
 let v ~base prep_branches link_branches =

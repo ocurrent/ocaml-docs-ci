@@ -1,6 +1,6 @@
 module Git = Current_git
 
-let v ~(opam : Git.Commit.t) (package : OpamPackage.t Current.t) : Package.t list Current.t =
+let v ~(opam : Git.Commit.t) (package : OpamPackage.t Current.t) : Package.t Current.t =
   let open Current.Syntax in
   let packages =
     let+ package = package in
@@ -12,5 +12,6 @@ let v ~(opam : Git.Commit.t) (package : OpamPackage.t Current.t) : Package.t lis
   in
   let+ packages, commit =
     Current_solver.v ~system:Platform.system ~repo:(Current.return opam) ~packages ~constraints
+  and+ root = package 
   in
-  List.map (fun (package, universe) -> Package.v package universe commit) packages
+  Package.make ~commit ~root packages

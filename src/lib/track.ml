@@ -37,6 +37,9 @@ module Track = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
+  let rec take n lst =
+    match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
+
   let build No_context job { Key.repo; filter } =
     let open Lwt.Syntax in
     let open Rresult in
@@ -45,10 +48,7 @@ module Track = struct
       Bos.OS.Dir.contents path
       >>| (fun versions ->
             versions |> List.rev_map (fun path -> path |> Fpath.basename |> OpamPackage.of_string))
-      |> Result.get_ok
-      |> function (* take 3 versions *)
-      | a::b::c::_ -> [a; b; c]
-      | r -> r
+      |> Result.get_ok |> take 2
     in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->
