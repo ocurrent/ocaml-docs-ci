@@ -2,8 +2,7 @@ let spec ~base =
   let open Obuilder_spec in
   Voodoo.spec ~base ~prep:false ~link:true
   |> Spec.add
-       ( Worker_git.ops
-       @ [
+       ( [
            run ~network:Voodoo.network ~cache:Voodoo.cache "opam pin add odoc %s -ny" Config.odoc;
            run ~network:Voodoo.network ~cache:Voodoo.cache "opam depext -iy odoc";
            copy ~from:`Context [ "." ] ~dst:"/src/";
@@ -21,7 +20,7 @@ let spec ~base =
            workdir "/src/html";
            (* artifacts upload *)
            run "git init";
-           run "git remote add origin %s" Config.v.remote_push;
+          (* run "git remote add origin %s" Config.v.remote_push;*)
            run "git checkout -b main";
            run "git add *";
            run "git commit -m 'Docs CI' --author 'Docs CI pipeline <ci@docs.ocaml.org>'";
@@ -36,9 +35,9 @@ let v ~base prep_branches link_branches =
   in
   let spec =
     let+ base = base in
-    spec ~base
+    spec ~base |> Spec.to_ocluster_spec
   in
   let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
   let cluster = Current_ocluster.v conn in
   Current_ocluster.build_obuilder ~label:"cluster build" ~src:branches ~pool:"linux-arm64"
-    ~cache_hint:"docs-universe-build" cluster (spec |> Config.to_ocluster_spec)
+    ~cache_hint:"docs-universe-build" cluster spec

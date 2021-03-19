@@ -1,6 +1,11 @@
-
 {
     "cap_file": "capability file for ocluster",
-    "remote_pull": "remote from which ocluster nodes can git pull",
-    "remote_push": "remote to which the master node can git push"
+    "ssh_storage": {
+        "host": "127.0.0.1",
+        "user": "user",
+        "port": 22,
+        "private_key_file": "id_rsa",
+        "public_key_file": "id_rsa.pub",
+        "folder": "/storage/folder"
+    }
 }

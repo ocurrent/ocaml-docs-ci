@@ -9,3 +9,5 @@ val add : Obuilder_spec.op list -> t -> t
 
 val finish : t -> Obuilder_spec.t
 (** Finalize the spec and obtain the obuilder content. *)
+
+val to_ocluster_spec : t -> Cluster_api.Obuilder_job.Spec.t
