@@ -15,7 +15,6 @@ let not_base x =
          "base-unix";
          "base-bigarray";
          "base-threads";
-         "ocaml-base-compiler";
          "ocaml-config";
          "ocaml";
        ])
