@@ -38,25 +38,46 @@ let spec ~base ~deps t prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let compile_folder = folder t in
+  let opam = prep |> Prep.package |> Package.opam in
+  let version = opam |> OpamPackage.version_to_string in
+  let name = opam |> OpamPackage.name_to_string in
   (* let package = Prep.package target in
      let package_name = OpamPackage.name (Package.opam package) |> OpamPackage.Name.to_string in
       let is_blessed = Package.Blessed.is_blessed blessed package in*)
-  Voodoo.spec ~base ~prep:true ~link:true
+  base
   |> Spec.add
        [
+         run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
          import_deps deps;
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR %s:%s/./%s /home/opam/docs/"
            Config.ssh_host Config.storage_folder prep_folder;
          run "sudo chown opam:opam /home/opam/docs/";
          run "find /home/opam/docs/ -type d";
          run "mkdir -p /home/opam/docs/%s" compile_folder;
-         run "mv /home/opam/docs/%s  /home/opam/docs/%s" prep_folder compile_folder;
          workdir ("/home/opam/docs/" ^ compile_folder);
-         run "find . -type f -name '*.cmi' -exec sh -c 'mv \"$1\" \"${1%%.cmi}.odoc\"' _ {} \\;";
-         run "find . -type f -name '*.cmti' -exec sh -c 'mv \"$1\" \"${1%%.cmti}.odoc\"' _ {} \\;";
-         run "find . -type f -name '*.cmt' -exec sh -c 'mv \"$1\" \"${1%%.cmt}.odoc\"' _ {} \\;";
-         run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./%s %s:%s/"
-           compile_folder Config.ssh_host Config.storage_folder;
+         run "%s" @@ Fmt.str "echo '{0 Package version page}' >> ../%a.mld" Mld.pp_name version;
+         run "echo '{0 Package root page}' >> index.mld";
+         run "%s"
+         @@ Fmt.str
+              {|
+          eval $(opam config env)
+          touch ../../../packages.mld && odoc compile ../../../packages.mld --child page-%a  || exit 1
+          touch ../../%a.mld && odoc compile ../../%a.mld -I ../../../ --parent page-packages --child page-%a || exit 2
+          odoc compile ../%a.mld --child page-index -I ../../ --parent page-%a  || exit 3
+          odoc compile index.mld -I ../ --parent page-%a || exit 4
+          odoc link page-index.odoc
+          odoc link ../page-%a.odoc -I .
+          odoc html page-index.odocl -o /home/opam/html
+          odoc html ../page-%a.odocl -o /home/opam/html
+         |}
+              Mld.pp_name name Mld.pp_name name Mld.pp_name name Mld.pp_name version Mld.pp_name
+              version Mld.pp_name name Mld.pp_name version Mld.pp_name version Mld.pp_name version;
+         workdir "/home/opam/docs/compile";
+         run "rm packages.mld page-packages.odoc packages/*.mld packages/*.odoc";
+         run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./compile/ %s:%s/"
+           Config.ssh_host Config.storage_folder;
+         run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/./html/ %s:%s/"
+           Config.ssh_host Config.storage_folder;
        ]
 
 let v ~blessed ~deps target =
@@ -74,6 +95,6 @@ let v ~blessed ~deps target =
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
   let+ () =
     Current_ocluster.build_obuilder ~label:"cluster build" ~src:(Current.return [])
-      ~pool:"linux-arm64" ~cache_hint:"docs-universe-build" cluster spec
+      ~pool:Config.pool ~cache_hint:"docs-universe-build" cluster spec
   and+ t = t in
   t

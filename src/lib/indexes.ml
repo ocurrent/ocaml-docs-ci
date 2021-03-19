@@ -41,8 +41,17 @@ let compile_package_page ~(mld : Mld.t) f name =
     (Fmt.list ~sep:(Fmt.any " ") pp_child_arg)
     children
 
+let link_package_page f name =
+  Fmt.pf f "find packages/%s/ && odoc link packages/page-%a.odoc -I . -I packages/%s/ --warn-error || exit 1" 
+  (name |> OpamPackage.Name.to_string)
+    Mld.pp_name
+    (name |> OpamPackage.Name.to_string)
+    (name |> OpamPackage.Name.to_string)
+
 let spec ~base (packages : Compile.t list) =
-  let mld = Mld.v packages in
+  let mld =
+    Mld.v (List.map (fun comp -> (Compile.package comp, Compile.is_blessed comp)) packages)
+  in
   let packages = mld.packages |> OpamPackage.Name.Map.keys in
   (* let universes = mld.universes |> Mld.StringMap.bindings |> List.map fst in *)
   let open Obuilder_spec in
@@ -51,7 +60,7 @@ let spec ~base (packages : Compile.t list) =
        [
          run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
          run ~secrets:Config.ssh_secrets ~cache ~network
-           "rsync -avzR %s:%s/./compile /home/opam/docs-cache/ && rsync -aR \
+           "rsync -avzR %s:%s/./compile /home/opam/docs-cache/ &&  rsync -aR \
             /home/opam/docs-cache/./compile /home/opam/docs/"
            Config.ssh_host Config.storage_folder;
          run "find /home/opam/docs -type d";
@@ -64,7 +73,7 @@ let spec ~base (packages : Compile.t list) =
            odoc compile packages.mld %s
            %a
            odoc link page-packages.odoc -I packages/
-           find packages -maxdepth 1 -type f -name '*.odoc' -exec odoc link {} -I ./packages/$(basename {} .odoc) -I . \;
+           %a
            find -maxdepth 2 -type f -name '*.odocl' -exec odoc html -o /home/opam/html {} \;
            odoc support-files -o /home/opam/html
            |}
@@ -73,6 +82,8 @@ let spec ~base (packages : Compile.t list) =
                      Fmt.str "--child page-%a" Mld.pp_name (OpamPackage.Name.to_string pkg))
               |> String.concat " " )
               (Fmt.list ~sep:(Fmt.any "\n") (compile_package_page ~mld))
+              packages
+              (Fmt.list ~sep:(Fmt.any "\n") (link_package_page))
               packages;
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR --exclude=\"/*/*/\" . %s:%s/test"
            Config.ssh_host Config.storage_folder;
@@ -80,6 +91,7 @@ let spec ~base (packages : Compile.t list) =
            Config.ssh_host Config.storage_folder;
        ]
 
+(*          run "find . -type f -name '*.cmt' -exec sh -c 'mv \"$1\" \"${1%%.cmt}.odoc\"' _ {} \\;"; *)
 let v packages =
   let open Current.Syntax in
   let spec =
@@ -90,6 +102,6 @@ let v packages =
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
   let+ () =
     Current_ocluster.build_obuilder ~label:"cluster build" ~src:(Current.return [])
-      ~pool:"linux-arm64" ~cache_hint:"docs-universe-link" cluster spec
+      ~pool:Config.pool ~cache_hint:"docs-universe-link" cluster spec
   in
   ()

@@ -59,3 +59,5 @@ let ssh_pubkey = load_file v.ssh_storage.public_key_file
 
 let ssh_secrets_values =
   [ ("ssh_privkey", ssh_privkey); ("ssh_pubkey", ssh_pubkey); ("ssh_config", ssh_config) ]
+
+let pool = "linux-x86_64"

@@ -25,8 +25,6 @@ let prep_rule package =
   (* the rule to extract a package installation *)
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
-  let open Obuilder_spec in
-  (* todo: use Package.prep_folder *)
   Obuilder_spec.run
     {|cat $(opam var prefix)/.opam-switch/install/%s.changes \
     | grep -oP '"\K.*(?=" {"F:)' \
@@ -36,7 +34,6 @@ let prep_rule package =
     (folder { package })
 
 let make_base_folder package =
-  let open Obuilder_spec in
   Obuilder_spec.run "mkdir -p /%s/" (folder { package })
 
 let spec ~base (packages : Package.t list) =
@@ -51,7 +48,7 @@ let spec ~base (packages : Package.t list) =
        ( [
            (* Install required packages *)
            copy [ "." ] ~dst:"/src";
-           run "opam repo remove default && opam repo add opam /src";
+           run "opam repo remove default  && opam repo add opam /src";
            run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
            run "sudo mkdir /prep && sudo chown opam:opam /prep";
          ]
@@ -61,11 +58,6 @@ let spec ~base (packages : Package.t list) =
            run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz /prep %s:%s/"
              Config.ssh_host Config.storage_folder;
          ] )
-
-let remote_uri commit =
-  let repo = Current_git.Commit_id.repo commit in
-  let commit = Current_git.Commit_id.hash commit in
-  repo ^ "#" ^ commit
 
 (** Assumption: packages are co-installable *)
 let v (package : Package.t Current.t) =
@@ -84,7 +76,7 @@ let v (package : Package.t Current.t) =
   let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
   let+ () =
-    Current_ocluster.build_obuilder ~label:"cluster build" ~src:opam_context ~pool:"linux-arm64"
+    Current_ocluster.build_obuilder ~label:"cluster build" ~src:opam_context ~pool:Config.pool
       ~cache_hint:"docs-universe-build" cluster spec
   and+ root = package in
   List.map (fun package -> { package }) (Package.all_deps root)

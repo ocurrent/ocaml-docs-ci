@@ -10,3 +10,5 @@ val storage_folder : string
 
 val odoc : string
 (** Odoc version pin to use. *)
+
+val pool : string

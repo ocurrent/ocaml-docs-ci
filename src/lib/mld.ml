@@ -11,16 +11,15 @@ let pp_name f str =
 
 let pp_link f = Fmt.pf f "{!childpage:%a}" pp_name
 
-let v (compilations : Compile.t list) =
+let v (compilations : (Package.t * bool) list) =
   let universes : Package.Set.t StringMap.t ref = ref StringMap.empty in
   let packages : OpamPackage.Version.Set.t OpamPackage.Name.Map.t ref =
     ref OpamPackage.Name.Map.empty
   in
 
   List.iter
-    (fun comp ->
-      let package = Compile.package comp in
-      if Compile.is_blessed comp then
+    (fun (package, is_blessed) ->
+      if is_blessed then
         let opam = Package.opam package in
         let name, version = (OpamPackage.name opam, OpamPackage.version opam) in
         packages :=
