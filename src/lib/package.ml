@@ -48,7 +48,6 @@ and Package : sig
   val v : OpamPackage.t -> t list -> string -> t
 
   val make : commit:string -> root:OpamPackage.t -> (OpamPackage.t * OpamPackage.t list) list -> t
-
 end = struct
   type t = { opam : OpamPackage.t; universe : Universe.t; commit : string }
 
@@ -84,7 +83,6 @@ end = struct
           pkg
     in
     obtain root
-
 end
 
 and Blessed : sig
@@ -112,4 +110,5 @@ include Package
 
 let all_deps pkg = pkg :: (pkg |> universe |> Universe.deps)
 
-module Map = Map.Make(Package)
+module Map = Map.Make (Package)
+module Set = Set.Make (Package)

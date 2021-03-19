@@ -12,6 +12,5 @@ let v ~(opam : Git.Commit.t) (package : OpamPackage.t Current.t) : Package.t Cur
   in
   let+ packages, commit =
     Current_solver.v ~system:Platform.system ~repo:(Current.return opam) ~packages ~constraints
-  and+ root = package 
-  in
+  and+ root = package in
   Package.make ~commit ~root packages

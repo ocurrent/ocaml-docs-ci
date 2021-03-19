@@ -6,9 +6,7 @@ val track : filter:string list -> Git.Commit.t Current.t -> OpamPackage.t list C
 val solve : opam:Git.Commit.t -> OpamPackage.t Current.t -> Package.t Current.t
 (** Get the list of packages obtained when installing this package *)
 
-val select_jobs :
-  targets:Package.t list Current.t ->
-  Package.t list Current.t
+val select_jobs : targets:Package.t list Current.t -> Package.t list Current.t
 (** Obtain the list of jobs to perform to obtain the required packages *)
 
 module Prep = Prep

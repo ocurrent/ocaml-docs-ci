@@ -8,11 +8,8 @@ type ssh = {
 }
 [@@deriving yojson]
 
-type config = {
-  (* Capability file for ocluster submissions *)
-  cap_file : string;
-  ssh_storage : ssh;
-}
+type config = { (* Capability file for ocluster submissions *)
+                cap_file : string; ssh_storage : ssh }
 [@@deriving yojson]
 
 let v = Yojson.Safe.from_file "config.json" |> config_of_yojson |> Result.get_ok
@@ -60,4 +57,5 @@ let ssh_privkey = load_file v.ssh_storage.private_key_file
 
 let ssh_pubkey = load_file v.ssh_storage.public_key_file
 
-let ssh_secrets_values = [ ("ssh_privkey", ssh_privkey); ("ssh_pubkey", ssh_pubkey); ("ssh_config", ssh_config) ]
+let ssh_secrets_values =
+  [ ("ssh_privkey", ssh_privkey); ("ssh_pubkey", ssh_pubkey); ("ssh_config", ssh_config) ]

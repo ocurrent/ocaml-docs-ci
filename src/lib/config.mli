@@ -8,4 +8,5 @@ val ssh_host : string
 
 val storage_folder : string
 
-val odoc : string (** Odoc version pin to use. *)
+val odoc : string
+(** Odoc version pin to use. *)

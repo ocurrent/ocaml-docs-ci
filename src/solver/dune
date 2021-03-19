@@ -1,5 +1,7 @@
 (executable
-  (name main)
-  (public_name docs-ci-solver)
-  (preprocess (pps ppx_deriving.std ppx_deriving_yojson))
-  (libraries lwt.unix solver_api ppx_deriving_yojson.runtime opam-0install capnp-rpc-unix git-unix))
+ (name main)
+ (public_name docs-ci-solver)
+ (preprocess
+  (pps ppx_deriving.std ppx_deriving_yojson))
+ (libraries lwt.unix solver_api ppx_deriving_yojson.runtime opam-0install
+   capnp-rpc-unix git-unix))

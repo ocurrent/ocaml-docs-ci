@@ -39,7 +39,8 @@ let spec ~base ~prep ~link =
   let pkgs, pins, cps =
     if link then
       ( "voodoo" :: "voodoo_lib" :: pkgs,
-        run ~network ~cache "opam pin add -ny https://github.com/TheLortex/voodoo.git#main   " :: pins,
+        run ~network ~cache "opam pin add -ny https://github.com/TheLortex/voodoo.git#main   "
+        :: pins,
         run "cp $(opam config var bin)/voodoo-link /home/opam" :: cps )
     else (pkgs, pins, cps)
   in

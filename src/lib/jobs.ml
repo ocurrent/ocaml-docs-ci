@@ -1,8 +1,8 @@
 type t = Package.t
 
-let pp f (t: t) = Fmt.pf f "%a" Package.pp t
+let pp f (t : t) = Fmt.pf f "%a" Package.pp t
 
-let compare (a: t) (b: t) = Package.compare a b
+let compare (a : t) (b : t) = Package.compare a b
 
 module StringSet = Set.Make (String)
 
@@ -22,8 +22,7 @@ package.version.universe -> 1 2 3 4 5
 let schedule ~(targets : t list) : t list =
   let targets_digests = targets |> List.map Package.digest |> StringSet.of_list in
   let targets =
-    targets
-    |> List.sort (fun (a: t) b -> Int.compare (worthiness b) (worthiness a))
+    targets |> List.sort (fun (a : t) b -> Int.compare (worthiness b) (worthiness a))
     (* sort in decreasing order in the number of packages produced by job *)
   in
   let remaining_targets = ref targets_digests in

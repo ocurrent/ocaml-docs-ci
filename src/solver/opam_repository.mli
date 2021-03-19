@@ -9,4 +9,5 @@ val oldest_commit_with : from:Git_unix.Store.Hash.t -> OpamPackage.t list -> str
     @param from The commit at which to begin the search. *)
 
 val fetch : unit -> unit Lwt.t
+
 (* Does a "git fetch origin" to update the store. *)

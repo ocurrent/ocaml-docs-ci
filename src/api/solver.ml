@@ -3,13 +3,14 @@ open Capnp_rpc_lwt
 
 module Log = struct
   module X = Raw.Client.Log
+
   type t = X.t Capability.t
 
   let pp_timestamp f x =
     let open Unix in
     let tm = gmtime x in
-    Fmt.pf f "%04d-%02d-%02d %02d:%02d.%02d" (tm.tm_year + 1900) (tm.tm_mon + 1)
-      tm.tm_mday tm.tm_hour tm.tm_min tm.tm_sec
+    Fmt.pf f "%04d-%02d-%02d %02d:%02d.%02d" (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+      tm.tm_hour tm.tm_min tm.tm_sec
 
   let write t msg =
     let open X.Write in
