@@ -4,7 +4,7 @@ let v ~(opam : Git.Commit.t) (package : OpamPackage.t Current.t) : Package.t Cur
   let open Current.Syntax in
   let packages =
     let+ package = package in
-    [ OpamPackage.name_to_string package ]
+    [ OpamPackage.name_to_string package; "ocaml-base-compiler" ]
   in
   let constraints =
     let+ package = package in

@@ -95,15 +95,18 @@ let spec ~base ~blessed ~deps target =
   let open Obuilder_spec in
   let prep_folder = Prep.folder target in
   let compile_folder = folder ~blessed (Prep.package target) in
-  base
+  let package = Prep.package target in
+  let package_name = OpamPackage.name (Package.opam package) |> OpamPackage.Name.to_string in
+  let is_blessed = Package.Blessed.is_blessed blessed package in
+  Voodoo.spec ~base ~prep:true ~link:true
   |> Spec.add
        ( [ run "echo '%s' >> ~/.ssh/config" ssh_config ]
        @ List.map (import_dep ~blessed) deps
        @ [
            run ~secrets:[ privkey; pubkey ] ~cache ~network
              "rsync -avzR ci.mirage.io:/home/docs/docs/./%s /home/opam/docs/" prep_folder;
-           run "voodoo-link compile";
-           run ~secrets:[ privkey; pubkey ] ~network "rsync -avzR /home/opam/docs/./%s ci.mirage.io:/home/docs/docs/%s"
+           run "~/voodoo-link compile --package %s --blessed %b" package_name is_blessed;
+           run ~secrets:[ privkey; pubkey ] ~network "rsync -avzR /home/opam/docs/./%s 193.193.115.46:/home/docs/docs/%s"
              compile_folder compile_folder;
          ] )
 
