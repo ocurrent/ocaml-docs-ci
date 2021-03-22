@@ -19,7 +19,7 @@ let folder t =
   let opam = Package.opam t in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  Fmt.str "/prep/universes/%s/%s/%s/" universe name version
+  Fpath.(v "prep" / "universes" / universe / name / version)
 
 let prep_rule package =
   (* the rule to extract a package installation *)
@@ -31,10 +31,10 @@ let prep_rule package =
     | grep '^doc/\|\.cmi$\|\.cmt$\|\.cmti$\|META$\|dune-package$' \
     | xargs -I '{}' install -D $(opam var prefix)'/{}' '/%s/{}'|}
     name
-    (folder { package })
+    (folder { package } |> Fpath.to_string)
 
 let make_base_folder package =
-  Obuilder_spec.run "mkdir -p /%s/" (folder { package })
+  Obuilder_spec.run "mkdir -p /%s/" (folder { package } |> Fpath.to_string)
 
 let spec ~base (packages : Package.t list) =
   let open Obuilder_spec in
@@ -76,7 +76,9 @@ let v (package : Package.t Current.t) =
   let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
   let+ () =
-    Current_ocluster.build_obuilder ~label:"cluster build" ~src:opam_context ~pool:Config.pool
-      ~cache_hint:"docs-universe-build" cluster spec
+    let* package = package in
+    Current_ocluster.build_obuilder
+      ~label:(Fmt.str "prep %a" Package.pp package)
+      ~src:opam_context ~pool:Config.pool ~cache_hint:"docs-universe-build" cluster spec
   and+ root = package in
   List.map (fun package -> { package }) (Package.all_deps root)
