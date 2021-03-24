@@ -37,7 +37,7 @@ let spec ~base ~voodoo ~deps ~blessed prep =
         kind = Mld;
       }
   in
-  let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
+  let tools = Voodoo.spec ~base Do voodoo |> Spec.finish in
   ( base |> Spec.children ~name:"tools" tools
     |> Spec.add
          [
