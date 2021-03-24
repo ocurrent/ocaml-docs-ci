@@ -34,16 +34,19 @@ let v ~opam () =
   let voodoo = Voodoo.v in
   let* opam = opam in
   let all_packages_jobs =
-    let tracked = track ~filter:[ "uri"; "result" ] (Current.return opam) in
+    let tracked = track ~filter:[ "uri"; "result"; "cohttp" ] (Current.return opam) in
     Current.collapse ~key:"solve" ~value:"" ~input:tracked
       (Current.list_map
          (module O.OpamPackage)
-         (fun opam_pkg -> solve ~blacklist ~opam opam_pkg)
+         (fun opam_pkg -> solve ~blacklist ~opam opam_pkg |> Current.catch ~hidden:true ~label:"")
          tracked)
   in
   let all_packages =
     (* todo: add a append-only layer at this step *)
-    all_packages_jobs |> Current.map (List.map Package.all_deps) |> Current.map List.flatten
+    all_packages_jobs
+    |> Current.map
+         (List.filter_map (function Ok x -> Some (Package.all_deps x) | Error _ -> None))
+    |> Current.map List.flatten
   in
   let prepped =
     let jobs = select_jobs ~targets:all_packages in
@@ -61,4 +64,3 @@ let v ~opam () =
   in
   let compiled = compile ~voodoo ~blessed prepped in
   Indexes.v compiled
-
