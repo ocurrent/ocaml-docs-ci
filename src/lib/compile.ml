@@ -28,77 +28,34 @@ let spec ~base ~deps ~blessed prep =
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let version = opam |> OpamPackage.version_to_string in
-
   let odoc_package =
-    Mld.{ file = Fpath.(compile_folder / "the_page.mld"); target = None; name = "the_page"; kind = Mld }
-  in
-  let odoc_version_page =
     Mld.
       {
-        file = Fpath.(v "compile" / "packages" / name / (name_of_string version ^ ".mld"));
+        file = Fpath.(parent compile_folder / (version ^ ".mld"));
         target = None;
-        name = name_of_string version;
+        name = version;
         kind = Mld;
       }
   in
-  let odoc_versions_index =
-    Mld.
-      {
-        file = Fpath.(v "compile" / "packages" / (name_of_string name ^ ".mld"));
-        target = None;
-        name = name_of_string name;
-        kind = Mld;
-      }
-  in
-  let odoc_packages_index =
-    Mld.
-      { file = Fpath.(v "compile" / "packages.mld"); target = None; name = "packages"; kind = Mld }
-  in
-  (* let package = Prep.package target in
-     let package_name = OpamPackage.name (Package.opam package) |> OpamPackage.Name.to_string in
-      let is_blessed = Package.Blessed.is_blessed blessed package in*)
-  ( base
+  ( Voodoo.spec ~base Do
     |> Spec.add
          [
-           run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
            workdir "/home/opam/docs/";
-           run "sudo chown opam:opam .";
+           run "sudo chown opam:opam .  ";
            import_deps deps;
            Misc.rsync_pull [ prep_folder ];
            run "find . -type d";
            run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
-           run "%s"
-           @@ Fmt.str
-                {|
-          eval $(opam config env)
-          echo '{0 Package root page}' >> %a
-          touch %a && touch %a && touch %a
-          %a # compile fake packages index 
-          %a # compile fake versions index
-          %a # compile fake versions page
-          %a # compile package
-          %a # link package
-          %a # html package
-         |}
-                Fpath.pp odoc_package.file Fpath.pp odoc_versions_index.file Fpath.pp
-                odoc_version_page.file Fpath.pp odoc_packages_index.file Mld.pp_compile_command
-                (Mld.v ~children:[ odoc_versions_index ] odoc_packages_index)
-                Mld.pp_compile_command
-                (Mld.v ~children:[ odoc_version_page ] ~parent:odoc_packages_index
-                   odoc_versions_index)
-                Mld.pp_compile_command
-                (Mld.v ~children:[ odoc_package ] ~parent:odoc_versions_index odoc_version_page)
-                Mld.pp_compile_command
-                (Mld.v ~parent:odoc_version_page odoc_package)
-                Mld.pp_link_command
-                (Mld.v ~parent:odoc_versions_index odoc_package)
-                (Mld.pp_html_command ~output:(Fpath.v "/home/opam/html") ())
-                odoc_package;
-           workdir "/home/opam/docs/compile";
-           run "rm packages.mld page-packages.odoc packages/*.mld packages/*.odoc";
+           run
+             "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
+              compile/packages/*.odoc";
+           run "rm -f compile/packages/%s/*.odoc" name;
+           run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
+             (if blessed then "-b" else "");
+           run "mkdir -p html";
            run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./compile/ %s:%s/"
              Config.ssh_host Config.storage_folder;
-           run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/./html/ %s:%s/"
+           run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
              Config.ssh_host Config.storage_folder;
          ],
     odoc_package )

@@ -33,4 +33,4 @@ let rsync_pull folders =
   | [] -> Obuilder_spec.comment "no sources to pull"
   | _ ->
       Obuilder_spec.run ~secrets:Config.ssh_secrets ~cache ~network
-        "rsync -avzR %s %s && rsync -aR %s ./" sources docs_cache_folder cache_sources
+        "rsync --delete -avzR %s %s  && rsync -aR %s ./" sources docs_cache_folder cache_sources

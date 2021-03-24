@@ -16,7 +16,7 @@ type 'a t = { file : Fpath.t; target : Fpath.t option; name : name; kind : 'a ki
 type ('a, 'b) command
 
 
-val v : ?children: mld t list -> ?parent: 'a t -> 'b t -> ('a, 'b) command
+val v : ?children: mld t list -> ?parent: 'a t -> 'b t -> bool -> ('a, 'b) command
 
 val pp_compile_command : _ command Fmt.t
 
@@ -34,19 +34,6 @@ module Gen : sig
   type t
 
   val v : (Package.t * bool * odoc_dyn) list -> t
-
-  (*
-  val all_packages : t -> OpamPackage.Name.t list
-
-  val all_universes : t -> string list
-
-  val universes : t -> string * mld odoc
-
-  val universe : t:t -> string -> string * mld odoc
-
-  val packages : t -> string * mld odoc
-
-  val package : t:t -> OpamPackage.Name.t -> string * mld odoc*)
 
   val pp_gen_files_commands : t Fmt.t
 
