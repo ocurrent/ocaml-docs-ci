@@ -81,12 +81,7 @@ let v ~voodoo ~blessed ~deps target =
     let* target = target in
     let package = Prep.package target in
     let version = Misc.base_image_version package in
-    let cache_hint =
-      "docs-universe-build-" ^ version ^ "-"
-      ^ (package |> Package.universe |> Package.Universe.hash)
-      ^ "-"
-      ^ (package |> Package.opam |> OpamPackage.to_string)
-    in
+    let cache_hint = "docs-universe-build-" ^ version in
     Current_ocluster.build_obuilder
       ~label:(Fmt.str "odoc\n%s" (Prep.package target |> Package.opam |> OpamPackage.to_string))
       ~src:(Current.return []) ~pool:Config.pool ~cache_hint cluster spec
