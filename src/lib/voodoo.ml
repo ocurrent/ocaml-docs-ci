@@ -46,6 +46,4 @@ let spec ~base mode t =
            pin_install_voodoo;
            run ~network ~cache "opam depext -yi %s" pkg;
            run "cp $(opam config var bin)/odoc $(opam config var bin)/%s /home/opam" pkg;
-           run "opam remove -ay odoc voodoo-lib %s" pkg;
-           run "cp /home/opam/odoc /home/opam/%s $(opam config var bin)" pkg;
          ] )

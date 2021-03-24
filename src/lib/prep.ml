@@ -21,8 +21,8 @@ let folder t =
   let version = OpamPackage.version_to_string opam in
   Fpath.(v "prep" / "universes" / universe / name / version)
 
-let make_base_folder package =
-  Obuilder_spec.run "mkdir -p %s/" (folder { package } |> Fpath.to_string)
+let base_folders packages =
+  packages |> List.map (fun package -> folder { package } |> Fpath.to_string) |> String.concat " "
 
 let universes_assoc packages =
   packages
@@ -39,25 +39,29 @@ let spec ~voodoo ~base (packages : Package.t list) =
     packages |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
-  Voodoo.spec ~base Prep voodoo
+  let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
+  base |> Spec.children ~name:"tools" tools
   |> Spec.add
-       ( [
-           (* Install required packages *)
-           copy [ "." ] ~dst:"/src";
-           run "opam repo remove default && opam repo add opam /src";
-           env "DUNE_CACHE" "enabled";
-           env "DUNE_CACHE_TRANSPORT" "direct";
-           env "DUNE_CACHE_DUPLICATION" "copy";
-           run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
-           run "du -sh /home/opam/.cache/dune";
-         ]
-       @ List.map make_base_folder packages (* empty preps should yield an empty folder *)
-       @ [
-           run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc packages);
-           (* Perform the prep step for all packages *)
-           run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz prep %s:%s/"
-             Config.ssh_host Config.storage_folder;
-         ] )
+       [
+         (* Install required packages *)
+         copy [ "." ] ~dst:"/src";
+         run "opam repo remove default && opam repo add opam /src";
+         env "DUNE_CACHE" "enabled";
+         env "DUNE_CACHE_TRANSPORT" "direct";
+         env "DUNE_CACHE_DUPLICATION" "copy";
+         run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
+         run ~cache "du -sh /home/opam/.cache/dune";
+         run "mkdir -p %s" (base_folders packages);
+         (* empty preps should yield an empty folder *)
+         copy ~from:(`Build "tools")
+           [ "/home/opam/odoc"; "/home/opam/voodoo-prep" ]
+           ~dst:"/home/opam/";
+         run "mv ~/odoc $(opam config var bin)/odoc";
+         run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc packages);
+         (* Perform the prep step for all packages *)
+         run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz prep %s:%s/"
+           Config.ssh_host Config.storage_folder;
+       ]
 
 (** Assumption: packages are co-installable *)
 let v ~voodoo (package : Package.t Current.t) =
@@ -77,8 +81,10 @@ let v ~voodoo (package : Package.t Current.t) =
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
   let+ () =
     let* package = package in
+    let version = Misc.base_image_version package in
+    let cache_hint = "docs-universe-prep-" ^ version in
     Current_ocluster.build_obuilder
       ~label:(Fmt.str "prep %a" Package.pp package)
-      ~src:opam_context ~pool:Config.pool ~cache_hint:"docs-universe-build" cluster spec
+      ~src:opam_context ~pool:Config.pool ~cache_hint cluster spec
   and+ root = package in
   List.map (fun package -> { package }) (Package.all_deps root)

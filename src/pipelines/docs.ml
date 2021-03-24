@@ -56,7 +56,3 @@ let v ~opam () =
   in
   let compiled = compile ~voodoo ~blessed prepped in
   Indexes.v compiled
-
-(*
-  assemble_and_link (Current.map (List.map snd) prepped) compiled
-*)

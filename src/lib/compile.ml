@@ -37,7 +37,8 @@ let spec ~base ~voodoo ~deps ~blessed prep =
         kind = Mld;
       }
   in
-  ( Voodoo.spec ~base Do voodoo
+  let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
+  ( base |> Spec.children ~name:"tools" tools
     |> Spec.add
          [
            workdir "/home/opam/docs/";
@@ -50,6 +51,10 @@ let spec ~base ~voodoo ~deps ~blessed prep =
              "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
               compile/packages/*.odoc";
            run "rm -f compile/packages/%s/*.odoc" name;
+           copy ~from:(`Build "tools")
+             [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
+             ~dst:"/home/opam/";
+           run "mv ~/odoc $(opam config var bin)/odoc";
            run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
              (if blessed then "-b" else "");
            run "mkdir -p html";
@@ -81,7 +86,7 @@ let v ~voodoo ~blessed ~deps target =
     let* target = target in
     let package = Prep.package target in
     let version = Misc.base_image_version package in
-    let cache_hint = "docs-universe-build-" ^ version in
+    let cache_hint = "docs-universe-compile-" ^ version in
     Current_ocluster.build_obuilder
       ~label:(Fmt.str "odoc\n%s" (Prep.package target |> Package.opam |> OpamPackage.to_string))
       ~src:(Current.return []) ~pool:Config.pool ~cache_hint cluster spec

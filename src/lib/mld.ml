@@ -139,7 +139,7 @@ module Gen = struct
     }
 
   let universes_odoc =
-    { file = Fpath.(v "compile" / "universes.mld"); target = None; name = "universes"; kind = Mld; }
+    { file = Fpath.(v "compile" / "universes.mld"); target = None; name = "universes"; kind = Mld }
 
   let universe_odoc hash =
     {
@@ -184,7 +184,8 @@ module Gen = struct
     let universe = packages |> Package.Map.choose |> fst |> Package.universe in
     let pp_universe_deps f universe =
       let packages = Package.Universe.deps universe in
-      pf f "%a" (list ~sep:(any "\n\n") Package.pp) packages
+      packages |> List.map Package.opam |> List.map OpamPackage.to_string
+      |> pf f "%a" (list ~sep:(any "\n\n") string)
     in
     let pp_universe_packages f packages =
       let pp_package_link f (_, odoc) = pf f "%a" pp_link_dyn odoc in
@@ -205,7 +206,11 @@ module Gen = struct
         (packages |> Package.Map.bindings)
     in
     let odoc = universe_odoc hash in
-    let compilation = { children = []; parent = Some universes_odoc; target = odoc; skip = false } in
+    let children =
+      packages |> Package.Map.bindings
+      |> List.map (function _, Mld t -> t | _ -> failwith "Package entry page should be an mld.")
+    in
+    let compilation = { children; parent = Some universes_odoc; target = odoc; skip = false } in
     { content; odoc; compilation }
 
   let packages t =
@@ -250,7 +255,8 @@ module Gen = struct
     let open Fmt in
     let package_versions = OpamPackage.Name.Map.find name t.packages in
     let children =
-      package_versions |> OpamPackage.Version.Map.values |> List.map (function Mld t -> t | _ -> failwith "Package entry page should be an mld.")
+      package_versions |> OpamPackage.Version.Map.values
+      |> List.map (function Mld t -> t | _ -> failwith "Package entry page should be an mld.")
     in
     let content =
       str
@@ -259,7 +265,7 @@ module Gen = struct
     %a
     |}
         (OpamPackage.Name.to_string name)
-        (list ~sep:(any "\n") pp_link)
+        (list ~sep:(any "\n\n") pp_link)
         children
     in
     let odoc = package_odoc name in
