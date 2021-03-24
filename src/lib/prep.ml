@@ -25,13 +25,12 @@ let make_base_folder package =
   Obuilder_spec.run "mkdir -p %s/" (folder { package } |> Fpath.to_string)
 
 let universes_assoc packages =
-  packages 
-  |> List.map (fun pkg -> 
-    let hash = pkg |> Package.universe |> Package.Universe.hash in 
-    let name = pkg |> Package.opam |> OpamPackage.name_to_string in 
-    name^":"^hash) 
+  packages
+  |> List.map (fun pkg ->
+         let hash = pkg |> Package.universe |> Package.Universe.hash in
+         let name = pkg |> Package.opam |> OpamPackage.name_to_string in
+         name ^ ":" ^ hash)
   |> String.concat ","
-
 
 let spec ~voodoo ~base (packages : Package.t list) =
   let open Obuilder_spec in
@@ -40,13 +39,17 @@ let spec ~voodoo ~base (packages : Package.t list) =
     packages |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
-  Voodoo.spec ~base Prep voodoo 
+  Voodoo.spec ~base Prep voodoo
   |> Spec.add
        ( [
            (* Install required packages *)
            copy [ "." ] ~dst:"/src";
            run "opam repo remove default && opam repo add opam /src";
+           env "DUNE_CACHE" "enabled";
+           env "DUNE_CACHE_TRANSPORT" "direct";
+           env "DUNE_CACHE_DUPLICATION" "copy";
            run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
+           run "du -sh /home/opam/.cache/dune";
          ]
        @ List.map make_base_folder packages (* empty preps should yield an empty folder *)
        @ [
