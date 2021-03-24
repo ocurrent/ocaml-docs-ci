@@ -9,14 +9,18 @@ let spec ~base (packages : Compile.t list) =
          (fun comp -> (Compile.package comp, Compile.is_blessed comp, Compile.odoc comp))
          packages)
   in
+  let digest =
+    List.map (fun pkg -> Compile.package pkg |> Package.digest) packages
+    |> String.concat "\n" |> Digest.string |> Digest.to_hex
+  in
   let open Obuilder_spec in
   base
   |> Spec.add
        [
          run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
          workdir "/home/opam/docs/";
-         run "sudo chown opam:opam .    ";
-         Misc.rsync_pull [ Fpath.v "compile" ];
+         run "sudo chown opam:opam .";
+         Misc.rsync_pull ~digest [ Fpath.v "compile" ];
          run "find . -type d";
          run "%s" @@ Fmt.to_to_string Mld.Gen.pp_gen_files_commands mld;
          run "%s"
@@ -29,8 +33,7 @@ let spec ~base (packages : Compile.t list) =
            find -maxdepth 4 -type f -name '*.odocl' -exec odoc html -o /home/opam/html {} \; # build index pages html
            odoc support-files -o /home/opam/html # build support files
            |}
-           Mld.Gen.pp_compile_commands mld
-           Mld.Gen.pp_link_commands mld;
+              Mld.Gen.pp_compile_commands mld Mld.Gen.pp_link_commands mld;
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR --exclude=\"/*/*/*/*/\" . %s:%s/test"
            Config.ssh_host Config.storage_folder;
          run ~secrets:Config.ssh_secrets ~network "rsync -avz /home/opam/html/ %s:%s/html"

@@ -33,19 +33,19 @@ let universes_assoc packages =
   |> String.concat ","
 
 
-let spec ~base (packages : Package.t list) =
+let spec ~voodoo ~base (packages : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
   let packages_str =
     packages |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
-  Voodoo.spec ~base Prep
+  Voodoo.spec ~base Prep voodoo 
   |> Spec.add
        ( [
            (* Install required packages *)
            copy [ "." ] ~dst:"/src";
-           run "opam repo remove default  && opam repo add opam /src";
+           run "opam repo remove default && opam repo add opam /src";
            run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          ]
        @ List.map make_base_folder packages (* empty preps should yield an empty folder *)
@@ -57,7 +57,7 @@ let spec ~base (packages : Package.t list) =
          ] )
 
 (** Assumption: packages are co-installable *)
-let v (package : Package.t Current.t) =
+let v ~voodoo (package : Package.t Current.t) =
   let open Current.Syntax in
   let opam_context =
     let+ package = package in
@@ -67,8 +67,8 @@ let v (package : Package.t Current.t) =
     ]
   in
   let spec =
-    let+ root = package in
-    spec ~base:(Misc.get_base_image root) (Package.all_deps root) |> Spec.to_ocluster_spec
+    let+ root = package and+ voodoo = voodoo in
+    spec ~voodoo ~base:(Misc.get_base_image root) (Package.all_deps root) |> Spec.to_ocluster_spec
   in
   let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in

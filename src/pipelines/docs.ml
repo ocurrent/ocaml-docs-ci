@@ -1,6 +1,6 @@
 open Docs_ci_lib
 
-let compile ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t) =
+let compile ~voodoo ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t) =
   let open Current.Syntax in
   let* preps = preps in
   let pkg_preps =
@@ -18,7 +18,7 @@ let compile ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Curren
         in
         let result =
           Package.Map.find_opt pkg pkg_preps
-          |> Option.map (fun prep -> prep |> Current.return |> Compile.v ~blessed ~deps)
+          |> Option.map (fun prep -> prep |> Current.return |> Compile.v ~voodoo ~blessed ~deps)
         in
         jobs := Package.Map.add pkg result !jobs;
         result
@@ -29,6 +29,7 @@ let compile ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Curren
 let v ~opam () =
   let open Docs in
   let open Current.Syntax in
+  let voodoo = Voodoo.v in
   let* opam = opam in
   let all_packages_jobs =
     let tracked = track ~filter:[ "uri"; "result" ] (Current.return opam) in
@@ -43,14 +44,17 @@ let v ~opam () =
     let jobs = select_jobs ~targets:all_packages in
     Current.collapse ~key:"prep" ~value:"" ~input:jobs
     @@ let+ res =
-         Current.list_map (module Jobs) (fun job -> Prep.v job |> Current.catch ~hidden:true) jobs
+         Current.list_map
+           (module Jobs)
+           (fun job -> Prep.v ~voodoo job |> Current.catch ~hidden:true)
+           jobs
        in
        List.filter_map Result.to_option res |> List.flatten
   in
   let blessed =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
-  let compiled = compile ~blessed prepped in
+  let compiled = compile ~voodoo ~blessed prepped in
   Indexes.v compiled
 
 (*

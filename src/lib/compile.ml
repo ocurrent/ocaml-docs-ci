@@ -20,7 +20,7 @@ let import_deps t =
   let folders = List.map (fun { package; blessed; _ } -> folder ~blessed package) t in
   Misc.rsync_pull folders
 
-let spec ~base ~deps ~blessed prep =
+let spec ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
@@ -37,11 +37,11 @@ let spec ~base ~deps ~blessed prep =
         kind = Mld;
       }
   in
-  ( Voodoo.spec ~base Do
+  ( Voodoo.spec ~base Do voodoo
     |> Spec.add
          [
            workdir "/home/opam/docs/";
-           run "sudo chown opam:opam .  ";
+           run "sudo chown opam:opam .";
            import_deps deps;
            Misc.rsync_pull [ prep_folder ];
            run "find . -type d";
@@ -62,13 +62,15 @@ let spec ~base ~deps ~blessed prep =
 
 let folder { package; blessed; _ } = folder ~blessed package
 
-let v ~blessed ~deps target =
+let v ~voodoo ~blessed ~deps target =
   let open Current.Syntax in
   let spec =
-    let+ deps = deps and+ prep = target and+ blessed = blessed in
+    let+ deps = deps and+ prep = target and+ blessed = blessed and+ voodoo = voodoo in
     let package = Prep.package prep in
     let blessed = Package.Blessed.is_blessed blessed package in
-    let spec, odoc = spec ~base:(Misc.get_base_image (Prep.package prep)) ~deps ~blessed prep in
+    let spec, odoc =
+      spec ~voodoo ~base:(Misc.get_base_image (Prep.package prep)) ~deps ~blessed prep
+    in
     (spec |> Spec.to_ocluster_spec, odoc)
   in
   let odoc = Current.map snd spec in

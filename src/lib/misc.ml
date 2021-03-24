@@ -19,7 +19,7 @@ let docs_cache_folder = "/home/opam/docs-cache/"
 
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
-let rsync_pull folders =
+let rsync_pull ?(digest="") folders =
   let sources =
     List.map
       (fun folder -> Fmt.str "%s:%s/./%a" Config.ssh_host Config.storage_folder Fpath.pp folder)
@@ -33,4 +33,4 @@ let rsync_pull folders =
   | [] -> Obuilder_spec.comment "no sources to pull"
   | _ ->
       Obuilder_spec.run ~secrets:Config.ssh_secrets ~cache ~network
-        "rsync --delete -avzR %s %s  && rsync -aR %s ./" sources docs_cache_folder cache_sources
+        "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources docs_cache_folder cache_sources digest
