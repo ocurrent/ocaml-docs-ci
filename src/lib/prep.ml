@@ -11,7 +11,14 @@ let cache = Voodoo.cache
 let not_base x =
   not
     (List.mem (OpamPackage.name_to_string x)
-       [ "base-unix"; "base-bigarray"; "base-threads"; "ocaml-config"; "ocaml" ])
+       [
+         "base-unix";
+         "base-bigarray";
+         "base-threads";
+         "ocaml-config";
+         "ocaml";
+         "ocaml-base-compiler";
+       ])
 
 let folder t =
   let t = t.package in

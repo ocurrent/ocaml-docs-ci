@@ -26,6 +26,8 @@ let compile ~voodoo ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t lis
   List.filter_map (fun prep -> prep |> Prep.package |> get_compilation_job) preps
   |> Current.list_seq
 
+let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
+
 let v ~opam () =
   let open Docs in
   let open Current.Syntax in
@@ -34,7 +36,10 @@ let v ~opam () =
   let all_packages_jobs =
     let tracked = track ~filter:[ "uri"; "result" ] (Current.return opam) in
     Current.collapse ~key:"solve" ~value:"" ~input:tracked
-      (Current.list_map (module O.OpamPackage) (fun opam_pkg -> solve ~opam opam_pkg) tracked)
+      (Current.list_map
+         (module O.OpamPackage)
+         (fun opam_pkg -> solve ~blacklist ~opam opam_pkg)
+         tracked)
   in
   let all_packages =
     (* todo: add a append-only layer at this step *)
@@ -56,3 +61,4 @@ let v ~opam () =
   in
   let compiled = compile ~voodoo ~blessed prepped in
   Indexes.v compiled
+

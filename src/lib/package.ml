@@ -47,7 +47,12 @@ and Package : sig
 
   val v : OpamPackage.t -> t list -> string -> t
 
-  val make : commit:string -> root:OpamPackage.t -> (OpamPackage.t * OpamPackage.t list) list -> t
+  val make :
+    blacklist:string list ->
+    commit:string ->
+    root:OpamPackage.t ->
+    (OpamPackage.t * OpamPackage.t list) list ->
+    t
 end = struct
   type t = { opam : OpamPackage.t; universe : Universe.t; commit : string }
 
@@ -69,7 +74,16 @@ end = struct
     | 0 -> Universe.compare t.universe t2.universe
     | v -> v
 
-  let make ~commit ~root deps =
+  let remove_blacklisted_packages ~blacklist deps =
+    let module StringSet = Set.Make (String) in
+    let blacklist = StringSet.of_list blacklist in
+    let filter pkg = not (StringSet.mem (OpamPackage.name_to_string pkg) blacklist) in
+    deps
+    |> List.filter (fun (pkg, _) -> filter pkg)
+    |> List.map (fun (pkg, deps) -> (pkg, List.filter filter deps))
+
+  let make ~blacklist ~commit ~root deps =
+    let deps = remove_blacklisted_packages ~blacklist deps in
     let memo = ref OpamPackage.Map.empty in
     let package_deps = OpamPackage.Map.of_list deps in
     let rec obtain package =
