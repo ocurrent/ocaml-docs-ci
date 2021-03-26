@@ -109,11 +109,10 @@ module SolverCache = struct
     let state_file = Fpath.(Current.state_dir id / "solved.json" |> to_string) in
     let cache_data =
       try
-      match Yojson.Safe.from_file state_file |> cache_of_yojson with
-      | Ok data -> data |> Track.Map.of_list
-      | Error _ -> Track.Map.empty
-      with 
-      | Sys_error _ -> Track.Map.empty
+        match Yojson.Safe.from_file state_file |> cache_of_yojson with
+        | Ok data -> data |> Track.Map.of_list
+        | Error _ -> Track.Map.empty
+      with Sys_error _ -> Track.Map.empty
     in
     let to_do = List.filter (fun x -> not (Track.Map.mem x cache_data)) packages in
     let* solved =

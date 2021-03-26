@@ -30,6 +30,12 @@ let storage_folder = v.ssh_storage.folder
 
 let ssh_host = v.ssh_storage.host
 
+let ssh_user = v.ssh_storage.user
+
+let ssh_priv_key_file = Fpath.v v.ssh_storage.private_key_file
+
+let ssh_port = v.ssh_storage.port
+
 let ssh_config =
   Fmt.str
     {|Host %s
@@ -67,3 +73,5 @@ let ssh_secrets_values =
   [ ("ssh_privkey", ssh_privkey); ("ssh_pubkey", ssh_pubkey); ("ssh_config", ssh_config) ]
 
 let pool = "linux-x86_64"
+
+let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 cap

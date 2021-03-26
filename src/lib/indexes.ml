@@ -1,56 +1,96 @@
-type t = unit
+module Indexes = struct
+  type t = No_context
 
-let network = Voodoo.network
+  let id = "indexes-build"
 
-let spec ~base (packages : Compile.t list) =
-  let mld =
-    Mld.Gen.v
-      (List.map
-         (fun comp -> (Compile.package comp, Compile.is_blessed comp, Compile.odoc comp))
-         packages)
-  in
-  let digest =
-    List.map (fun pkg -> Compile.package pkg |> Package.digest) packages
-    |> String.concat "\n" |> Digest.string |> Digest.to_hex
-  in
-  let open Obuilder_spec in
-  base
-  |> Spec.add
-       [
-         run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
-         workdir "/home/opam/docs/";
-         run "sudo chown opam:opam .";
-         run ~network ~secrets:Config.ssh_secrets "rsync --delete -avzR --exclude=\"/*/*/*/*/*/\" %s:%s/./compile ./  && echo 'pulled: %s'" Config.ssh_host Config.storage_folder digest;
-         run "find . -type d";
-         run "%s" @@ Fmt.to_to_string Mld.Gen.pp_gen_files_commands mld;
-         run "%s"
-         @@ Fmt.str
-              {|
-           eval $(opam config env)
-           ls -lah compile/packages/angstrom/0.15.0/
-           %a
-           %a
-           find -maxdepth 4 -type f -name '*.odocl' -exec odoc html -o /home/opam/html {} \; # build index pages html
-           odoc support-files -o /home/opam/html # build support files
-           |}
-              Mld.Gen.pp_compile_commands mld Mld.Gen.pp_link_commands mld;
-         run ~secrets:Config.ssh_secrets ~network "rsync -avzR --exclude=\"/*/*/*/*/\" . %s:%s/test"
-           Config.ssh_host Config.storage_folder;
-         run ~secrets:Config.ssh_secrets ~network "rsync -avz /home/opam/html/ %s:%s/html"
-           Config.ssh_host Config.storage_folder;
-       ]
+  let pp f _ = Fmt.pf f "indexes build"
 
-(*          run "find . -type f -name '*.cmt' -exec sh -c 'mv \"$1\" \"${1%%.cmt}.odoc\"' _ {} \\;"; *)
+  let auto_cancel = false
+
+  module Key = struct
+    type t = Compile.t list
+
+    let digest t =
+      List.rev_map Compile.digest t |> String.concat "\n" |> Digest.string |> Digest.to_hex
+  end
+
+  module Value = struct
+    type t = unit
+
+    let marshal () = ""
+
+    let unmarshal _ = ()
+  end
+
+  let build No_context job packages =
+    let open Lwt.Syntax in
+    let ( let** ) = Lwt_result.bind in
+    let state_dir = Current.state_dir "indexes-compile" in
+    let output_dir = Current.state_dir "indexes-html" in
+    let* () = Current.Job.start ~level:Harmless job in
+    let mld =
+      Mld.Gen.v
+        (List.map
+           (fun comp -> (Compile.package comp, Compile.is_blessed comp, Compile.odoc comp))
+           packages)
+    in
+    let remote_folder =
+      Fmt.str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder
+    in
+    let** () =
+      Current.Process.exec ~cancellable:true ~job
+        ( "",
+          [|
+            "rsync";
+            "-avzR";
+            "--exclude=/*/*/*/*/*/";
+            "-e";
+            Fmt.str "ssh -p %d -i %a" Config.ssh_port Fpath.pp Config.ssh_priv_key_file;
+            remote_folder ^ "./compile";
+            Fpath.to_string state_dir;
+          |] )
+    in
+    (* Create files *)
+    Bos.OS.File.delete Fpath.(state_dir / "files.sh") |> Result.get_ok;
+    Bos.OS.File.write
+      Fpath.(state_dir / "files.sh")
+      (Fmt.to_to_string Mld.Gen.pp_gen_files_commands mld)
+    |> Result.get_ok;
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "bash"; "./files.sh" |])
+    in
+    (* Create makefile *)
+    Bos.OS.File.delete Fpath.(state_dir / "Makefile") |> Result.get_ok;
+    Bos.OS.File.write
+      Fpath.(state_dir / "Makefile")
+      (Fmt.to_to_string (Mld.Gen.pp_makefile ~odoc:Config.odoc_bin ~output:output_dir) mld)
+    |> Result.get_ok;
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "roots" |])
+    in
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "pages" |])
+    in
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ("", [| Config.odoc_bin; "support-files"; "-o"; Fpath.to_string output_dir |])
+    in
+    Current.Process.exec ~cancellable:false ~job
+      ( "",
+        [|
+          "rsync";
+          "-avzR";
+          "-e";
+          Fmt.str "ssh -p %d  -i %a" Config.ssh_port Fpath.pp Config.ssh_priv_key_file;
+          Fpath.to_string output_dir;
+          remote_folder ^ "./html";
+        |] )
+end
+
+module IndexesCache = Current_cache.Make (Indexes)
+
 let v packages =
   let open Current.Syntax in
-  let spec =
-    let+ packages = packages in
-    spec ~base:(Spec.make "ocaml/opam:ubuntu-ocaml-4.12") packages |> Spec.to_ocluster_spec
-  in
-  let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
-  let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
-  let+ () =
-    Current_ocluster.build_obuilder ~label:"build indexes" ~src:(Current.return [])
-      ~pool:Config.pool ~cache_hint:"docs-universe-link" cluster spec
-  in
-  ()
+  Current.component "index2"
+  |> let> packages = packages in
+     IndexesCache.get No_context packages

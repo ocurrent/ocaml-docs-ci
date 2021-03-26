@@ -7,3 +7,5 @@ val v : voodoo:Voodoo.t Current.t -> Package.t Current.t -> t list Current.t
 (** Install a package universe, extract useful files and push obtained universes. *)
 
 val folder : t -> Fpath.t
+
+val artifacts_digest : t -> string

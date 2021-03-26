@@ -24,12 +24,12 @@ let remote_uri commit =
 let spec ~base mode t =
   let open Obuilder_spec in
   let pin_install_voodoo =
-    run ~network ~cache
-      "opam pin -ny %s  && opam depext -iy voodoo-lib"
+    run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-lib"
       (t |> Git.Commit.id |> remote_uri)
   in
   let pin_install_odoc =
-    run ~network "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version" Config.odoc
+    run ~network "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
+      Config.odoc
   in
   let pkg = match mode with Prep -> "voodoo-prep" | Do -> "voodoo-do" in
   base

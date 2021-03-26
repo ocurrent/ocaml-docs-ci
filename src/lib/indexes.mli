@@ -1,3 +1,1 @@
-type t = unit
-
-val v : Compile.t list Current.t -> t Current.t
+val v : Compile.t list Current.t -> unit Current.t

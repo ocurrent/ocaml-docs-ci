@@ -6,6 +6,12 @@ val ssh_secrets_values : (string * string) list
 
 val ssh_host : string
 
+val ssh_user : string
+
+val ssh_priv_key_file : Fpath.t
+
+val ssh_port : int
+
 val storage_folder : string
 
 val odoc : string
@@ -16,3 +22,5 @@ val odoc_bin : string
 the same version as odoc *)
 
 val pool : string
+
+val ocluster_connection : Current_ocluster.Connection.t

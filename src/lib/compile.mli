@@ -2,6 +2,8 @@ type t
 
 val digest : t -> string
 
+val artifacts_digest : t -> string
+
 val is_blessed : t -> bool
 
 val package : t -> Package.t

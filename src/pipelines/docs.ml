@@ -74,7 +74,7 @@ let v ~opam () =
   let open Current.Syntax in
   let voodoo = Voodoo.v in
   let all_packages_jobs =
-    let tracked = Track.v ~filter:[ "result"; ] opam in
+    let tracked = Track.v ~filter:[ "result" ] opam in
     Solver.incremental ~blacklist ~opam tracked
   in
   let all_packages =
@@ -98,7 +98,5 @@ let v ~opam () =
   let blessed =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
-  let compiled =
-    compile ~voodoo ~blessed prepped
-  in
-  Current.all [ Indexes2.v2 compiled ]
+  let compiled = compile ~voodoo ~blessed prepped in
+  Indexes.v compiled

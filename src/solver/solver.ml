@@ -20,15 +20,18 @@ let universes ~packages (resolutions : OpamPackage.t list) =
         let opamfile : OpamFile.OPAM.t =
           packages |> OpamPackage.Name.Map.find name |> OpamPackage.Version.Map.find version
         in
-        Printf.eprintf "<%s>\n" (OpamFilter.string_of_filtered_formula (opamfile |> OpamFile.OPAM.depends));
+        Printf.eprintf "<%s>\n"
+          (OpamFilter.string_of_filtered_formula (opamfile |> OpamFile.OPAM.depends));
         let deps =
           opamfile |> OpamFile.OPAM.depends
-          |> OpamFilter.partial_filter_formula (OpamFilter.deps_var_env ~build:true ~post:false ~test:false ~doc:true ~dev:false)
+          |> OpamFilter.partial_filter_formula
+               (OpamFilter.deps_var_env ~build:true ~post:false ~test:false ~doc:true ~dev:false)
           |> get_names |> OpamPackage.Name.Set.of_list
         in
         let depopts =
           opamfile |> OpamFile.OPAM.depopts
-          |> OpamFilter.partial_filter_formula (OpamFilter.deps_var_env ~build:true ~post:false ~test:false ~doc:true ~dev:false)
+          |> OpamFilter.partial_filter_formula
+               (OpamFilter.deps_var_env ~build:true ~post:false ~test:false ~doc:true ~dev:false)
           |> get_names |> OpamPackage.Name.Set.of_list
         in
         let deps =
