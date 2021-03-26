@@ -37,9 +37,15 @@ let universes_assoc packages =
 let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
+  let all_deps = Package.all_deps install in
   let packages_str =
-    install |> Package.all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
+    all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
+  in
+  let dune_install =
+    List.find_opt (fun pkg -> pkg |> Package.opam |> OpamPackage.name_to_string = "dune") all_deps
+    |> Option.map (fun pkg -> run ~network ~cache "opam install %s" (Package.opam  pkg |> OpamPackage.to_string))
+    |> Option.value ~default:(comment "no dune")
   in
   let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
@@ -51,6 +57,7 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          env "DUNE_CACHE" "enabled";
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
+         dune_install;
          run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
          run "mkdir -p %s" (base_folders prep);
@@ -136,9 +143,7 @@ module Prep = struct
       Lwt_list.map_p
         (fun pkg ->
           let+ res = Misc.remote_digest ~job (folder pkg) in
-          (pkg, match res with 
-          |Ok v -> v
-          | Error (`Msg m) -> "an error occured: "^m))
+          (pkg, match res with Ok v -> v | Error (`Msg m) -> "an error occured: " ^ m))
         prep
     in
 
