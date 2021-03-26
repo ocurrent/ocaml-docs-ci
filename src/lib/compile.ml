@@ -73,7 +73,7 @@ module Compile = struct
     type t = { deps : output list; prep : Prep.t; blessed : bool; voodoo : Current_git.Commit.t }
 
     let digest { deps; prep; blessed; voodoo } =
-      Fmt.str "%s-%s-%a-%s" (Bool.to_string blessed) (Prep.artifacts_digest prep)
+      Fmt.str "%s-%s-%s-%a-%s" (Bool.to_string blessed) (Prep.package prep |> Package.digest) (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Current_git.Commit.hash voodoo)
   end
@@ -127,9 +127,9 @@ end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~voodoo ~blessed ~deps prep =
+let v ~name ~voodoo ~blessed ~deps prep =
   let open Current.Syntax in
-  Current.component "voodoo-do"
+  Current.component "do %s" name
   |> let> prep = prep and> voodoo = voodoo and> blessed = blessed and> deps = deps in
      let package = Prep.package prep in
      let blessed = Package.Blessed.is_blessed blessed package in
@@ -151,5 +151,11 @@ let v ~voodoo ~blessed ~deps prep =
          | Ok artifacts_digest -> Ok { package; blessed; odoc = Mld odoc; artifacts_digest }
          | Error e -> Error e)
        digest
+
+let v ~voodoo ~blessed ~deps prep = 
+  let open Current.Syntax in
+  let* b_prep = prep in
+  let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
+  v ~name ~voodoo ~blessed ~deps prep
 
 let folder { package; blessed; _ } = folder ~blessed package
