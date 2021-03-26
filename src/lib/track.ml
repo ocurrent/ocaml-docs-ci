@@ -30,7 +30,7 @@ module Track = struct
     Fmt.pf f "opam repo track\n%a\n%a" Git.Commit.pp_short repo Fmt.(list string) filter
 
   module Value = struct
-    type t = OpamPackage.t list [@@deriving yojson]
+    type t = (OpamPackage.t * string) list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -40,16 +40,25 @@ module Track = struct
   let rec take n lst =
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
+  let get_digest path =
+    let content = Bos.OS.File.read path |> Result.get_ok in
+    Digestif.SHA256.(digest_string content |> to_hex)
+
+  let get_versions path =
+    let open Rresult in
+    Bos.OS.Dir.contents path
+    >>| (fun versions ->
+          versions
+          |> List.rev_map (fun path ->
+                 (path |> Fpath.basename |> OpamPackage.of_string, get_digest Fpath.(path / "opam"))))
+    |> Result.get_ok
+    |> List.sort (fun (a, _) (b, _) -> OpamPackage.compare a b)
+    |> List.rev |> take 1
+
   let build No_context job { Key.repo; filter } =
     let open Lwt.Syntax in
     let open Rresult in
     let filter name = match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst in
-    let get_versions path =
-      Bos.OS.Dir.contents path
-      >>| (fun versions ->
-            versions |> List.rev_map (fun path -> path |> Fpath.basename |> OpamPackage.of_string))
-      |> Result.get_ok |> List.sort OpamPackage.compare |> List.rev |> take 1
-    in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->
     Bos.OS.Dir.contents Fpath.(dir / "packages")
@@ -60,7 +69,23 @@ end
 
 module TrackCache = Current_cache.Make (Track)
 
-let track_packages ~(filter : string list) (repo : Git.Commit.t Current.t) =
+type t = O.OpamPackage.t * string [@@deriving yojson]
+
+let digest = snd
+
+let pkg = fst
+
+module Map = OpamStd.Map.Make (struct
+  type nonrec t = t
+
+  let compare (a, _) (b, _) = O.OpamPackage.compare a b
+
+  let to_json (pkg, digest) = `A [ OpamPackage.to_json pkg; `String digest ]
+
+  let to_string (pkg, _) = OpamPackage.to_string pkg
+end)
+
+let v ~(filter : string list) (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "Track packages - %a" Fmt.(list string) filter
   |> let> repo = repo in

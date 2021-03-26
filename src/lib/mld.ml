@@ -45,12 +45,12 @@ type ('a, 'b) command = { children : mld t list; parent : 'a t option; target : 
 
 let v ?(children = []) ?parent target skip = { children; parent; target; skip }
 
-let pp_compile_command f { children; parent; target; skip } =
+let pp_compile_command ?(odoc = "odoc") () f { children; parent; target; skip } =
   let parent_pp f parent =
     Fmt.pf f "--parent %s -I %a" (odoc_reference parent) Fpath.pp (include_path parent)
   in
   let command =
-    Fmt.str "odoc compile --warn-error %a %a %a %a" Fpath.pp target.file
+    Fmt.str "%s compile --warn-error %a %a %a %a" odoc Fpath.pp target.file
       Fmt.(option (any "-o " ++ Fpath.pp))
       target.target
       Fmt.(option parent_pp)
@@ -61,19 +61,22 @@ let pp_compile_command f { children; parent; target; skip } =
   if skip then Fmt.pf f "echo skipping"
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
-let pp_link_command f { children; target; skip; _ } =
+let pp_link_command ?(odoc = "odoc") () f { children; target; skip; _ } =
   let include_paths = List.rev_map include_path children |> List.sort_uniq Fpath.compare in
   let include_pp f path = Fmt.pf f "-I %a" Fpath.pp path in
   let command =
-    Fmt.str "odoc link %a %a" Fpath.pp (odoc_file target)
+    Fmt.str "%s link %a %a" odoc Fpath.pp (odoc_file target)
       Fmt.(list ~sep:(any " ") include_pp)
       include_paths
   in
   if skip then Fmt.pf f "echo skipping"
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
-let pp_html_command ?output () f t =
-  Fmt.pf f "odoc html %a %a" Fpath.pp (odocl_file t) Fmt.(option (any "-o " ++ Fpath.pp)) output
+let pp_html_command ?(odoc = "odoc") ?output () f t =
+  let command =
+    Fmt.str "%s html %a %a" odoc Fpath.pp (odocl_file t) Fmt.(option (any "-o " ++ Fpath.pp)) output
+  in
+  Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
 module Gen = struct
   module StringMap = Map.Make (String)
@@ -277,32 +280,58 @@ module Gen = struct
     let compilation = { children; parent = Some packages_odoc; target = odoc; skip = false } in
     ({ content; odoc; compilation }, [])
 
+  let pp_rule ?(odoc = "odoc") ~target ~output f (_, t) =
+    let Mld = t.target.kind in
+    let file_mld = t.target.file in
+    let file_odoc = odoc_file t.target in
+    let file_odocl = odocl_file t.target in
+    Fmt.pf f "\n%s:: %a\n\n%a: %a\n\t@@%a\n\n%a: %a %a\n\t@@%a\n\t@@%a\n" target Fpath.pp file_odocl
+      Fpath.pp file_odoc Fpath.pp file_mld (pp_compile_command ~odoc ()) t Fpath.pp file_odocl
+      Fpath.pp file_odoc
+      Fmt.(list ~sep:(any " ") (using odoc_file Fpath.pp))
+      t.children (pp_link_command ~odoc ()) t
+      (pp_html_command ~odoc ~output ())
+      t.target
 
+  let pp_makefile ?(odoc = "odoc") ~output f t =
+    let extract_gen_page { compilation; content; _ } = (content, compilation) in
+    let packages = packages t in
+    let universes = universes t in
+    let packages_indexes =
+      t.packages |> OpamPackage.Name.Map.keys |> List.map (fun x -> package ~t x |> fst)
+    in
+    let universes_indexes =
+      t.universes |> StringMap.bindings |> List.map (fun (k, _) -> universe ~t k)
+    in
+    let pages = packages_indexes @ universes_indexes in
+    let compilation_units = List.map extract_gen_page pages in
+    Fmt.pf f
+      ".PHONY: roots pages\n\n\
+       %%.mld: %%.mld.new\n\
+       \t@cmp --silent $< $@@ || (echo \"$@@ changed!\" && cp $< $@@)\n\n\
+       %a\n\
+       %a\n\
+       %a"
+      (pp_rule ~odoc ~target:"roots" ~output)
+      (extract_gen_page packages)
+      (pp_rule ~odoc ~target:"roots" ~output)
+      (extract_gen_page universes)
+      (Fmt.list ~sep:(Fmt.any "\n") (pp_rule ~odoc ~target:"pages" ~output))
+      compilation_units
 
-  let pp_makefile f t = failwith "wip"
-    
-  
   let pp_gen_files_commands f t =
-    let all_packages = t |> all_packages in
-    let all_universes = t |> all_universes in
-    let open Fmt in
-    let pp_gen f { content; odoc; _ } = pf f "echo '%s' >> %a" content Fpath.pp odoc.file in
-    pf f
-      {|
-    %a
-    %a
-    %a
-    %a
-    |}
-      pp_gen (packages t) pp_gen (universes t)
-      (list ~sep:(any "\n") pp_gen)
-      (all_universes |> List.map (universe ~t))
-      (list ~sep:(any "\n") pp_gen)
-      ( all_packages
+    let all_packages =
+      t |> all_packages
       |> List.map (fun name ->
              let v, deps = package ~t name in
              v :: deps)
-      |> List.flatten )
+      |> List.flatten
+    in
+    let all_universes = t |> all_universes |> List.map (universe ~t) in
+    let all_files = (packages t :: universes t :: all_packages) @ all_universes in
+    let open Fmt in
+    let pp_gen f { content; odoc; _ } = pf f "echo '%s' > %a.new" content Fpath.pp odoc.file in
+    (list ~sep:(any "\n") pp_gen) f all_files
 
   let pp_commands ~pp_cmd f t =
     let { compilation = packages_cmd; _ } = packages t in
@@ -329,7 +358,7 @@ module Gen = struct
       Fmt.(list ~sep:(any "\n") (fun f { compilation; _ } -> pp_cmd f compilation))
       universes_indexes
 
-  let pp_compile_commands = pp_commands ~pp_cmd:pp_compile_command
+  let pp_compile_commands = pp_commands ~pp_cmd:(pp_compile_command ())
 
-  let pp_link_commands = pp_commands ~pp_cmd:pp_link_command
+  let pp_link_commands = pp_commands ~pp_cmd:(pp_link_command ())
 end

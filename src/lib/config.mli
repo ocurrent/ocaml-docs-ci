@@ -11,4 +11,8 @@ val storage_folder : string
 val odoc : string
 (** Odoc version pin to use. *)
 
+val odoc_bin : string
+(** Local odoc binary for the final link step. Should be 
+the same version as odoc *)
+
 val pool : string

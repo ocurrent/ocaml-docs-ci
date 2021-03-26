@@ -7,5 +7,6 @@
         "private_key_file": "id_rsa",
         "public_key_file": "id_rsa.pub",
         "folder": "/storage/folder"
-    }
+    },
+    "odoc": "/path/to/odoc"
 }

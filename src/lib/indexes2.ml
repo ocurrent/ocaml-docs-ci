@@ -30,20 +30,24 @@ module Indexes = struct
            (fun comp -> (Compile.package comp, Compile.is_blessed comp, Compile.odoc comp))
            packages)
     in
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"rsync"; "-avzR"; "--exclude=/*/*/*/*/*/"; "mirage-ci:/home/docs/docs-ci/./compile"; "./"|]) in
-    Bos.OS.File.write Fpath.(state_dir / "Makefile") (Fmt.to_to_string Mld.Gen.pp_makefile mld) |> Result.get_ok;
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"make"; "mlds"; |]) in
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"opam"; "exec"; "--switch=412"; "--"; "make"; "odoc"|]) in
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"opam"; "exec"; "--switch=412"; "--"; "make"; "odocl"|]) in
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"opam"; "exec"; "--switch=412"; "--"; "find"; "-maxdepth"; "4"; "-type"; "f"; "-name"; "'*.odocl'"; "-exec"; "odoc"; "html"; "-o"; Fpath.to_string output_dir; "{}"; ";"|]) in
-    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"opam"; "exec"; "--switch=412"; "--"; "odoc"; "support-files"; "-o"; Fpath.to_string output_dir|]) in
-    Lwt.return_ok ()
+    let remote_folder = Fmt.str "%s:%s/" Config.ssh_host Config.storage_folder in 
+    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"rsync"; "-avzR"; "--exclude=/*/*/*/*/*/"; remote_folder ^ "./compile"; "./"|]) in
+    (* Create files *)
+    Bos.OS.File.delete Fpath.(state_dir / "files.sh") |> Result.get_ok; 
+    Bos.OS.File.write Fpath.(state_dir / "files.sh") (Fmt.to_to_string Mld.Gen.pp_gen_files_commands mld) |> Result.get_ok;
+    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"bash"; "./files.sh" |]) in
+    (* Create makefile *)
+    Bos.OS.File.delete Fpath.(state_dir / "Makefile") |> Result.get_ok;
+    Bos.OS.File.write Fpath.(state_dir / "Makefile") (Fmt.to_to_string (Mld.Gen.pp_makefile ~odoc:Config.odoc_bin ~output:output_dir) mld) |> Result.get_ok;
+    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"make"; "roots" |]) in
+    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|"make"; "pages" |]) in
+    let** () = Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [|Config.odoc_bin; "support-files"; "-o"; Fpath.to_string output_dir|]) in
+    Current.Process.exec ~cwd:output_dir ~cancellable:false ~job ("", [|"rsync"; "-avzR"; "./"; remote_folder ^ "./html" |])
 
 end
 
 module IndexesCache = Current_cache.Make(Indexes)
 
-(*          run "find . -type f -name '*.cmt' -exec sh -c 'mv \"$1\" \"${1%%.cmt}.odoc\"' _ {} \\;"; *)
 let v2 packages =
   let open Current.Syntax in
   Current.component "index2" |>

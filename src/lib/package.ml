@@ -1,5 +1,5 @@
 module rec Universe : sig
-  type t
+  type t [@@deriving yojson]
 
   val hash : t -> string
 
@@ -11,7 +11,7 @@ module rec Universe : sig
 
   val compare : t -> t -> int
 end = struct
-  type t = { hash : string; deps : Package.t list }
+  type t = { hash : string; deps : Package.t list } [@@deriving yojson]
 
   let hash t = t.hash
 
@@ -31,7 +31,7 @@ end = struct
 end
 
 and Package : sig
-  type t
+  type t [@@deriving yojson]
 
   val opam : t -> OpamPackage.t
 
@@ -54,7 +54,7 @@ and Package : sig
     (OpamPackage.t * OpamPackage.t list) list ->
     t
 end = struct
-  type t = { opam : OpamPackage.t; universe : Universe.t; commit : string }
+  type t = { opam : O.OpamPackage.t; universe : Universe.t; commit : string } [@@deriving yojson]
 
   let universe t = t.universe
 

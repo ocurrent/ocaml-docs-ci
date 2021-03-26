@@ -71,25 +71,21 @@ let compile ~voodoo ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t lis
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
 let v ~opam () =
-  let open Docs in
   let open Current.Syntax in
   let voodoo = Voodoo.v in
-  let* opam = opam in
   let all_packages_jobs =
-    let tracked = track ~filter:[] (Current.return opam) in
-    Current.collapse ~key:"solve" ~value:"" ~input:tracked
-      (Current.list_map
-         (module O.OpamPackage)
-         (fun opam_pkg -> solve ~blacklist ~opam opam_pkg |> Current.catch ~hidden:true ~label:"")
-         tracked)
-    |> Current.map (List.filter_map Result.to_option)
+    let tracked = Track.v ~filter:[ "result"; ] opam in
+    Solver.incremental ~blacklist ~opam tracked
   in
   let all_packages =
     (* todo: add a append-only layer at this step *)
     all_packages_jobs |> Current.map (List.map Package.all_deps) |> Current.map List.flatten
   in
   let prepped =
-    let jobs = select_jobs ~targets:all_packages all_packages_jobs in
+    let jobs =
+      let+ targets = all_packages and+ all_packages_jobs = all_packages_jobs in
+      Jobs.schedule ~targets all_packages_jobs
+    in
     Current.collapse ~key:"prep" ~value:"" ~input:jobs
     @@ let+ res =
          Current.list_map
@@ -103,9 +99,6 @@ let v ~opam () =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
   let compiled =
-    compile ~voodoo ~blessed prepped (*|> Current.map (List.filter_map Result.to_option)*)
+    compile ~voodoo ~blessed prepped
   in
-  Current.all [
-   (* Indexes.v compiled;*)
-    Indexes2.v2 compiled;
-  ]
+  Current.all [ Indexes2.v2 compiled ]

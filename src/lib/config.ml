@@ -8,8 +8,12 @@ type ssh = {
 }
 [@@deriving yojson]
 
-type config = { (* Capability file for ocluster submissions *)
-                cap_file : string; ssh_storage : ssh }
+type config = {
+  (* Capability file for ocluster submissions *)
+  cap_file : string;
+  ssh_storage : ssh;
+  odoc : string option;
+}
 [@@deriving yojson]
 
 let v = Yojson.Safe.from_file "config.json" |> config_of_yojson |> Result.get_ok
@@ -19,6 +23,8 @@ let vat = Capnp_rpc_unix.client_only_vat ()
 let cap = Capnp_rpc_unix.Cap_file.load vat v.cap_file |> Result.get_ok
 
 let odoc = "https://github.com/ocaml/odoc.git#50fcb86ae66bb7d223b0d5e90488c7a911d22541"
+
+let odoc_bin = Option.value ~default:"odoc" v.odoc
 
 let storage_folder = v.ssh_storage.folder
 

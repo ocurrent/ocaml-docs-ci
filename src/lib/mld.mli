@@ -12,17 +12,15 @@ type 'a kind = Mld : mld kind | CU : cu kind
 
 type 'a t = { file : Fpath.t; target : Fpath.t option; name : name; kind : 'a kind }
 
-
 type ('a, 'b) command
 
+val v : ?children:mld t list -> ?parent:'a t -> 'b t -> bool -> ('a, 'b) command
 
-val v : ?children: mld t list -> ?parent: 'a t -> 'b t -> bool -> ('a, 'b) command
+val pp_compile_command : ?odoc:string -> unit -> _ command Fmt.t
 
-val pp_compile_command : _ command Fmt.t
+val pp_link_command : ?odoc:string -> unit -> _ command Fmt.t
 
-val pp_link_command : _ command Fmt.t
-
-val pp_html_command : ?output:Fpath.t -> unit -> _ t Fmt.t
+val pp_html_command : ?odoc:string -> ?output:Fpath.t -> unit -> _ t Fmt.t
 
 (* Index pages generation *)
 
@@ -32,13 +30,12 @@ module Gen : sig
   type odoc_dyn = Mld of mld t | CU of cu t
 
   val digest : odoc_dyn -> string
-  
-  type t
 
+  type t
 
   val v : (Package.t * bool * odoc_dyn) list -> t
 
-  val pp_makefile : t Fmt.t 
+  val pp_makefile : ?odoc:string -> output:Fpath.t -> t Fmt.t
 
   val pp_gen_files_commands : t Fmt.t
 
