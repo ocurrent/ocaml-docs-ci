@@ -82,8 +82,8 @@ module Indexes = struct
           "-avzR";
           "-e";
           Fmt.str "ssh -p %d  -i %a" Config.ssh_port Fpath.pp Config.ssh_priv_key_file;
-          Fpath.to_string output_dir;
-          remote_folder ^ "./html";
+          Fpath.to_string output_dir ^ "/./";
+          remote_folder ^ "/html/";
         |] )
 end
 

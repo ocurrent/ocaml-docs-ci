@@ -1,8 +1,8 @@
-type t = Package.t
+type t = { install : Package.t; prep : Package.t list }
 
-let pp f (t : t) = Fmt.pf f "%a" Package.pp t
+let pp f (t : t) = Fmt.pf f "%a" Package.pp t.install
 
-let compare (a : t) (b : t) = Package.compare a b
+let compare (a : t) (b : t) = Package.compare a.install b.install
 
 module StringSet = Set.Make (String)
 
@@ -19,19 +19,28 @@ package.version.universe -> 1 2 3 4 5
                         4 [ o x x x o x x x ]
 
   *)
-let schedule ~(targets : t list) jobs : t list =
+let schedule ~(targets : Package.t list) jobs : t list =
   Printf.printf "Schedule %d\n" (List.length jobs);
   let targets_digests = targets |> List.rev_map Package.digest |> StringSet.of_list in
   let jobs =
-    jobs |> List.sort (fun (a : t) b -> Int.compare (worthiness b) (worthiness a))
+    jobs |> List.sort (fun (a : Package.t) b -> Int.compare (worthiness b) (worthiness a))
     (* sort in decreasing order in the number of packages produced by job *)
   in
   let remaining_targets = ref targets_digests in
   let check_and_add_target pkg =
     let set = pkg |> Package.all_deps |> List.map Package.digest |> StringSet.of_list in
-    let size_before_update = StringSet.cardinal !remaining_targets in
-    remaining_targets := StringSet.diff !remaining_targets set;
-    let size_after_update = StringSet.cardinal !remaining_targets in
-    size_before_update <> size_after_update
+    let useful_packages = StringSet.inter !remaining_targets set in
+    match StringSet.cardinal useful_packages with
+    | 0 -> None
+    | _ ->
+        remaining_targets := StringSet.diff !remaining_targets set;
+        Some
+          {
+            install = pkg;
+            prep =
+              List.filter
+                (fun pkg -> StringSet.mem (Package.digest pkg) useful_packages)
+                (Package.all_deps pkg);
+          }
   in
-  List.filter check_and_add_target jobs
+  List.filter_map check_and_add_target jobs

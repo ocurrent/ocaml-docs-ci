@@ -70,6 +70,7 @@ module Compile = struct
   module Value = Current.String
 
   module Key = struct
+    (* TODO: add more things in the key, like the global configuration *)
     type t = { deps : output list; prep : Prep.t; blessed : bool; voodoo : Current_git.Commit.t }
 
     let digest { deps; prep; blessed; voodoo } =

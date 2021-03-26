@@ -36,6 +36,8 @@ let rsync_pull ?(digest = "") folders =
         "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
 
+let pool = Current.Pool.create ~label:"ssh" 8
+
 let remote_digest ~job folder =
   let cmd =
     Fmt.str
@@ -44,7 +46,10 @@ let remote_digest ~job folder =
       Fpath.pp
       Fpath.(v Config.storage_folder // folder)
   in
-  Current.Process.check_output ~job ~cancellable:true
+  let switch = Current.Switch.create ~label:"ssh" () in
+  let open Lwt.Syntax in
+  let* () = Current.Job.use_pool ~switch job pool in
+  let* output = Current.Process.check_output ~job ~cancellable:true
     ( "",
       [|
         "ssh";
@@ -55,3 +60,6 @@ let remote_digest ~job folder =
         Config.ssh_user ^ "@" ^ Config.ssh_host;
         cmd;
       |] )
+  in
+  let+ () = Current.Switch.turn_off switch in
+  output

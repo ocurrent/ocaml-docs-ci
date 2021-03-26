@@ -34,11 +34,11 @@ let universes_assoc packages =
          name ^ ":" ^ hash)
   |> String.concat ","
 
-let spec ~artifacts_digest ~voodoo ~base (packages : Package.t list) =
+let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
   let packages_str =
-    packages |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
+    install |> Package.all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
   let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
@@ -53,13 +53,13 @@ let spec ~artifacts_digest ~voodoo ~base (packages : Package.t list) =
          env "DUNE_CACHE_DUPLICATION" "copy";
          run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
-         run "mkdir -p %s" (base_folders packages);
+         run "mkdir -p %s" (base_folders prep);
          (* empty preps should yield an empty folder *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-prep" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
-         run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc packages);
+         run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Perform the prep step for all packages *)
          run ~secrets:Config.ssh_secrets ~network:Voodoo.network
            "rsync -avz prep %s:%s/ && echo '%s'" Config.ssh_host Config.storage_folder
@@ -74,12 +74,12 @@ module Prep = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { package : Package.t; voodoo : Voodoo.t }
+    type t = { job : Jobs.t; voodoo : Voodoo.t }
 
-    let digest { package; voodoo } = Package.digest package ^ Git.Commit.hash voodoo
+    let digest { job = { install; _ }; voodoo } = Package.digest install ^ Git.Commit.hash voodoo
   end
 
-  let pp f Key.{ package; _ } = Fmt.pf f "Voodoo prep %a" Package.pp package
+  let pp f Key.{ job = { install; _ }; _ } = Fmt.pf f "Voodoo prep %a" Package.pp install
 
   module Value = struct
     type item = { package : Package.t; artifacts_digest : string } [@@deriving yojson]
@@ -91,24 +91,35 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build No_context job Key.{ package; voodoo } =
+  let build No_context job Key.{ job = { install; prep }; voodoo } =
     let open Lwt.Syntax in
     let switch = Current.Switch.create ~label:"prep cluster build" () in
     let* () = Current.Job.start ~level:Mostly_harmless job in
 
-    let* artifacts_digest = Misc.remote_digest ~job (folder package) in
-    let artifacts_digest = Result.value artifacts_digest ~default:"an error occured" in
+    let* artifacts_digest =
+      Lwt_list.map_p
+        (fun pkg ->
+          let+ res = Misc.remote_digest ~job (folder pkg) in
+          (pkg, Result.value res ~default:"an error occured"))
+        prep
+    in
+    let digest =
+      List.map snd artifacts_digest |> String.concat "-" |> Digest.string |> Digest.to_hex
+    in
 
-    Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp (folder package)
+    List.iter
+      (fun (package, digest) ->
+        Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp (folder package)
+          digest)
       artifacts_digest;
 
-    let base = Misc.get_base_image package in
+    let base = Misc.get_base_image install in
     let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } =
-      spec ~artifacts_digest ~voodoo ~base (Package.all_deps package) |> Spec.to_ocluster_spec
+      spec ~artifacts_digest:digest ~voodoo ~base ~install prep |> Spec.to_ocluster_spec
     in
     let action = Cluster_api.Submission.obuilder_build spec in
-    let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit package ]) in
-    let version = Misc.base_image_version package in
+    let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
+    let version = Misc.base_image_version install in
     let cache_hint = "docs-universe-prep-" ^ version in
     Current.Job.log job "Using cache hint %S" cache_hint;
 
@@ -121,17 +132,26 @@ module Prep = struct
     let* result = Current_ocluster.Connection.run_job ~job build_job in
     let* () = Current.Switch.turn_off switch in
 
-    let+ artifacts_digest = Misc.remote_digest ~job (folder package) in
+    let+ artifacts_digest =
+      Lwt_list.map_p
+        (fun pkg ->
+          let+ res = Misc.remote_digest ~job (folder pkg) in
+          (pkg, match res with 
+          |Ok v -> v
+          | Error (`Msg m) -> "an error occured: "^m))
+        prep
+    in
 
-    match (artifacts_digest, result) with
-    | Error (`Msg digest_error), Error (`Msg ocluster_error) ->
-        Error (`Msg (digest_error ^ "\n" ^ ocluster_error))
-    | Error (`Msg digest_error), _ -> Error (`Msg digest_error)
-    | _, Error (`Msg ocluster_error) -> Error (`Msg ocluster_error)
-    | Ok artifacts_digest, Ok _ ->
-        Current.Job.log job "New artifacts digest => %s" artifacts_digest;
+    match result with
+    | Error (`Msg _) as e -> e
+    | Ok _ ->
         Ok
-          (List.map (fun package -> Value.{ package; artifacts_digest }) (Package.all_deps package))
+          (List.map
+             (fun (package, digest) ->
+               Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp
+                 (folder package) digest;
+               Value.{ package; artifacts_digest = digest })
+             artifacts_digest)
 end
 
 module PrepCache = Current_cache.Make (Prep)
@@ -145,8 +165,8 @@ let artifacts_digest (t : t) = t.artifacts_digest
 let folder (t : t) = folder t.package
 
 (** Assumption: packages are co-installable *)
-let v ~voodoo (package : Package.t Current.t) =
+let v ~voodoo (job : Jobs.t Current.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep"
-  |> let> voodoo = voodoo and> package = package in
-     PrepCache.get No_context { package; voodoo }
+  |> let> voodoo = voodoo and> job = job in
+     PrepCache.get No_context { job; voodoo }
