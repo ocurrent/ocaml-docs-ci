@@ -2,12 +2,12 @@ module Git = Current_git
 
 let () = Logging.init ()
 
-let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) ()
+let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
 
 let program_name = "docs-ci"
 
 let main config mode =
-  let repo_opam = Git.clone ~schedule:daily "https://github.com/ocaml/opam-repository.git" in
+  let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
   let engine =
     Current.Engine.create ~config (fun () ->
         Docs_ci_pipelines.Docs.v ~opam:repo_opam () |> Current.ignore_value)

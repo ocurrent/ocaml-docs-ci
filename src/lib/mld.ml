@@ -62,11 +62,12 @@ let pp_compile_command f { children; parent; target; skip } =
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
 let pp_link_command f { children; target; skip; _ } =
-  let include_pp f parent = Fmt.pf f "-I %a" Fpath.pp (include_path parent) in
+  let include_paths = List.rev_map include_path children |> List.sort_uniq Fpath.compare in
+  let include_pp f path = Fmt.pf f "-I %a" Fpath.pp path in
   let command =
-    Fmt.str "odoc link --warn-error %a %a" Fpath.pp (odoc_file target)
+    Fmt.str "odoc link %a %a" Fpath.pp (odoc_file target)
       Fmt.(list ~sep:(any " ") include_pp)
-      children
+      include_paths
   in
   if skip then Fmt.pf f "echo skipping"
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
@@ -80,6 +81,10 @@ module Gen = struct
   type 'a odoc = 'a t
 
   type odoc_dyn = Mld of mld t | CU of cu t
+
+  let digest = function
+    | Mld { name; target; _ } | CU { name; target; _ } ->
+        name ^ "-" ^ (target |> Option.map Fpath.to_string |> Option.value ~default:"")
 
   type t = {
     packages : odoc_dyn OpamPackage.Version.Map.t OpamPackage.Name.Map.t;
@@ -272,6 +277,11 @@ module Gen = struct
     let compilation = { children; parent = Some packages_odoc; target = odoc; skip = false } in
     ({ content; odoc; compilation }, [])
 
+
+
+  let pp_makefile f t = failwith "wip"
+    
+  
   let pp_gen_files_commands f t =
     let all_packages = t |> all_packages in
     let all_universes = t |> all_universes in

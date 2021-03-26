@@ -1,6 +1,6 @@
 module Git = Current_git
 
-type t = { package : Package.t }
+type t = { package : Package.t; hash: string }
 
 let package t = t.package
 
@@ -29,7 +29,7 @@ let folder t =
   Fpath.(v "prep" / "universes" / universe / name / version)
 
 let base_folders packages =
-  packages |> List.map (fun package -> folder { package } |> Fpath.to_string) |> String.concat " "
+  packages |> List.map (fun package -> folder { package; hash="" } |> Fpath.to_string) |> String.concat " "
 
 let universes_assoc packages =
   packages
@@ -70,6 +70,7 @@ let spec ~voodoo ~base (packages : Package.t list) =
            Config.ssh_host Config.storage_folder;
        ]
 
+
 (** Assumption: packages are co-installable *)
 let v ~voodoo (package : Package.t Current.t) =
   let open Current.Syntax in
@@ -94,4 +95,6 @@ let v ~voodoo (package : Package.t Current.t) =
       ~label:(Fmt.str "prep %a" Package.pp package)
       ~src:opam_context ~pool:Config.pool ~cache_hint cluster spec
   and+ root = package in
-  List.map (fun package -> { package }) (Package.all_deps root)
+  List.map (fun package -> { package; hash = "" }) (Package.all_deps root)
+
+

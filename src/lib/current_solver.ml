@@ -18,7 +18,7 @@ let job_log job =
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
 
-let pool = Current.Pool.create ~label:"solver" 4
+let pool = Current.Pool.create ~label:"solver" 8
 
 module Op = struct
   type t = No_context

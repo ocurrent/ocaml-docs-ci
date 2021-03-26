@@ -1,5 +1,7 @@
 type t = { package : Package.t; blessed : bool; odoc : Mld.Gen.odoc_dyn }
 
+let digest t = Package.digest t.package ^ Bool.to_string t.blessed ^ Mld.Gen.digest t.odoc
+
 let is_blessed t = t.blessed
 
 let odoc t = t.odoc
@@ -42,7 +44,7 @@ let spec ~base ~voodoo ~deps ~blessed prep =
     |> Spec.add
          [
            workdir "/home/opam/docs/";
-           run "sudo chown opam:opam .";
+           run "sudo chown opam:opam . ";
            import_deps deps;
            Misc.rsync_pull [ prep_folder ];
            run "find . -type d";
@@ -82,14 +84,15 @@ let v ~voodoo ~blessed ~deps target =
   let spec = Current.map fst spec in
   let conn = Current_ocluster.Connection.create ~max_pipeline:10 Config.cap in
   let cluster = Current_ocluster.v ~secrets:Config.ssh_secrets_values conn in
-  let+ () =
+  let+ _ =
     let* target = target in
     let package = Prep.package target in
     let version = Misc.base_image_version package in
+    let label = Fmt.str "odoc\n%s" (Prep.package target |> Package.opam |> OpamPackage.to_string) in
     let cache_hint = "docs-universe-compile-" ^ version in
-    Current_ocluster.build_obuilder
-      ~label:(Fmt.str "odoc\n%s" (Prep.package target |> Package.opam |> OpamPackage.to_string))
-      ~src:(Current.return []) ~pool:Config.pool ~cache_hint cluster spec
+    Current_ocluster.build_obuilder ~label ~src:(Current.return []) ~pool:Config.pool ~cache_hint
+      cluster spec
+    |> Current.catch ~hidden:true ~label:""
   and+ odoc = odoc
   and+ prep = target
   and+ blessed = blessed in

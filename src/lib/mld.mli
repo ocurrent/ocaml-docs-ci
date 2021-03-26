@@ -31,9 +31,14 @@ module Gen : sig
 
   type odoc_dyn = Mld of mld t | CU of cu t
 
+  val digest : odoc_dyn -> string
+  
   type t
 
+
   val v : (Package.t * bool * odoc_dyn) list -> t
+
+  val pp_makefile : t Fmt.t 
 
   val pp_gen_files_commands : t Fmt.t
 

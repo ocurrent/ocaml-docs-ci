@@ -20,7 +20,7 @@ let spec ~base (packages : Compile.t list) =
          run ~network "opam pin -ny odoc %s && opam depext -iy odoc" Config.odoc;
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam .";
-         Misc.rsync_pull ~digest [ Fpath.v "compile" ];
+         run ~network ~secrets:Config.ssh_secrets "rsync --delete -avzR --exclude=\"/*/*/*/*/*/\" %s:%s/./compile ./  && echo 'pulled: %s'" Config.ssh_host Config.storage_folder digest;
          run "find . -type d";
          run "%s" @@ Fmt.to_to_string Mld.Gen.pp_gen_files_commands mld;
          run "%s"

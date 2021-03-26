@@ -19,10 +19,11 @@ package.version.universe -> 1 2 3 4 5
                         4 [ o x x x o x x x ]
 
   *)
-let schedule ~(targets : t list) : t list =
-  let targets_digests = targets |> List.map Package.digest |> StringSet.of_list in
-  let targets =
-    targets |> List.sort (fun (a : t) b -> Int.compare (worthiness b) (worthiness a))
+let schedule ~(targets : t list) jobs : t list =
+  Printf.printf "Schedule %d\n" (List.length jobs);
+  let targets_digests = targets |> List.rev_map Package.digest |> StringSet.of_list in
+  let jobs =
+    jobs |> List.sort (fun (a : t) b -> Int.compare (worthiness b) (worthiness a))
     (* sort in decreasing order in the number of packages produced by job *)
   in
   let remaining_targets = ref targets_digests in
@@ -33,4 +34,4 @@ let schedule ~(targets : t list) : t list =
     let size_after_update = StringSet.cardinal !remaining_targets in
     size_before_update <> size_after_update
   in
-  List.filter check_and_add_target targets
+  List.filter check_and_add_target jobs

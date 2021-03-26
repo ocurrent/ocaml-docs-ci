@@ -4,9 +4,10 @@ let track = Track.track_packages
 
 let solve = Solver.v
 
-let select_jobs ~targets =
+let select_jobs ~targets jobs =
   let open Current.Syntax in
-  let+ targets = targets in
-  Jobs.schedule ~targets
+  let+ targets = targets and+ jobs = jobs in
+  Jobs.schedule ~targets jobs
 
 module Prep = Prep
+
