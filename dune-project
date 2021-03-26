@@ -18,6 +18,8 @@
   (current (>= 0.3))
   current_web
   current_git
+  opam-0install
+  capnp-rpc-unix
   fmt
   lwt
   cmdliner
