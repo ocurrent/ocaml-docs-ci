@@ -113,9 +113,16 @@ end = struct
   let v (packages : Package.t list) : t =
     let state = ref OpamPackage.Map.empty in
     List.iter
-      (fun package -> state := OpamPackage.Map.add (Package.opam package) package !state)
+      (fun package ->
+        let universe_size = Package.universe package |> Universe.deps |> List.length in
+        let key = Package.opam package in
+        match OpamPackage.Map.find_opt key !state with
+        | Some (_, universe_size') when universe_size' > universe_size -> ()
+        | _ -> state := OpamPackage.Map.add (Package.opam package) (package, universe_size) !state)
       packages;
-    OpamPackage.Map.values !state |> List.map Package.digest |> StringSet.of_list
+    OpamPackage.Map.values !state
+    |> List.map (fun (package, _) -> Package.digest package)
+    |> StringSet.of_list
 
   let is_blessed t pkg = StringSet.mem (Package.digest pkg) t
 end

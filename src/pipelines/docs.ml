@@ -74,7 +74,7 @@ let v ~opam () =
   let open Current.Syntax in
   let voodoo = Voodoo.v in
   let all_packages_jobs =
-    let tracked = Track.v ~filter:[ "result" ] opam in
+    let tracked = Track.v ~filter:[ "result"; "mirage"; "cohttp"; "irmin" ] opam in
     Solver.incremental ~blacklist ~opam tracked
   in
   let all_packages =
