@@ -101,7 +101,7 @@ module SolverCache = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  type cache = (Track.t * Package.t) list [@@deriving yojson]
+  type cache = (Track.t * Package.t option) list [@@deriving yojson]
 
   let run No_context job Key.{ packages; blacklist; platform } opam =
     let open Lwt.Syntax in
@@ -123,11 +123,12 @@ module SolverCache = struct
         to_do
     in
     let solved_success =
-      List.filter_map
+      List.map
         (fun (track, result) ->
           let root = Track.pkg track in
+          track, 
           match result with
-          | Ok (packages, commit) -> Some (track, Package.make ~blacklist ~commit ~root packages)
+          | Ok (packages, commit) -> Some (Package.make ~blacklist ~commit ~root packages)
           | Error (`Msg msg) ->
               Current.Job.log job "Solving failed for %s: %s" (OpamPackage.to_string root) msg;
               None)
@@ -139,7 +140,7 @@ module SolverCache = struct
     Current.Job.log job "Tracked: %d / Solved: %d / New: %d / Success: %d" (List.length packages)
       (List.length cache_data) (List.length solved) (List.length solved_success);
     let () = cache_data |> cache_to_yojson |> Yojson.Safe.to_file state_file in
-    Lwt.return_ok (List.map snd cache_data)
+    Lwt.return_ok (List.filter_map snd cache_data)
 end
 
 module Solver = Current_cache.Generic (SolverCache)
