@@ -66,10 +66,10 @@ module Indexes = struct
       (Fmt.to_to_string (Mld.Gen.pp_makefile ~odoc:Config.odoc_bin ~output:output_dir) mld)
     |> Result.get_ok;
     let** () =
-      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "roots" |])
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "roots-compile" |])
     in
     let** () =
-      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "pages" |])
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "pages-link"; "roots-link" |])
     in
     let** () =
       Current.Process.exec ~cwd:state_dir ~cancellable:true ~job

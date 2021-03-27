@@ -285,7 +285,19 @@ module Gen = struct
     let file_mld = t.target.file in
     let file_odoc = odoc_file t.target in
     let file_odocl = odocl_file t.target in
-    Fmt.pf f "\n%s:: %a\n\n%a: %a\n\t@@%a\n\n%a: %a %a\n\t@@%a\n\t@@%a\n" target Fpath.pp file_odocl
+    Fmt.pf f "
+%s-link:: %a
+
+%s-compile:: %a
+
+%a: %a
+\t@@%a
+
+%a: %a %a
+\t@@%a
+\t@@%a
+" target Fpath.pp file_odocl
+  target Fpath.pp file_odoc
       Fpath.pp file_odoc Fpath.pp file_mld (pp_compile_command ~odoc ()) t Fpath.pp file_odocl
       Fpath.pp file_odoc
       Fmt.(list ~sep:(any " ") (using odoc_file Fpath.pp))
@@ -306,7 +318,7 @@ module Gen = struct
     let pages = packages_indexes @ universes_indexes in
     let compilation_units = List.map extract_gen_page pages in
     Fmt.pf f
-      ".PHONY: roots pages\n\n\
+      ".PHONY: roots-compile roots-link pages-compile pages-link\n\n\
        %%.mld: %%.mld.new\n\
        \t@cmp --silent $< $@@ || (echo \"$@@ changed!\" && cp $< $@@)\n\n\
        %a\n\
