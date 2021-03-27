@@ -20,8 +20,6 @@ let universes ~packages (resolutions : OpamPackage.t list) =
         let opamfile : OpamFile.OPAM.t =
           packages |> OpamPackage.Name.Map.find name |> OpamPackage.Version.Map.find version
         in
-        Printf.eprintf "<%s>\n"
-          (OpamFilter.string_of_filtered_formula (opamfile |> OpamFile.OPAM.depends));
         let deps =
           opamfile |> OpamFile.OPAM.depends
           |> OpamFilter.partial_filter_formula
