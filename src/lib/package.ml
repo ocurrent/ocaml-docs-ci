@@ -91,7 +91,7 @@ end = struct
       | Some package -> package
       | None ->
           memo := OpamPackage.Map.add package (Package.v package [] commit) !memo;
-          let deps_pkg = OpamPackage.Map.find package package_deps |> List.map obtain in
+          let deps_pkg = OpamPackage.Map.find_opt package package_deps |> Option.value ~default:[] |> List.map obtain in
           let pkg = Package.v package deps_pkg commit in
           memo := OpamPackage.Map.add package pkg !memo;
           pkg
