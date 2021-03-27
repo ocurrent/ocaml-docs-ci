@@ -69,7 +69,7 @@ module Indexes = struct
       Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "roots-compile" |])
     in
     let** () =
-      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "pages-link"; "roots-link" |])
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; Fmt.str "-j%d" Config.jobs; "pages-link"; "roots-link" |])
     in
     let** () =
       Current.Process.exec ~cwd:state_dir ~cancellable:true ~job

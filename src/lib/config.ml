@@ -13,6 +13,7 @@ type config = {
   cap_file : string;
   ssh_storage : ssh;
   odoc : string option;
+  jobs : int;
 }
 [@@deriving yojson]
 
@@ -75,3 +76,5 @@ let ssh_secrets_values =
 let pool = "linux-x86_64"
 
 let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 cap
+
+let jobs = v.jobs

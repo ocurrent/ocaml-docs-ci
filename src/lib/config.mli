@@ -24,3 +24,5 @@ the same version as odoc *)
 val pool : string
 
 val ocluster_connection : Current_ocluster.Connection.t
+
+val jobs : int

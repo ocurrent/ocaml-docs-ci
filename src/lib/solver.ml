@@ -18,7 +18,7 @@ let job_log job =
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
 
-let pool = Current.Pool.create ~label:"solver" 8
+let pool = Current.Pool.create ~label:"solver" Config.jobs
 
 let perform_solve ~job ~(platform : Platform.t) ~opam track =
   let open Lwt.Syntax in
