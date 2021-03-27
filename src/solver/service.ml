@@ -83,9 +83,6 @@ end = struct
   let handle ~log request t =
     let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } = request in
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
-    let req_packages =
-      pkgs |> List.map OpamPackage.Name.of_string |> OpamPackage.Name.Set.of_list
-    in
     Log.info log "Solving for %a" Fmt.(list ~sep:comma string) pkgs;
     platforms
     |> Lwt_list.map_p (fun p ->
@@ -94,12 +91,7 @@ end = struct
            Lwt_pool.use t (process ~log ~id slice) >>= function
            | Error _ as e -> Lwt.return (id, e)
            | Ok packages ->
-               let repo_packages =
-                 packages
-                 |> List.filter_map (fun (pkg, _) ->
-                        let pkg = OpamPackage.of_string pkg in
-                        if OpamPackage.Name.Set.mem pkg.name req_packages then None else Some pkg)
-               in
+               let repo_packages = List.map (fun (pkg,_) -> OpamPackage.of_string pkg) packages in
                Opam_repository.oldest_commit_with repo_packages ~from:opam_repository_commit
                >|= fun commit -> (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
