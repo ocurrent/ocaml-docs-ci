@@ -65,8 +65,48 @@ let perform_solve ~job ~(platform : Platform.t) ~opam track =
   | Ok _ -> Fmt.error_msg "??"
   | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
 
+module Cache = struct
+  let id = "solver-cache"
+
+  type cache_value = Package.t option
+
+  let fname track =
+    let digest = Track.digest track in
+    let name = Track.pkg track |> OpamPackage.name_to_string in
+    let name_version = Track.pkg track |> OpamPackage.version_to_string in
+    Fpath.(Current.state_dir id / name / name_version / digest)
+
+  let mem track =
+    let fname = fname track in
+    match Bos.OS.Path.exists fname with Ok true -> true | _ -> false
+
+  let read track : cache_value option =
+    let fname = fname track in
+    try
+      let file = open_in (Fpath.to_string fname) in
+      Some (Marshal.from_channel file)
+    with Failure _ -> None
+
+  let write ((track, value) : Track.t * cache_value) =
+    let fname = fname track in
+    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
+    let file = open_out (Fpath.to_string fname) in
+    Marshal.to_channel file value [];
+    close_out file
+end
+
+type key = Track.t
+
+type t = Track.t list
+
+let keys t = t
+
+let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
+
+(* is solved ? *)
+
 (* ------------------------- *)
-module SolverCache = struct
+module Solver = struct
   type t = No_context
 
   let id = "incremental-solver"
@@ -94,45 +134,17 @@ module SolverCache = struct
   end
 
   module Outcome = struct
-    type t = Package.t list [@@deriving yojson]
+    type t = Track.t list
 
-    (** TODO: too much pressure on the DB *)
     let marshal t = Marshal.to_string t []
 
     let unmarshal t = Marshal.from_string t 0
   end
 
-  let fname track =
-    let digest = Track.digest track in
-    let name = Track.pkg track |> OpamPackage.name_to_string in
-    let name_version = Track.pkg track |> OpamPackage.version_to_string in
-    Fpath.(Current.state_dir id / name / name_version / digest)
-
-  let is_in_cache track =
-    let fname = fname track in
-    match Bos.OS.Path.exists fname with Ok true -> true | _ -> false
-
-  type cache_value = Package.t option
-
-  let cache_read track : cache_value option =
-    let fname = fname track in
-    try
-      let file = open_in (Fpath.to_string fname) in
-      Some (Marshal.from_channel file)
-    with Failure _ -> None
-
-  let cache_write ((track, value) : Track.t * cache_value) =
-    let fname = fname track in
-    let open Rresult in
-    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
-    let file = open_out (Fpath.to_string fname) in
-    Marshal.to_channel file value [];
-    close_out file
-
   let run No_context job Key.{ packages; blacklist; platform } opam =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
-    let to_do = List.filter (fun x -> not (is_in_cache x)) packages in
+    let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->
@@ -145,23 +157,23 @@ module SolverCache = struct
                 Current.Job.log job "Solving failed for %s: %s" (OpamPackage.to_string root) msg;
                 None
           in
-          cache_write (pkg, result);
+          Cache.write (pkg, result);
           Option.is_some result)
         to_do
     in
     Current.Job.log job "Solved: %d / New: %d / Success: %d" (List.length packages)
       (List.length solved)
       (List.length (solved |> List.filter (fun x -> x)));
-    let data = List.rev_map (fun v -> cache_read v |> Option.get) packages in
-    Current.Job.log job "Loaded data!";
-    Lwt.return_ok (data |> List.filter_map (fun x -> x))
+    Lwt.return_ok
+      ( packages
+      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false) )
 end
 
-module Solver = Current_cache.Generic (SolverCache)
+module SolverCache = Current_cache.Generic (Solver)
 
 let incremental ~(blacklist : string list) ~(opam : Git.Commit.t Current.t)
-    (packages : Track.t list Current.t) : Package.t list Current.t =
+    (packages : Track.t list Current.t) : t Current.t =
   let open Current.Syntax in
   Current.component "incremental solver"
   |> let> opam = opam and> packages = packages in
-     Solver.run No_context { packages; blacklist; platform = Platform.platform_amd64 } opam
+     SolverCache.run No_context { packages; blacklist; platform = Platform.platform_amd64 } opam

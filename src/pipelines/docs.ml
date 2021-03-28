@@ -73,13 +73,18 @@ let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 let v ~opam () =
   let open Current.Syntax in
   let voodoo = Voodoo.v in
-  let all_packages_jobs =
-    let tracked = Track.v ~filter:[ "result"; "mirage"; "cohttp"; "irmin" ] opam in
+  let solver_result =
+    let tracked =
+      Track.v ~filter:[ "result"; "mirage"; "cohttp"; "irmin"; "base"; "parsexp" ] opam
+    in
     Solver.incremental ~blacklist ~opam tracked
   in
+  let all_packages_jobs = solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get) in
   let all_packages =
     (* todo: add a append-only layer at this step *)
-    all_packages_jobs |> Current.map (List.map Package.all_deps) |> Current.map List.flatten
+    all_packages_jobs
+    |> Current.map (List.rev_map Package.all_deps)
+    |> Current.map List.flatten
   in
   let prepped =
     let jobs =
