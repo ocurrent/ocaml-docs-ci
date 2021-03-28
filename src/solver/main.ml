@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-let n_workers = Docs_ci_lib.Config.jobs
+let n_workers = 20
 
 let pp_timestamp f x =
   let open Unix in
@@ -53,5 +53,13 @@ let () =
            Lwt_process.open_process cmd
          in
          Service.v ~n_workers ~create_worker >>= fun service -> export service ~on:Lwt_unix.stdin)
+  | [| prog; "--jobs"; numjobs |] ->
+      let n_workers = int_of_string numjobs in
+      Lwt_main.run
+        (let create_worker hash =
+          let cmd = ("", [| prog; "--worker"; Git_unix.Store.Hash.to_hex hash |]) in
+          Lwt_process.open_process cmd
+        in
+        Service.v ~n_workers ~create_worker >>= fun service -> export service ~on:Lwt_unix.stdin)
   | [| _prog; "--worker"; hash |] -> Solver.main (Git_unix.Store.Hash.of_hex hash)
   | args -> Fmt.failwith "Usage: ocaml-ci-solver (got %a)" Fmt.(array (quote string)) args

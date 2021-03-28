@@ -4,7 +4,7 @@ let spawn_local ?solver_dir () : Solver_api.Solver.t =
   let solver_dir =
     match solver_dir with None -> Fpath.to_string (Current.state_dir "solver") | Some x -> x
   in
-  let cmd = ("", [| "docs-ci-solver" |]) in
+  let cmd = ("", [| "docs-ci-solver"; "--jobs"; string_of_int Config.jobs |]) in
   let _child = Lwt_process.open_process_none ~cwd:solver_dir ~stdin:(`FD_move c) cmd in
   let switch = Lwt_switch.create () in
   let p =
