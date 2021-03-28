@@ -96,35 +96,40 @@ module Compile = struct
     let folder = folder ~blessed package in
 
     let* _ = Folder_digest.sync ~job () in
-    let artifacts_digest = Folder_digest.get folder |> Option.value ~default:"<empty>" in
+    let artifacts_digest = Folder_digest.get folder in
     Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp folder
-      artifacts_digest;
+      (artifacts_digest |> Option.value ~default:"<empty>");
 
-    let base = Misc.get_base_image package in
+    (* TODO: invalidation *)
+    if Option.is_some artifacts_digest then (
+      Current.Job.log job "Using existing artifacts";
+      Lwt.return_ok (artifacts_digest |> Option.get) )
+    else
+      let base = Misc.get_base_image package in
 
-    let spec = spec ~artifacts_digest ~voodoo ~base ~deps ~blessed prep in
-    let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
-    let action = Cluster_api.Submission.obuilder_build spec in
+      let spec = spec ~artifacts_digest:(artifacts_digest |> Option.value ~default:"<empty>") ~voodoo ~base ~deps ~blessed prep in
+      let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
+      let action = Cluster_api.Submission.obuilder_build spec in
 
-    let version = Misc.base_image_version package in
-    let cache_hint = "docs-universe-compile-" ^ version in
-    Current.Job.log job "Using cache hint %S" cache_hint;
+      let version = Misc.base_image_version package in
+      let cache_hint = "docs-universe-compile-" ^ version in
+      Current.Job.log job "Using cache hint %S" cache_hint;
 
-    let build_pool =
-      Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint
-        ~secrets:Config.ssh_secrets_values Config.ocluster_connection
-    in
-    let* build_job = Current.Job.use_pool ~switch job build_pool in
-    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let* result = Current_ocluster.Connection.run_job ~job build_job in
-    let* () = Current.Switch.turn_off switch in
-    match result with
-    | Error (`Msg _) as e -> Lwt.return e
-    | Ok _ ->
-        let+ _ = Folder_digest.sync ~job () in
-        let artifacts_digest = Folder_digest.get folder |> Option.get in
-        Current.Job.log job "New artifacts digest => %s" artifacts_digest;
-        Ok artifacts_digest
+      let build_pool =
+        Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint
+          ~secrets:Config.ssh_secrets_values Config.ocluster_connection
+      in
+      let* build_job = Current.Job.use_pool ~switch job build_pool in
+      Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
+      let* result = Current_ocluster.Connection.run_job ~job build_job in
+      let* () = Current.Switch.turn_off switch in
+      match result with
+      | Error (`Msg _) as e -> Lwt.return e
+      | Ok _ ->
+          let+ _ = Folder_digest.sync ~job () in
+          let artifacts_digest = Folder_digest.get folder |> Option.get in
+          Current.Job.log job "New artifacts digest => %s" artifacts_digest;
+          Ok artifacts_digest
 end
 
 module CompileCache = Current_cache.Make (Compile)

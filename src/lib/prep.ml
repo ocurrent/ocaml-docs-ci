@@ -113,7 +113,7 @@ module Prep = struct
       List.map
         (fun x ->
           let f = folder x in
-          (f, Folder_digest.get f))
+          (x, Folder_digest.get f))
         prep
     in
     let digest =
@@ -121,47 +121,56 @@ module Prep = struct
       |> String.concat "-" |> Digest.string |> Digest.to_hex
     in
 
-    List.iter
-      (fun (folder, digest) ->
-        Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp folder
-          (Option.value ~default:"<empty>" digest))
-      artifacts_digest;
-
-    let base = Misc.get_base_image install in
-    let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } =
-      spec ~artifacts_digest:digest ~voodoo ~base ~install prep |> Spec.to_ocluster_spec
+    let prep =
+      List.filter_map
+        (fun (prep, digest) ->
+          Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp (folder prep)
+            (Option.value ~default:"<empty>" digest);
+          if Option.is_none digest then Some prep else None)
+        artifacts_digest
     in
-    let action = Cluster_api.Submission.obuilder_build spec in
-    let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
-    let version = Misc.base_image_version install in
-    let cache_hint = "docs-universe-prep-" ^ version in
-    Current.Job.log job "Using cache hint %S" cache_hint;
+    (* TODO: invalidation when the prep output is supposed to change  *)
+    if List.length prep = 0 then (
+      Current.Job.log job "Using existing prep files";
+      artifacts_digest |>
+      List.map (fun (package, digest) -> Value.{package; artifacts_digest=digest |> Option.get}) |>
+      Lwt.return_ok )
+    else
+      let base = Misc.get_base_image install in
+      let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } =
+        spec ~artifacts_digest:digest ~voodoo ~base ~install prep |> Spec.to_ocluster_spec
+      in
+      let action = Cluster_api.Submission.obuilder_build spec in
+      let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
+      let version = Misc.base_image_version install in
+      let cache_hint = "docs-universe-prep-" ^ version in
+      Current.Job.log job "Using cache hint %S" cache_hint;
 
-    let build_pool =
-      Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint ~src
-        ~secrets:Config.ssh_secrets_values Config.ocluster_connection
-    in
-    let* build_job = Current.Job.use_pool ~switch job build_pool in
-    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let* result = Current_ocluster.Connection.run_job ~job build_job in
-    let* () = Current.Switch.turn_off switch in
-    match result with
-    | Error (`Msg _) as e -> Lwt.return e
-    | Ok _ ->
-        let+ _ = Folder_digest.sync ~job () in
-        let artifacts_digest =
-          prep
-          |> List.map (fun x ->
-                 let f = folder x in
-                 (x, Folder_digest.get f |> Option.get))
-        in
-        Ok
-          (List.map
-             (fun (package, digest) ->
-               Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp
-                 (folder package) digest;
-               Value.{ package; artifacts_digest = digest })
-             artifacts_digest)
+      let build_pool =
+        Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint ~src
+          ~secrets:Config.ssh_secrets_values Config.ocluster_connection
+      in
+      let* build_job = Current.Job.use_pool ~switch job build_pool in
+      Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
+      let* result = Current_ocluster.Connection.run_job ~job build_job in
+      let* () = Current.Switch.turn_off switch in
+      match result with
+      | Error (`Msg _) as e -> Lwt.return e
+      | Ok _ ->
+          let+ _ = Folder_digest.sync ~job () in
+          let artifacts_digest =
+            prep
+            |> List.map (fun x ->
+                   let f = folder x in
+                   (x, Folder_digest.get f |> Option.get))
+          in
+          Ok
+            (List.map
+               (fun (package, digest) ->
+                 Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp
+                   (folder package) digest;
+                 Value.{ package; artifacts_digest = digest })
+               artifacts_digest)
 end
 
 module PrepCache = Current_cache.Make (Prep)
