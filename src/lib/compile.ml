@@ -58,6 +58,9 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
            Config.storage_folder artifacts_digest;
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
+         run "%s" (Folder_digest.compute [ compile_folder ]);
+         run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz digests %s:%s/"
+           Config.ssh_host Config.storage_folder;
        ]
 
 module Compile = struct
@@ -74,7 +77,9 @@ module Compile = struct
     type t = { deps : output list; prep : Prep.t; blessed : bool; voodoo : Current_git.Commit.t }
 
     let digest { deps; prep; blessed; voodoo } =
-      Fmt.str "%s-%s-%s-%a-%s" (Bool.to_string blessed) (Prep.package prep |> Package.digest) (Prep.artifacts_digest prep)
+      Fmt.str "%s-%s-%s-%a-%s" (Bool.to_string blessed)
+        (Prep.package prep |> Package.digest)
+        (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Current_git.Commit.hash voodoo)
   end
@@ -88,12 +93,12 @@ module Compile = struct
     let switch = Current.Switch.create ~label:"prep cluster build" () in
     let* () = Current.Job.start ~level:Mostly_harmless job in
     let package = Prep.package prep in
+    let folder = folder ~blessed package in
 
-    let* artifacts_digest = Misc.remote_digest ~job (folder ~blessed package) in
-    let artifacts_digest = Result.value artifacts_digest ~default:"an error occured" in
-
-    Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp
-      (folder ~blessed package) artifacts_digest;
+    let* _ = Folder_digest.sync ~job () in
+    let artifacts_digest = Folder_digest.get folder |> Option.value ~default:"<empty>" in
+    Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp folder
+      artifacts_digest;
 
     let base = Misc.get_base_image package in
 
@@ -113,17 +118,13 @@ module Compile = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let* result = Current_ocluster.Connection.run_job ~job build_job in
     let* () = Current.Switch.turn_off switch in
-
-    let+ artifacts_digest = Misc.remote_digest ~job (folder ~blessed package) in
-
-    match (artifacts_digest, result) with
-    | Error (`Msg digest_error), Error (`Msg ocluster_error) ->
-        Error (`Msg (digest_error ^ "\n" ^ ocluster_error))
-    | Error (`Msg digest_error), _ -> Error (`Msg digest_error)
-    | _, Error (`Msg ocluster_error) -> Error (`Msg ocluster_error)
-    | Ok digest, Ok _ ->
-        Current.Job.log job "New artifacts digest => %s" digest;
-        Ok digest
+    match result with
+    | Error (`Msg _) as e -> Lwt.return e
+    | Ok _ ->
+        let+ _ = Folder_digest.sync ~job () in
+        let artifacts_digest = Folder_digest.get folder |> Option.get in
+        Current.Job.log job "New artifacts digest => %s" artifacts_digest;
+        Ok artifacts_digest
 end
 
 module CompileCache = Current_cache.Make (Compile)
@@ -153,7 +154,7 @@ let v ~name ~voodoo ~blessed ~deps prep =
          | Error e -> Error e)
        digest
 
-let v ~voodoo ~blessed ~deps prep = 
+let v ~voodoo ~blessed ~deps prep =
   let open Current.Syntax in
   let* b_prep = prep in
   let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in

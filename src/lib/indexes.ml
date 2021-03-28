@@ -35,7 +35,7 @@ module Indexes = struct
            packages)
     in
     let remote_folder =
-      Fmt.str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder
+      Fmt .str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder
     in
     let** () =
       Current.Process.exec ~cancellable:true ~job

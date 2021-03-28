@@ -44,7 +44,8 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
   in
   let dune_install =
     List.find_opt (fun pkg -> pkg |> Package.opam |> OpamPackage.name_to_string = "dune") all_deps
-    |> Option.map (fun pkg -> run ~network ~cache "opam install %s" (Package.opam  pkg |> OpamPackage.to_string))
+    |> Option.map (fun pkg ->
+           run ~network ~cache "opam install %s" (Package.opam pkg |> OpamPackage.to_string))
     |> Option.value ~default:(comment "no dune")
   in
   let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
@@ -60,17 +61,21 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          dune_install;
          run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
-         run "mkdir -p %s" (base_folders prep);
          (* empty preps should yield an empty folder *)
+         run "mkdir -p %s" (base_folders prep);
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-prep" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
-         run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Perform the prep step for all packages *)
+         run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
+         (* Upload artifacts *)
          run ~secrets:Config.ssh_secrets ~network:Voodoo.network
            "rsync -avz prep %s:%s/ && echo '%s'" Config.ssh_host Config.storage_folder
            artifacts_digest;
+         run "%s" (Folder_digest.compute (prep |> List.rev_map folder));
+         run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz digests %s:%s/"
+           Config.ssh_host Config.storage_folder;
        ]
 
 module Prep = struct
@@ -103,21 +108,23 @@ module Prep = struct
     let switch = Current.Switch.create ~label:"prep cluster build" () in
     let* () = Current.Job.start ~level:Mostly_harmless job in
 
-    let* artifacts_digest =
-      Lwt_list.map_p
-        (fun pkg ->
-          let+ res = Misc.remote_digest ~job (folder pkg) in
-          (pkg, Result.value res ~default:"an error occured"))
+    let* _ = Folder_digest.sync ~job () in
+    let artifacts_digest =
+      List.map
+        (fun x ->
+          let f = folder x in
+          (f, Folder_digest.get f))
         prep
     in
     let digest =
-      List.map snd artifacts_digest |> String.concat "-" |> Digest.string |> Digest.to_hex
+      List.map (fun (_, x) -> Option.value ~default:"<empty>" x) artifacts_digest
+      |> String.concat "-" |> Digest.string |> Digest.to_hex
     in
 
     List.iter
-      (fun (package, digest) ->
-        Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp (folder package)
-          digest)
+      (fun (folder, digest) ->
+        Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp folder
+          (Option.value ~default:"<empty>" digest))
       artifacts_digest;
 
     let base = Misc.get_base_image install in
@@ -138,18 +145,16 @@ module Prep = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let* result = Current_ocluster.Connection.run_job ~job build_job in
     let* () = Current.Switch.turn_off switch in
-
-    let+ artifacts_digest =
-      Lwt_list.map_p
-        (fun pkg ->
-          let+ res = Misc.remote_digest ~job (folder pkg) in
-          (pkg, match res with Ok v -> v | Error (`Msg m) -> "an error occured: " ^ m))
-        prep
-    in
-
     match result with
-    | Error (`Msg _) as e -> e
+    | Error (`Msg _) as e -> Lwt.return e
     | Ok _ ->
+        let+ _ = Folder_digest.sync ~job () in
+        let artifacts_digest =
+          prep
+          |> List.map (fun x ->
+                 let f = folder x in
+                 (x, Folder_digest.get f |> Option.get))
+        in
         Ok
           (List.map
              (fun (package, digest) ->

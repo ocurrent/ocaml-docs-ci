@@ -35,31 +35,3 @@ let rsync_pull ?(digest = "") folders =
       Obuilder_spec.run ~secrets:Config.ssh_secrets ~cache ~network
         "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
-
-let pool = Current.Pool.create ~label:"ssh" 8
-
-let remote_digest ~job folder =
-  let cmd =
-    Fmt.str
-      "(find %a/ -type f -exec sha256sum {} \\; 2>/dev/null || echo 6658921) | sort -k 2 | \
-       sha256sum"
-      Fpath.pp
-      Fpath.(v Config.storage_folder // folder)
-  in
-  let switch = Current.Switch.create ~label:"ssh" () in
-  let open Lwt.Syntax in
-  let* () = Current.Job.use_pool ~switch job pool in
-  let* output = Current.Process.check_output ~job ~cancellable:true
-    ( "",
-      [|
-        "ssh";
-        "-i";
-        Fpath.to_string Config.ssh_priv_key_file;
-        "-p";
-        string_of_int Config.ssh_port;
-        Config.ssh_user ^ "@" ^ Config.ssh_host;
-        cmd;
-      |] )
-  in
-  let+ () = Current.Switch.turn_off switch in
-  output
