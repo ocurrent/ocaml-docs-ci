@@ -34,13 +34,6 @@ let schedule ~(targets : Package.t list) jobs : t list =
     | 0 -> None
     | _ ->
         remaining_targets := StringSet.diff !remaining_targets set;
-        Some
-          {
-            install = pkg;
-            prep =
-              List.filter
-                (fun pkg -> StringSet.mem (Package.digest pkg) useful_packages)
-                (Package.all_deps pkg);
-          }
+        Some { install = pkg; prep = Package.all_deps pkg }
   in
   List.filter_map check_and_add_target jobs
