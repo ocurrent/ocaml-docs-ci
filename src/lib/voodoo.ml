@@ -14,7 +14,7 @@ module Git = Current_git
 
 let v =
   let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) () in
-  Git.clone ~schedule:daily ~gref:"main" "git://github.com/jonludlam/voodoo"
+  Git.clone ~schedule:daily ~gref:"main" "git://github.com/TheLortex/voodoo"
 
 let remote_uri commit =
   let repo = Git.Commit_id.repo commit in
@@ -23,27 +23,23 @@ let remote_uri commit =
 
 let spec ~base mode t =
   let open Obuilder_spec in
-  let pin_install_voodoo =
-    run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-lib"
-      (t |> Git.Commit.id |> remote_uri)
-  in
-  let pin_install_odoc =
-    run ~network "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
-      Config.odoc
-  in
-  let pkg = match mode with Prep -> "voodoo-prep" | Do -> "voodoo-do" in
   base
   |> Spec.add
-       ( [
-           run ~network "sudo apt-get update && sudo apt-get install -yy m4";
-           (* Update opam *)
-           env "OPAMPRECISETRACKING" "1";
-           (* NOTE: See https://github.com/ocaml/opam/issues/3997 *)
-           env "OPAMDEPEXTYES" "1";
-         ]
-       @ [
-           pin_install_odoc;
-           pin_install_voodoo;
-           run ~network ~cache "opam depext -yi %s" pkg;
-           run "cp $(opam config var bin)/odoc $(opam config var bin)/%s /home/opam" pkg;
-         ] )
+       ( match mode with
+       | Prep ->
+           [
+             run ~network "sudo apt-get update && sudo apt-get install -yy m4 pkg-config";
+             run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-prep"
+               (t |> Git.Commit.id |> remote_uri);
+             run "$(opam config var bin)/voodoo-prep /home/opam";
+           ]
+       | Do ->
+           [
+             run ~network "sudo apt-get update && sudo apt-get install -yy m4";
+             run ~network
+               "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
+               Config.odoc;
+             run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do"
+               (t |> Git.Commit.id |> remote_uri);
+             run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do /home/opam";
+           ] )
