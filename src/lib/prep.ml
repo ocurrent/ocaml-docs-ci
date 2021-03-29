@@ -42,23 +42,32 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
     all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
-  let dune_install =
-    List.find_opt (fun pkg -> pkg |> Package.opam |> OpamPackage.name_to_string = "dune") all_deps
-    |> Option.map (fun pkg ->
-           run ~network ~cache "opam install %s" (Package.opam pkg |> OpamPackage.to_string))
-    |> Option.value ~default:(comment "no dune")
+  let build_preinstall =
+    List.filter
+      (fun pkg ->
+        let name = pkg |> Package.opam |> OpamPackage.name_to_string in
+        name = "dune" || name = "ocamlfind")
+      all_deps
+    |> function
+    | [] -> comment "no build system"
+    | lst ->
+        run ~network ~cache "opam install %s"
+          ( lst |> List.sort Package.compare
+          |> List.map (fun pkg -> Package.opam pkg |> OpamPackage.to_string)
+          |> String.concat " " )
   in
   let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
+         (* Pre-install build tools *)
+         build_preinstall;
          (* Install required packages *)
          copy [ "." ] ~dst:"/src";
          run "opam repo remove default && opam repo add opam /src";
          env "DUNE_CACHE" "enabled";
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
-         dune_install;
          run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
