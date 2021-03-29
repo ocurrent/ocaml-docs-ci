@@ -20,7 +20,7 @@ end
 module CharListMap = ListMap (Map.Make (Char))
 module NameListMap = ListMap (Map.Make (OpamPackage.Name))
 
-let compile ~voodoo ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t) =
+let compile ~voodoo ~digests ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t) =
   let open Current.Syntax in
   let preps_current = preps in
   let* preps = preps in
@@ -39,7 +39,7 @@ let compile ~voodoo ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t lis
         in
         let result =
           Package.Map.find_opt pkg pkg_preps
-          |> Option.map (fun prep -> prep |> Current.return |> Compile.v ~voodoo ~blessed ~deps)
+          |> Option.map (fun prep -> prep |> Current.return |> Compile.v ~digests ~voodoo ~blessed ~deps)
         in
         jobs := Package.Map.add pkg result !jobs;
         result
@@ -72,6 +72,7 @@ let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
 let v ~opam () =
   let open Current.Syntax in
+  let digests = Folder_digest.v () in
   let voodoo = Voodoo.v in
   let solver_result =
     let tracked =
@@ -95,7 +96,7 @@ let v ~opam () =
     @@ let+ res =
          Current.list_map
            (module Jobs)
-           (fun job -> Prep.v ~voodoo job |> Current.catch ~hidden:true)
+           (fun job -> Prep.v ~digests ~voodoo job |> Current.catch ~hidden:true)
            jobs
        in
        List.filter_map Result.to_option res |> List.flatten
@@ -103,5 +104,5 @@ let v ~opam () =
   let blessed =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
-  let compiled = compile ~voodoo ~blessed prepped in
+  let compiled = compile ~digests ~voodoo ~blessed prepped in
   Indexes.v compiled

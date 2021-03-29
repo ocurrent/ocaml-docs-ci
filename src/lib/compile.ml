@@ -58,7 +58,7 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
            Config.storage_folder artifacts_digest;
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
-         run "%s" (Folder_digest.compute [ compile_folder ]);
+         run "%s" (Folder_digest.compute_cmd [ compile_folder ]);
          run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz digests %s:%s/"
            Config.ssh_host Config.storage_folder;
        ]
@@ -74,73 +74,74 @@ module Compile = struct
 
   module Key = struct
     (* TODO: add more things in the key, like the global configuration *)
-    type t = { deps : output list; prep : Prep.t; blessed : bool; voodoo : Current_git.Commit.t }
+    type t = {
+      deps : output list;
+      prep : Prep.t;
+      blessed : bool;
+      voodoo : Current_git.Commit.t;
+      existing_artifacts_digest : string option;
+    }
 
-    let digest { deps; prep; blessed; voodoo } =
-      Fmt.str "%s-%s-%s-%a-%s" (Bool.to_string blessed)
+    let digest { deps; prep; blessed; voodoo; existing_artifacts_digest } =
+      Fmt.str "%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Current_git.Commit.hash voodoo)
+        (Option.value ~default:"<empty>" existing_artifacts_digest)
+      |> Digest.string |> Digest.to_hex
   end
 
   let pp f Key.{ prep; _ } = Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
 
   let auto_cancel = true
 
-  let build No_context job Key.{ deps; prep; blessed; voodoo } =
+  let build No_context job Key.{ deps; prep; blessed; voodoo; existing_artifacts_digest } =
     let open Lwt.Syntax in
-    let switch = Current.Switch.create ~label:"prep cluster build" () in
-    let* () = Current.Job.start ~level:Mostly_harmless job in
     let package = Prep.package prep in
     let folder = folder ~blessed package in
-
-    let* _ = Folder_digest.sync ~job () in
-    let artifacts_digest = Folder_digest.get folder in
-    Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp folder
-      (artifacts_digest |> Option.value ~default:"<empty>");
-
+    match existing_artifacts_digest with
     (* TODO: invalidation *)
-    if Option.is_some artifacts_digest then (
-      Current.Job.log job "Using existing artifacts";
-      Lwt.return_ok (artifacts_digest |> Option.get) )
-    else
-      let base = Misc.get_base_image package in
-
-      let spec = spec ~artifacts_digest:(artifacts_digest |> Option.value ~default:"<empty>") ~voodoo ~base ~deps ~blessed prep in
-      let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
-      let action = Cluster_api.Submission.obuilder_build spec in
-
-      let version = Misc.base_image_version package in
-      let cache_hint = "docs-universe-compile-" ^ version in
-      Current.Job.log job "Using cache hint %S" cache_hint;
-
-      let build_pool =
-        Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint
-          ~secrets:Config.ssh_secrets_values Config.ocluster_connection
-      in
-      let* build_job = Current.Job.use_pool ~switch job build_pool in
-      Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-      let* result = Current_ocluster.Connection.run_job ~job build_job in
-      let* () = Current.Switch.turn_off switch in
-      match result with
-      | Error (`Msg _) as e -> Lwt.return e
-      | Ok _ ->
-          let+ _ = Folder_digest.sync ~job () in
-          let artifacts_digest = Folder_digest.get folder |> Option.get in
-          Current.Job.log job "New artifacts digest => %s" artifacts_digest;
-          Ok artifacts_digest
+    | Some artifacts_digest ->
+        let* () = Current.Job.start ~level:Harmless job in
+        Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder artifacts_digest;
+        Lwt.return_ok artifacts_digest
+    | None -> (
+        let base = Misc.get_base_image package in
+        let spec = spec ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
+        let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
+        let action = Cluster_api.Submission.obuilder_build spec in
+        let version = Misc.base_image_version package in
+        let cache_hint = "docs-universe-compile-" ^ version in
+        let build_pool =
+          Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint
+            ~secrets:Config.ssh_secrets_values Config.ocluster_connection
+        in
+        let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
+        Current.Job.log job "Using cache hint %S" cache_hint;
+        Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
+        let* result = Current_ocluster.Connection.run_job ~job build_job in
+        match result with
+        | Error (`Msg _) as e -> Lwt.return e
+        | Ok _ ->
+            let+ () = Folder_digest.sync ~job () in
+            let artifacts_digest = Folder_digest.get () folder |> Option.get in
+            Current.Job.log job "New artifacts digest => %s" artifacts_digest;
+            Ok artifacts_digest )
 end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~name ~voodoo ~blessed ~deps prep =
+let v ~name ~voodoo ~digests ~blessed ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
-  |> let> prep = prep and> voodoo = voodoo and> blessed = blessed and> deps = deps in
+  |> let> prep = prep
+     and> voodoo = voodoo
+     and> digests = digests
+     and> blessed = blessed
+     and> deps = deps in
      let package = Prep.package prep in
      let blessed = Package.Blessed.is_blessed blessed package in
-     let digest = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps } in
      let opam = package |> Package.opam in
      let version = opam |> OpamPackage.version_to_string in
      let compile_folder = folder ~blessed package in
@@ -153,16 +154,21 @@ let v ~name ~voodoo ~blessed ~deps prep =
            kind = Mld;
          }
      in
+     let existing_artifacts_digest = Folder_digest.get digests compile_folder in
+     let digest =
+       CompileCache.get No_context
+         Compile.Key.{ prep; blessed; voodoo; deps; existing_artifacts_digest }
+     in
      Current.Primitive.map_result
        (function
          | Ok artifacts_digest -> Ok { package; blessed; odoc = Mld odoc; artifacts_digest }
          | Error e -> Error e)
        digest
 
-let v ~voodoo ~blessed ~deps prep =
+let v ~voodoo ~digests ~blessed ~deps prep =
   let open Current.Syntax in
   let* b_prep = prep in
   let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
-  v ~name ~voodoo ~blessed ~deps prep
+  v ~name ~voodoo ~digests ~blessed ~deps prep
 
 let folder { package; blessed; _ } = folder ~blessed package
