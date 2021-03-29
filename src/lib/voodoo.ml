@@ -31,7 +31,7 @@ let spec ~base mode t =
              run ~network "sudo apt-get update && sudo apt-get install -yy m4 pkg-config";
              run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-prep"
                (t |> Git.Commit.id |> remote_uri);
-             run "$(opam config var bin)/voodoo-prep /home/opam";
+             run "cp $(opam config var bin)/voodoo-prep /home/opam";
            ]
        | Do ->
            [
