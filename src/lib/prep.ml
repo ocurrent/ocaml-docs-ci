@@ -60,11 +60,11 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
-         (* Pre-install build tools *)
-         build_preinstall;
          (* Install required packages *)
          copy [ "." ] ~dst:"/src";
          run "opam repo remove default && opam repo add opam /src";
+         (* Pre-install build tools *)
+         build_preinstall;
          env "DUNE_CACHE" "enabled";
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
