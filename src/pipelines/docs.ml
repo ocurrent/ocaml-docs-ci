@@ -20,7 +20,8 @@ end
 module CharListMap = ListMap (Map.Make (Char))
 module NameListMap = ListMap (Map.Make (OpamPackage.Name))
 
-let compile ~voodoo ~digests ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t) =
+let compile ~voodoo ~digests ~(blessed : Package.Blessed.t Current.t)
+    (preps : Prep.t list Current.t) =
   let open Current.Syntax in
   let preps_current = preps in
   let* preps = preps in
@@ -39,7 +40,8 @@ let compile ~voodoo ~digests ~(blessed : Package.Blessed.t Current.t) (preps : P
         in
         let result =
           Package.Map.find_opt pkg pkg_preps
-          |> Option.map (fun prep -> prep |> Current.return |> Compile.v ~digests ~voodoo ~blessed ~deps)
+          |> Option.map (fun prep ->
+                 prep |> Current.return |> Compile.v ~digests ~voodoo ~blessed ~deps)
         in
         jobs := Package.Map.add pkg result !jobs;
         result
@@ -52,7 +54,7 @@ let compile ~voodoo ~digests ~(blessed : Package.Blessed.t Current.t) (preps : P
          |> Option.map (fun x ->
                 ( (package |> Package.opam |> OpamPackage.name_to_string).[0] |> Char.uppercase_ascii,
                   ( package |> Package.opam |> OpamPackage.name,
-                    x (*|> Current.state ~hidden:true*)
+                    x |> Current.state ~hidden:true
                     |> Current.collapse
                          ~key:(package |> Package.opam |> OpamPackage.to_string)
                          ~value:"" ~input:preps_current ) )))
@@ -80,12 +82,12 @@ let v ~opam () =
     in
     Solver.incremental ~blacklist ~opam tracked
   in
-  let all_packages_jobs = solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get) in
+  let all_packages_jobs =
+    solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get)
+  in
   let all_packages =
     (* todo: add a append-only layer at this step *)
-    all_packages_jobs
-    |> Current.map (List.rev_map Package.all_deps)
-    |> Current.map List.flatten
+    all_packages_jobs |> Current.map (List.rev_map Package.all_deps) |> Current.map List.flatten
   in
   let prepped =
     let jobs =
@@ -104,5 +106,6 @@ let v ~opam () =
   let blessed =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
-  let compiled = compile ~digests ~voodoo ~blessed prepped in
-  Indexes.v compiled
+  compile ~digests ~voodoo ~blessed prepped
+  |> Current.map (List.filter_map Result.to_option)
+  |> Indexes.v
