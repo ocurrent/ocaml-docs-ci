@@ -72,10 +72,7 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
          run "mkdir -p %s" (base_folders prep);
-         copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-prep" ]
-           ~dst:"/home/opam/";
-         run "mv ~/odoc $(opam config var bin)/odoc";
+         copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
