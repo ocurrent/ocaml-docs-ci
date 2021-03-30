@@ -35,7 +35,7 @@ module Indexes = struct
            packages)
     in
     let remote_folder =
-      Fmt .str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder
+      Fmt.str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder
     in
     let** () =
       Current.Process.exec ~cancellable:true ~job
@@ -65,11 +65,42 @@ module Indexes = struct
       Fpath.(state_dir / "Makefile")
       (Fmt.to_to_string (Mld.Gen.pp_makefile ~odoc:Config.odoc_bin ~output:output_dir) mld)
     |> Result.get_ok;
+    let gen_universes, gen_packages = (Mld.Gen.universes mld, Mld.Gen.packages mld) in
+    let command_universes = Mld.compile_command ~odoc:Config.odoc_bin gen_universes.compilation in
+    let command_packages = Mld.compile_command ~odoc:Config.odoc_bin gen_packages.compilation in
     let** () =
-      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; "roots-compile" |])
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ( "",
+          [|
+            "cp";
+            Fpath.to_string gen_universes.odoc.file ^ ".new";
+            Fpath.to_string gen_universes.odoc.file;
+          |] )
     in
     let** () =
-      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job ("", [| "make"; Fmt.str "-j%d" Config.jobs; "pages-link"; "roots-link" |])
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ( "",
+          [|
+            "cp";
+            Fpath.to_string gen_packages.odoc.file ^ ".new";
+            Fpath.to_string gen_packages.odoc.file;
+          |] )
+    in
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ( "",
+          command_packages |> String.split_on_char ' ' |> List.filter (( <> ) "") |> Array.of_list
+        )
+    in
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ( "",
+          command_universes |> String.split_on_char ' ' |> List.filter (( <> ) "") |> Array.of_list
+        )
+    in
+    let** () =
+      Current.Process.exec ~cwd:state_dir ~cancellable:true ~job
+        ("", [| "make"; Fmt.str "-j%d" Config.jobs; "pages-link"; "roots-link" |])
     in
     let** () =
       Current.Process.exec ~cwd:state_dir ~cancellable:true ~job

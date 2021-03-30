@@ -16,6 +16,8 @@ type ('a, 'b) command
 
 val v : ?children:mld t list -> ?parent:'a t -> 'b t -> bool -> ('a, 'b) command
 
+val compile_command : ?odoc:string -> _ command -> string
+
 val pp_compile_command : ?odoc:string -> unit -> _ command Fmt.t
 
 val pp_link_command : ?odoc:string -> unit -> _ command Fmt.t
@@ -34,6 +36,12 @@ module Gen : sig
   type t
 
   val v : (Package.t * bool * odoc_dyn) list -> t
+
+  type gen_page = { content : string; odoc : mld odoc; compilation : (mld, mld) command }
+
+  val universes : t -> gen_page
+
+  val packages : t -> gen_page
 
   val pp_makefile : ?odoc:string -> output:Fpath.t -> t Fmt.t
 

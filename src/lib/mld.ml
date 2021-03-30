@@ -19,7 +19,7 @@ type 'a t = {
 }
 
 let odoc_reference : type a. a t -> string =
- fun t -> match t.kind with Mld -> "page-\\\"" ^ t.name ^ "\\\"" | CU -> "module-" ^ t.name
+ fun t -> match t.kind with Mld -> "page-\"" ^ t.name ^ "\"" | CU -> "module-" ^ t.name
 
 let odoc_filename : type a. a t -> string =
  fun t -> match t.kind with Mld -> "page-" ^ t.name | CU -> t.name
@@ -45,19 +45,20 @@ type ('a, 'b) command = { children : mld t list; parent : 'a t option; target : 
 
 let v ?(children = []) ?parent target skip = { children; parent; target; skip }
 
-let pp_compile_command ?(odoc = "odoc") () f { children; parent; target; skip } =
+let compile_command ?(odoc = "odoc") { children; parent; target; _ } =
   let parent_pp f parent =
     Fmt.pf f "--parent %s -I %a" (odoc_reference parent) Fpath.pp (include_path parent)
   in
-  let command =
-    Fmt.str "%s compile --warn-error %a %a %a %a" odoc Fpath.pp target.file
-      Fmt.(option (any "-o " ++ Fpath.pp))
-      target.target
-      Fmt.(option parent_pp)
-      parent
-      Fmt.(list ~sep:(any " ") child_pp)
-      children
-  in
+  Fmt.str "%s compile --warn-error %a %a %a %a" odoc Fpath.pp target.file
+    Fmt.(option (any "-o " ++ Fpath.pp))
+    target.target
+    Fmt.(option parent_pp)
+    parent
+    Fmt.(list ~sep:(any " ") child_pp)
+    children
+
+let pp_compile_command ?odoc () f ({ skip; _ } as t) =
+  let command = compile_command ?odoc t |> String.escaped in
   if skip then Fmt.pf f "echo skipping"
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
@@ -68,6 +69,7 @@ let pp_link_command ?(odoc = "odoc") () f { children; target; skip; _ } =
     Fmt.str "%s link %a %a" odoc Fpath.pp (odoc_file target)
       Fmt.(list ~sep:(any " ") include_pp)
       include_paths
+    |> String.escaped
   in
   if skip then Fmt.pf f "echo skipping"
   else Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
@@ -75,6 +77,7 @@ let pp_link_command ?(odoc = "odoc") () f { children; target; skip; _ } =
 let pp_html_command ?(odoc = "odoc") ?output () f t =
   let command =
     Fmt.str "%s html %a %a" odoc Fpath.pp (odocl_file t) Fmt.(option (any "-o " ++ Fpath.pp)) output
+    |> String.escaped
   in
   Fmt.pf f "(echo \"%s\" && %s) || exit 1" command command
 
@@ -285,21 +288,9 @@ module Gen = struct
     let file_mld = t.target.file in
     let file_odoc = odoc_file t.target in
     let file_odocl = odocl_file t.target in
-    Fmt.pf f "
-%s-link:: %a
-
-%s-compile:: %a
-
-%a: %a
-\t@@%a
-
-%a: %a %a
-\t@@%a
-\t@@%a
-" target Fpath.pp file_odocl
-  target Fpath.pp file_odoc
-      Fpath.pp file_odoc Fpath.pp file_mld (pp_compile_command ~odoc ()) t Fpath.pp file_odocl
-      Fpath.pp file_odoc
+    Fmt.pf f "\n%s-link:: %a\n\n%s-compile:: %a\n\n%a: %a\n\t@@%a\n\n%a: %a %a\n\t@@%a\n\t@@%a\n"
+      target Fpath.pp file_odocl target Fpath.pp file_odoc Fpath.pp file_odoc Fpath.pp file_mld
+      (pp_compile_command ~odoc ()) t Fpath.pp file_odocl Fpath.pp file_odoc
       Fmt.(list ~sep:(any " ") (using odoc_file Fpath.pp))
       t.children (pp_link_command ~odoc ()) t
       (pp_html_command ~odoc ~output ())
