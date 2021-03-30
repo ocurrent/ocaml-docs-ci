@@ -5,7 +5,7 @@ module Indexes = struct
 
   let pp f _ = Fmt.pf f "indexes build"
 
-  let auto_cancel = false
+  let auto_cancel = true
 
   module Key = struct
     type t = Compile.t list
