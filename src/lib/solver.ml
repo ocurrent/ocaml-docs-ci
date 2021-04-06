@@ -55,13 +55,22 @@ let perform_solve ~job ~(platform : Platform.t) ~opam track =
   match res with
   | Ok [] -> Fmt.error_msg "no platform"
   | Ok [ x ] ->
+    let solution = List.map
+      (fun (a, b) ->
+        Current.Job.log job "%s: %s" a (String.concat "; " b);
+        (OpamPackage.of_string a, List.map OpamPackage.of_string b))
+      x.packages
+    in
+    let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
+    let compiler = List.find (fun (p,_) -> OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler") solution |> fst in
+    let version = OpamPackage.version compiler in
+    if OpamPackage.Version.compare version min_compiler_version >= 0
+    then
       Ok
-        ( List.map
-            (fun (a, b) ->
-              Current.Job.log job "%s: %s" a (String.concat "; " b);
-              (OpamPackage.of_string a, List.map OpamPackage.of_string b))
-            x.packages,
+        ( solution,
           x.commit )
+  else
+    Fmt.error_msg "Solution requires compiler verion older than minimum"
   | Ok _ -> Fmt.error_msg "??"
   | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
 

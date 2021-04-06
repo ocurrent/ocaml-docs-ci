@@ -42,6 +42,26 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
     all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
+  (* Only enable dune cache for dune >= 2.1 - to remove errors like:
+  #=== ERROR while compiling base64.2.3.0 =======================================#
+  # context              2.0.8 | linux/x86_64 | ocaml-base-compiler.4.06.1 | file:///src
+  # path                 ~/.opam/4.06/.opam-switch/build/base64.2.3.0
+  # command              ~/.opam/4.06/bin/dune build -p base64 -j 127
+  # exit-code            1
+  # env-file             ~/.opam/log/base64-1-9efc19.env
+  # output-file          ~/.opam/log/base64-1-9efc19.out
+  ### output ###
+  # Error: link: /home/opam/.cache/dune/db/v2/temp/promoting: Invalid cross-device link
+
+  *)
+  let dune_cache_enabled =
+    all_deps |> List.exists (fun p ->
+      let opam = Package.opam p in
+      let min_dune_version = OpamPackage.Version.of_string "2.1.0" in
+      match OpamPackage.name_to_string opam with
+      | "dune" -> OpamPackage.Version.compare (OpamPackage.version opam) min_dune_version >= 0
+      | _ -> false)
+  in
   let build_preinstall =
     List.filter
       (fun pkg ->
@@ -51,10 +71,13 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
     |> function
     | [] -> comment "no build system"
     | lst ->
-        run ~network ~cache "opam install %s"
-          ( lst |> List.sort Package.compare
+        let packages_str =
+          lst |> List.sort Package.compare
           |> List.map (fun pkg -> Package.opam pkg |> OpamPackage.to_string)
-          |> String.concat " " )
+          |> String.concat " "
+        in
+        run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
+          
   in
   let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
@@ -65,7 +88,7 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          run "opam repo remove default && opam repo add opam /src";
          (* Pre-install build tools *)
          build_preinstall;
-         env "DUNE_CACHE" "enabled";
+         env "DUNE_CACHE" (if dune_cache_enabled then "enabled" else "disabled");
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
          run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
