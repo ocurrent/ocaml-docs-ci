@@ -14,7 +14,7 @@ module Git = Current_git
 
 let v =
   let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) () in
-  Git.clone ~schedule:daily ~gref:"main" "git://github.com/TheLortex/voodoo"
+  Git.clone ~schedule:daily ~gref:"main" "git://github.com/ocaml-doc/voodoo"
 
 let remote_uri commit =
   let repo = Git.Commit_id.repo commit in
