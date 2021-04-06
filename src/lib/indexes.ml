@@ -1,3 +1,5 @@
+let pool = Current.Pool.create ~label:"indexes" 1
+
 module Indexes = struct
   type t = No_context
 
@@ -27,7 +29,7 @@ module Indexes = struct
     let ( let** ) = Lwt_result.bind in
     let state_dir = Current.state_dir "indexes-compile" in
     let output_dir = Current.state_dir "indexes-html" in
-    let* () = Current.Job.start ~level:Harmless job in
+    let* () = Current.Job.start ~pool ~level:Harmless job in
     let mld =
       Mld.Gen.v
         (List.map
