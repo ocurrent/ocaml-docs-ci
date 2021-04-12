@@ -93,7 +93,9 @@ module Cache = struct
     let fname = fname track in
     try
       let file = open_in (Fpath.to_string fname) in
-      Some (Marshal.from_channel file)
+      let result = Marshal.from_channel file in
+      close_in file;
+      Some result
     with Failure _ -> None
 
   let write ((track, value) : Track.t * cache_value) =
