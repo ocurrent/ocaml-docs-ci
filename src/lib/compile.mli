@@ -13,7 +13,7 @@ val folder : t -> Fpath.t
 val odoc : t -> Mld.Gen.odoc_dyn
 
 val v :
-  voodoo:Voodoo.t Current.t ->
+  voodoo:Voodoo.Do.t Current.t ->
   digests:Folder_digest.t Current.t ->
   blessed:Package.Blessed.t Current.t ->
   deps:t list Current.t ->

@@ -11,7 +11,7 @@ let odoc t = t.odoc
 
 let package t = t.package
 
-let network = Voodoo.network
+let network = Misc.network
 
 let folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
@@ -32,7 +32,7 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
   let compile_folder = folder ~blessed package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
-  let tools = Voodoo.spec ~base Do voodoo |> Spec.finish in
+  let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
@@ -59,7 +59,7 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
          run "%s" (Folder_digest.compute_cmd [ compile_folder ]);
-         run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz digests %s:%s/"
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
            Config.ssh_host Config.storage_folder;
        ]
 
@@ -78,7 +78,7 @@ module Compile = struct
       deps : output list;
       prep : Prep.t;
       blessed : bool;
-      voodoo : Current_git.Commit.t;
+      voodoo : Voodoo.Do.t;
       existing_artifacts_digest : string option;
     }
 
@@ -87,7 +87,7 @@ module Compile = struct
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
-        deps (Current_git.Commit.hash voodoo)
+        deps (Voodoo.Do.digest voodoo)
         (Option.value ~default:"<empty>" existing_artifacts_digest)
       |> Digest.string |> Digest.to_hex
   end

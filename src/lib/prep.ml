@@ -1,6 +1,6 @@
 module Git = Current_git
 
-let network = Voodoo.network
+let network = Misc.network
 
 let cache = Voodoo.cache
 
@@ -42,25 +42,26 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
     all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
     |> String.concat " "
   in
-  (* Only enable dune cache for dune >= 2.1 - to remove errors like:
-  #=== ERROR while compiling base64.2.3.0 =======================================#
-  # context              2.0.8 | linux/x86_64 | ocaml-base-compiler.4.06.1 | file:///src
-  # path                 ~/.opam/4.06/.opam-switch/build/base64.2.3.0
-  # command              ~/.opam/4.06/bin/dune build -p base64 -j 127
-  # exit-code            1
-  # env-file             ~/.opam/log/base64-1-9efc19.env
-  # output-file          ~/.opam/log/base64-1-9efc19.out
-  ### output ###
-  # Error: link: /home/opam/.cache/dune/db/v2/temp/promoting: Invalid cross-device link
 
+  (* Only enable dune cache for dune >= 2.1 - to remove errors like:
+     #=== ERROR while compiling base64.2.3.0 =======================================#
+     # context              2.0.8 | linux/x86_64 | ocaml-base-compiler.4.06.1 | file:///src
+     # path                 ~/.opam/4.06/.opam-switch/build/base64.2.3.0
+     # command              ~/.opam/4.06/bin/dune build -p base64 -j 127
+     # exit-code            1
+     # env-file             ~/.opam/log/base64-1-9efc19.env
+     # output-file          ~/.opam/log/base64-1-9efc19.out
+     ### output ###
+     # Error: link: /home/opam/.cache/dune/db/v2/temp/promoting: Invalid cross-device link
   *)
   let dune_cache_enabled =
-    all_deps |> List.exists (fun p ->
-      let opam = Package.opam p in
-      let min_dune_version = OpamPackage.Version.of_string "2.1.0" in
-      match OpamPackage.name_to_string opam with
-      | "dune" -> OpamPackage.Version.compare (OpamPackage.version opam) min_dune_version >= 0
-      | _ -> false)
+    all_deps
+    |> List.exists (fun p ->
+           let opam = Package.opam p in
+           let min_dune_version = OpamPackage.Version.of_string "2.1.0" in
+           match OpamPackage.name_to_string opam with
+           | "dune" -> OpamPackage.Version.compare (OpamPackage.version opam) min_dune_version >= 0
+           | _ -> false)
   in
   let build_preinstall =
     List.filter
@@ -77,9 +78,9 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
           |> String.concat " "
         in
         run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
-          
   in
-  let tools = Voodoo.spec ~base Prep voodoo |> Spec.finish in
+
+  let tools = Voodoo.Prep.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
@@ -99,11 +100,11 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
-         run ~secrets:Config.ssh_secrets ~network:Voodoo.network
+         run ~secrets:Config.ssh_secrets ~network:Misc.network
            "rsync -avz prep %s:%s/ && echo '%s'" Config.ssh_host Config.storage_folder
            artifacts_digest;
          run "%s" (Folder_digest.compute_cmd (prep |> List.rev_map folder));
-         run ~secrets:Config.ssh_secrets ~network:Voodoo.network "rsync -avz digests %s:%s/"
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
            Config.ssh_host Config.storage_folder;
        ]
 
@@ -115,11 +116,11 @@ module Prep = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { job : Jobs.t; voodoo : Voodoo.t; artifacts_digests : string option list }
+    type t = { job : Jobs.t; voodoo : Voodoo.Prep.t; artifacts_digests : string option list }
 
     let digest { job = { install; _ }; voodoo; artifacts_digests } =
       (List.map (Option.value ~default:"<empty>") artifacts_digests |> String.concat "-")
-      ^ Package.digest install ^ Git.Commit.hash voodoo
+      ^ Package.digest install ^ Voodoo.Prep.digest voodoo
       |> Digest.string |> Digest.to_hex
   end
 
