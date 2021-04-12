@@ -100,9 +100,9 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
-         run ~secrets:Config.ssh_secrets ~network:Misc.network
-           "rsync -avz prep %s:%s/ && echo '%s'" Config.ssh_host Config.storage_folder
-           artifacts_digest;
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz prep %s:%s/ && echo '%s'"
+           Config.ssh_host Config.storage_folder artifacts_digest;
+         (* Compute artifacts digests and upload them *)
          run "%s" (Folder_digest.compute_cmd (prep |> List.rev_map folder));
          run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
            Config.ssh_host Config.storage_folder;
@@ -138,6 +138,7 @@ module Prep = struct
 
   let build digests job Key.{ job = { install; prep }; voodoo; artifacts_digests } =
     let open Lwt.Syntax in
+    let ( let** ) = Lwt_result.bind in
     (* TODO: invalidation when the prep output is supposed to change  *)
     if List.for_all Option.is_some artifacts_digests then (
       let* () = Current.Job.start ~level:Harmless job in
@@ -182,24 +183,22 @@ module Prep = struct
             (Option.value ~default:"<empty>" digest))
         artifacts_digests;
       Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-      let* result = Current_ocluster.Connection.run_job ~job build_job in
-      match result with
-      | Error (`Msg _) as e -> Lwt.return e
-      | Ok _ ->
-          let+ () = Folder_digest.sync ~job () in
-          let artifacts_digest =
-            prep
-            |> List.map (fun x ->
-                   let f = folder x in
-                   (x, Folder_digest.get digests f |> Option.get))
-          in
-          Ok
-            (List.map
-               (fun (package, digest) ->
-                 Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp
-                   (folder package) digest;
-                 Value.{ package_digest = Package.digest package; artifacts_digest = digest })
-               artifacts_digest)
+      let** _ = Current_ocluster.Connection.run_job ~job build_job in
+      let+ () = Folder_digest.sync ~job () in
+      let artifacts_digest =
+        List.map
+          (fun x ->
+            let f = folder x in
+            (x, Folder_digest.get digests f |> Option.get))
+          prep
+      in
+      Ok
+        (List.map
+           (fun (package, digest) ->
+             Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp (folder package)
+               digest;
+             Value.{ package_digest = Package.digest package; artifacts_digest = digest })
+           artifacts_digest)
 end
 
 module PrepCache = Current_cache.Make (Prep)
@@ -207,6 +206,20 @@ module PrepCache = Current_cache.Make (Prep)
 type t = { package : Package.t; artifacts_digest : string }
 
 module StringMap = Map.Make (String)
+
+let combine ~(job : Jobs.t) artifacts_digests =
+  let packages = job.prep in
+  let artifacts_digests =
+    artifacts_digests |> List.to_seq
+    |> Seq.map (fun Prep.Value.{ package_digest; artifacts_digest } ->
+           (package_digest, artifacts_digest))
+    |> StringMap.of_seq
+  in
+  List.map
+    (fun package ->
+      let digest = StringMap.find (Package.digest package) artifacts_digests in
+      { package; artifacts_digest = digest })
+    packages
 
 (** Assumption: packages are co-installable *)
 let v ~voodoo ~(digests : Folder_digest.t Current.t) (job : Jobs.t Current.t) =
@@ -217,24 +230,7 @@ let v ~voodoo ~(digests : Folder_digest.t Current.t) (job : Jobs.t Current.t) =
        List.map (fun package -> Folder_digest.get digests (folder package)) job.prep
      in
      PrepCache.get digests { job; voodoo; artifacts_digests }
-     |> Current.Primitive.map_result (function
-          | Error _ as e -> e
-          | Ok artifacts_digests ->
-              let packages = job.prep in
-              let artifacts_digests =
-                artifacts_digests |> List.to_seq
-                |> Seq.map (fun Prep.Value.{ package_digest; artifacts_digest } ->
-                       (package_digest, artifacts_digest))
-                |> StringMap.of_seq
-              in
-              let result =
-                List.map
-                  (fun package ->
-                    let digest = StringMap.find (Package.digest package) artifacts_digests in
-                    { package; artifacts_digest = digest })
-                  packages
-              in
-              Ok result)
+     |> Current.Primitive.map_result (Result.map (combine ~job))
 
 let package (t : t) = t.package
 

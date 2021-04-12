@@ -38,27 +38,37 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
        [
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
+         (* obtain the compiled dependencies *)
          import_deps deps;
+         (* obtain the prep folder *)
          Misc.rsync_pull ~digest:(Prep.artifacts_digest prep) [ prep_folder ];
          run "find . -type d";
+         (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
+         (* remove eventual leftovers (should not be needed)*)
          run
            "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
             compile/packages/*.odoc";
          run "rm -f compile/packages/%s/*.odoc" name;
+         (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
+         (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
          run "mkdir -p html";
+         (* Extract compile output *)
          run ~secrets:Config.ssh_secrets ~network
            "rsync -avzR /home/opam/docs/./compile/ %s:%s/ && echo '%s'" Config.ssh_host
            Config.storage_folder artifacts_digest;
+         (* Extract html output *)
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
+         (* Compute compile folder digest *)
          run "%s" (Folder_digest.compute_cmd [ compile_folder ]);
+         (* Extract the digest info *)
          run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
            Config.ssh_host Config.storage_folder;
        ]
@@ -101,7 +111,8 @@ module Compile = struct
     let package = Prep.package prep in
     let folder = folder ~blessed package in
     match existing_artifacts_digest with
-    (* TODO: invalidation *)
+    (* Here, we first look if there are already artifacts in the compilation folder.
+       TODO: invalidation when the cache key changes. *)
     | Some artifacts_digest ->
         let* () = Current.Job.start ~level:Harmless job in
         Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder artifacts_digest;
@@ -160,9 +171,7 @@ let v ~name ~voodoo ~digests ~blessed ~deps prep =
          Compile.Key.{ prep; blessed; voodoo; deps; existing_artifacts_digest }
      in
      Current.Primitive.map_result
-       (function
-         | Ok artifacts_digest -> Ok { package; blessed; odoc = Mld odoc; artifacts_digest }
-         | Error e -> Error e)
+       (Result.map (fun artifacts_digest -> { package; blessed; odoc = Mld odoc; artifacts_digest }))
        digest
 
 let v ~voodoo ~digests ~blessed ~deps prep =
