@@ -75,7 +75,9 @@ let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 let v ~opam () =
   let open Current.Syntax in
   let digests = Folder_digest.v () in
-  let voodoo = Voodoo.v in
+  let voodoo = Voodoo.v () in
+  let v_do = Current.map Voodoo.Do.v voodoo in
+  let v_prep = Current.map Voodoo.Prep.v voodoo in
   let solver_result =
     let tracked =
       Track.v ~filter:[ "result"; "mirage"; "cohttp"; "irmin"; "base"; "parsexp" ] opam
@@ -98,7 +100,7 @@ let v ~opam () =
     @@ let+ res =
          Current.list_map
            (module Jobs)
-           (fun job -> Prep.v ~digests ~voodoo job |> Current.catch ~hidden:true)
+           (fun job -> Prep.v ~digests ~voodoo:v_prep job |> Current.catch ~hidden:true)
            jobs
        in
        List.filter_map Result.to_option res |> List.flatten
@@ -106,6 +108,6 @@ let v ~opam () =
   let blessed =
     Current.map (fun prep -> prep |> List.map Prep.package |> Package.Blessed.v) prepped
   in
-  compile ~digests ~voodoo ~blessed prepped
+  compile ~digests ~voodoo:v_do ~blessed prepped
   |> Current.map (List.filter_map Result.to_option)
   |> Indexes.v
