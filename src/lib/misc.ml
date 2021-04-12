@@ -11,6 +11,7 @@ let base_image_version package =
   | [ major; minor; _micro ] -> major ^ "." ^ minor
   | _xs -> "4.12"
 
+(** Select base image to use *)
 let get_base_image package = Spec.make ("ocaml/opam:ubuntu-ocaml-" ^ base_image_version package)
 
 let network = [ "host" ]
@@ -19,6 +20,8 @@ let docs_cache_folder = "/home/opam/docs-cache/"
 
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
+(** Obuilder operation to locally pull the selected folders. The [digests] option 
+is used to invalidate the operation if the expected value changes. *)
 let rsync_pull ?(digest = "") folders =
   let sources =
     List.map

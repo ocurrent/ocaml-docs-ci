@@ -1,4 +1,5 @@
 type t = { install : Package.t; prep : Package.t list }
+(** a job is one package to install, from which a set of prep folders can be derived.*)
 
 let pp f (t : t) = Fmt.pf f "%a" Package.pp t.install
 
@@ -18,7 +19,11 @@ package.version.universe -> 1 2 3 4 5
                         3 [ o o o x x x x x ]
                         4 [ o x x x o x x x ]
 
-  *)
+
+Note: this solution is not ideal. Prep steps may fail (and are more prone to failure as the 
+number of installed packages increases), so the algorithm might select "big" prep jobs
+that actually fail to build, and thus removes a large set of good candidates. 
+*)
 let schedule ~(targets : Package.t list) jobs : t list =
   Printf.printf "Schedule %d\n" (List.length jobs);
   let targets_digests = targets |> List.rev_map Package.digest |> StringSet.of_list in

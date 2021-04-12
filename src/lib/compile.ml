@@ -66,7 +66,7 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
 module Compile = struct
   type output = t
 
-  type t = No_context
+  type t = Folder_digest.t
 
   let id = "voodoo-do"
 
@@ -96,7 +96,7 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let build No_context job Key.{ deps; prep; blessed; voodoo; existing_artifacts_digest } =
+  let build digests job Key.{ deps; prep; blessed; voodoo; existing_artifacts_digest } =
     let open Lwt.Syntax in
     let package = Prep.package prep in
     let folder = folder ~blessed package in
@@ -125,7 +125,7 @@ module Compile = struct
         | Error (`Msg _) as e -> Lwt.return e
         | Ok _ ->
             let+ () = Folder_digest.sync ~job () in
-            let artifacts_digest = Folder_digest.get () folder |> Option.get in
+            let artifacts_digest = Folder_digest.get digests folder |> Option.get in
             Current.Job.log job "New artifacts digest => %s" artifacts_digest;
             Ok artifacts_digest )
 end
@@ -156,7 +156,7 @@ let v ~name ~voodoo ~digests ~blessed ~deps prep =
      in
      let existing_artifacts_digest = Folder_digest.get digests compile_folder in
      let digest =
-       CompileCache.get No_context
+       CompileCache.get digests
          Compile.Key.{ prep; blessed; voodoo; deps; existing_artifacts_digest }
      in
      Current.Primitive.map_result

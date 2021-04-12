@@ -109,7 +109,7 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
        ]
 
 module Prep = struct
-  type t = No_context
+  type t = Folder_digest.t
 
   let id = "voodoo-prep"
 
@@ -136,7 +136,7 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build No_context job Key.{ job = { install; prep }; voodoo; artifacts_digests } =
+  let build digests job Key.{ job = { install; prep }; voodoo; artifacts_digests } =
     let open Lwt.Syntax in
     (* TODO: invalidation when the prep output is supposed to change  *)
     if List.for_all Option.is_some artifacts_digests then (
@@ -191,7 +191,7 @@ module Prep = struct
             prep
             |> List.map (fun x ->
                    let f = folder x in
-                   (x, Folder_digest.get () f |> Option.get))
+                   (x, Folder_digest.get digests f |> Option.get))
           in
           Ok
             (List.map
@@ -216,7 +216,7 @@ let v ~voodoo ~(digests : Folder_digest.t Current.t) (job : Jobs.t Current.t) =
      let artifacts_digests =
        List.map (fun package -> Folder_digest.get digests (folder package)) job.prep
      in
-     PrepCache.get No_context { job; voodoo; artifacts_digests }
+     PrepCache.get digests { job; voodoo; artifacts_digests }
      |> Current.Primitive.map_result (function
           | Error _ as e -> e
           | Ok artifacts_digests ->
