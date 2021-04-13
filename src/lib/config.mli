@@ -13,16 +13,20 @@ val ssh_priv_key_file : Fpath.t
 val ssh_port : int
 
 val storage_folder : string
+(** Path of the global storage folder *)
 
 val odoc : string
 (** Odoc version pin to use. *)
 
 val odoc_bin : string
-(** Local odoc binary for the final link step. Should be 
+(** Local odoc binary for the final link step. Must be 
 the same version as odoc *)
 
 val pool : string
+(** The ocluster pool to use *)
 
 val ocluster_connection : Current_ocluster.Connection.t
+(** Connection to the cluster *)
 
 val jobs : int
+(** Number of jobs that can be spawned for the steps that are locally executed. *)
