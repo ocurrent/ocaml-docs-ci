@@ -82,6 +82,8 @@ module Map = OpamStd.Map.Make (struct
 
   let to_json (pkg, digest) = `A [ OpamPackage.to_json pkg; `String digest ]
 
+  let of_json _ = None
+
   let to_string (pkg, _) = OpamPackage.to_string pkg
 end)
 
