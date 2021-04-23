@@ -25,7 +25,7 @@ let import_deps t =
   let folders = List.map (fun { package; blessed; _ } -> folder ~blessed package) t in
   Misc.rsync_pull folders
 
-let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
+let spec ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
@@ -67,16 +67,16 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
          (* Compute compile folder digest *)
-         run "%s" (Folder_digest.compute_cmd [ compile_folder ]);
+         run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
+         run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
          (* Extract the digest info *)
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
-           Config.ssh_host Config.storage_folder;
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" (Remote_cache.cmd_sync_folder);
        ]
 
 module Compile = struct
   type output = t
 
-  type t = Folder_digest.t
+  type t = Remote_cache.t
 
   let id = "voodoo-do"
 
@@ -89,16 +89,16 @@ module Compile = struct
       prep : Prep.t;
       blessed : bool;
       voodoo : Voodoo.Do.t;
-      existing_artifacts_digest : string option;
+      compile_cache : Remote_cache.cache_entry;
     }
 
-    let digest { deps; prep; blessed; voodoo; existing_artifacts_digest } =
+    let digest { deps; prep; blessed; voodoo; compile_cache } =
       Fmt.str "%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Voodoo.Do.digest voodoo)
-        (Option.value ~default:"<empty>" existing_artifacts_digest)
+        (Remote_cache.digest compile_cache)
       |> Digest.string |> Digest.to_hex
   end
 
@@ -106,20 +106,36 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let build digests job Key.{ deps; prep; blessed; voodoo; existing_artifacts_digest } =
+  let remote_cache_key Key.{ voodoo; prep; deps; _ } =
+    (* When this key changes, the remote artifacts will be invalidated. *)
+    let deps_digest =
+      Fmt.to_to_string
+        Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
+        deps
+      |> Digest.string |> Digest.to_hex
+    in
+    Fmt.str "voodoo-compile-v0-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+      (Voodoo.Do.digest voodoo)
+
+  let build digests job (Key.{ deps; prep; blessed; voodoo; compile_cache } as key) =
     let open Lwt.Syntax in
     let package = Prep.package prep in
     let folder = folder ~blessed package in
-    match existing_artifacts_digest with
+    let cache_key = remote_cache_key key in
+    match compile_cache with
     (* Here, we first look if there are already artifacts in the compilation folder.
        TODO: invalidation when the cache key changes. *)
-    | Some artifacts_digest ->
+    | Some (key, Ok compile_digest) when key = cache_key ->
         let* () = Current.Job.start ~level:Harmless job in
-        Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder artifacts_digest;
-        Lwt.return_ok artifacts_digest
-    | None -> (
+        Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder compile_digest;
+        Lwt.return_ok compile_digest
+    | Some (key, Failed) when key = cache_key ->
+        let* () = Current.Job.start ~level:Harmless job in
+        Current.Job.log job "Compile step failed for %a." Fpath.pp folder;
+        Lwt.return_error (`Msg "Odoc compilation failed.")
+    | _ -> (
         let base = Misc.get_base_image package in
-        let spec = spec ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
+        let spec = spec ~cache_key ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
         let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
         let action = Cluster_api.Submission.obuilder_build spec in
         let version = Misc.base_image_version package in
@@ -135,20 +151,22 @@ module Compile = struct
         match result with
         | Error (`Msg _) as e -> Lwt.return e
         | Ok _ ->
-            let+ () = Folder_digest.sync ~job () in
-            let artifacts_digest = Folder_digest.get digests folder |> Option.get in
+            let+ () = Remote_cache.sync ~job () in
+            let artifacts_digest =
+              Remote_cache.get digests folder |> Remote_cache.folder_digest_exn
+            in
             Current.Job.log job "New artifacts digest => %s" artifacts_digest;
             Ok artifacts_digest )
 end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~name ~voodoo ~digests ~blessed ~deps prep =
+let v ~name ~voodoo ~cache ~blessed ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
   |> let> prep = prep
      and> voodoo = voodoo
-     and> digests = digests
+     and> cache = cache
      and> blessed = blessed
      and> deps = deps in
      let package = Prep.package prep in
@@ -165,19 +183,18 @@ let v ~name ~voodoo ~digests ~blessed ~deps prep =
            kind = Mld;
          }
      in
-     let existing_artifacts_digest = Folder_digest.get digests compile_folder in
+     let compile_cache = Remote_cache.get cache compile_folder in
      let digest =
-       CompileCache.get digests
-         Compile.Key.{ prep; blessed; voodoo; deps; existing_artifacts_digest }
+       CompileCache.get cache Compile.Key.{ prep; blessed; voodoo; deps; compile_cache }
      in
      Current.Primitive.map_result
        (Result.map (fun artifacts_digest -> { package; blessed; odoc = Mld odoc; artifacts_digest }))
        digest
 
-let v ~voodoo ~digests ~blessed ~deps prep =
+let v ~voodoo ~cache ~blessed ~deps prep =
   let open Current.Syntax in
   let* b_prep = prep in
   let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
-  v ~name ~voodoo ~digests ~blessed ~deps prep
+  v ~name ~voodoo ~cache ~blessed ~deps prep
 
 let folder { package; blessed; _ } = folder ~blessed package

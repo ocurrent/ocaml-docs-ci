@@ -34,7 +34,7 @@ let universes_assoc packages =
          name ^ ":" ^ hash)
   |> String.concat ","
 
-let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
+let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
   let all_deps = Package.all_deps install in
@@ -89,10 +89,18 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          run "opam repo remove default && opam repo add opam /src";
          (* Pre-install build tools *)
          build_preinstall;
+         (* Enable build cache conditionally on dune version *)
          env "DUNE_CACHE" (if dune_cache_enabled then "enabled" else "disabled");
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
-         run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
+         (* Write cache keys *)
+         run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
+         (* Intall packages: this might fail - we upload updated keys in case of failures.
+            TODO: we could still do the prep step for the installed packages. *)
+         run ~secrets:Config.ssh_secrets ~network ~cache
+           "(sudo apt update && opam depext -viy %s) || (echo 'Package installation failed, \
+            reporting failure.' && %s && exit 1)"
+           packages_str Remote_cache.cmd_sync_folder;
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
          run "mkdir -p %s" (base_folders prep);
@@ -103,24 +111,29 @@ let spec ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.
          run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz prep %s:%s/ && echo '%s'"
            Config.ssh_host Config.storage_folder artifacts_digest;
          (* Compute artifacts digests and upload them *)
-         run "%s" (Folder_digest.compute_cmd (prep |> List.rev_map folder));
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
-           Config.ssh_host Config.storage_folder;
+         run "%s" (Remote_cache.cmd_compute_sha256 (prep |> List.rev_map folder));
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" Remote_cache.cmd_sync_folder;
        ]
 
 module Prep = struct
-  type t = Folder_digest.t
+  type t = Remote_cache.t
 
   let id = "voodoo-prep"
 
   let auto_cancel = true
 
   module Key = struct
-    type t = { job : Jobs.t; voodoo : Voodoo.Prep.t; artifacts_digests : string option list }
+    type t = {
+      job : Jobs.t;
+      voodoo : Voodoo.Prep.t;
+      artifacts_cache : Remote_cache.cache_entry list;
+    }
 
-    let digest { job = { install; _ }; voodoo; artifacts_digests } =
-      (List.map (Option.value ~default:"<empty>") artifacts_digests |> String.concat "-")
-      ^ Package.digest install ^ Voodoo.Prep.digest voodoo
+    let partial_digest { job = { install; _ }; voodoo; _ } =
+      Package.digest install ^ Voodoo.Prep.digest voodoo |> Digest.string |> Digest.to_hex
+
+    let digest ({ artifacts_cache; _ } as key) =
+      (List.map Remote_cache.digest artifacts_cache |> String.concat "-") ^ partial_digest key
       |> Digest.string |> Digest.to_hex
   end
 
@@ -136,36 +149,73 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build digests job Key.{ job = { install; prep }; voodoo; artifacts_digests } =
+  let remote_cache_key Key.{ voodoo; _ } =
+    (* When this key changes, the remote artifacts will be invalidated. *)
+    Fmt.str "voodoo-prep-v0-%s" (Voodoo.Prep.digest voodoo)
+
+  let build digests job (Key.{ job = { install; prep }; voodoo; artifacts_cache } as key) =
     let open Lwt.Syntax in
-    let ( let** ) = Lwt_result.bind in
-    (* TODO: invalidation when the prep output is supposed to change  *)
-    if List.for_all Option.is_some artifacts_digests then (
+    (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
+       Should be fixed by adding the oldest opam-repository commit in the universe hash, but that
+       requires changes in the solver.
+       For now we rebuild only if voodoo-prep changes.
+    *)
+    let cache_key = remote_cache_key key in
+    let prev_logs_path = Fpath.(Current.state_dir id // folder install / (cache_key ^ ".log")) in
+    let is_success = function
+      | Some (key, Remote_cache.Ok _) when String.trim key = cache_key -> true
+      | _ -> false
+    in
+    let is_failure = function
+      | Some (key, Remote_cache.Failed) when String.trim key = cache_key -> true
+      | _ -> false
+    in
+    if List.for_all is_success artifacts_cache then (
+      (* Success: all the packages we want to prep have already been built *)
       let* () = Current.Job.start ~level:Harmless job in
       Current.Job.log job "Using existing artifacts.";
-      List.combine prep artifacts_digests
+      ( match Bos.OS.File.read prev_logs_path with
+      | Ok logs ->
+          Current.Job.log job "Previous log output for this build:\n\n>>>";
+          Current.Job.write job (logs ^ "<<<\n\n")
+      | Error _ -> Current.Job.log job "Couldn't find previous logs locally." );
+      List.combine prep artifacts_cache
       |> List.map (fun (package, artifacts_digest) ->
-             Current.Job.log job "- %a: %s" Fpath.pp (folder package) (Option.get artifacts_digest);
+             Current.Job.log job "- %a: %s" Fpath.pp (folder package)
+               (Remote_cache.folder_digest_exn artifacts_digest);
              Value.
                {
                  package_digest = Package.digest package;
-                 artifacts_digest = Option.get artifacts_digest;
+                 artifacts_digest = Remote_cache.folder_digest_exn artifacts_digest;
                })
       |> Lwt.return_ok )
+    else if List.exists is_failure artifacts_cache then (
+      (* Failure: we already tried to build one of the artifacts. We won't bother trying again. *)
+      let* () = Current.Job.start ~level:Harmless job in
+      Current.Job.log job "This job already failed.";
+      ( match Bos.OS.File.read prev_logs_path with
+      | Ok logs ->
+          Current.Job.log job "Previous log output for this build:\n\n>>>";
+          Current.Job.write job (logs ^ "<<<\n\n")
+      | Error _ -> Current.Job.log job "Couldn't find previous logs locally." );
+      Lwt.return_error (`Msg ("Prep step failed for " ^ Fmt.to_to_string Package.pp install)) )
     else
-      let artifacts_digests = List.combine prep artifacts_digests in
-      let digest =
-        List.map (fun (_, x) -> Option.value ~default:"<empty>" x) artifacts_digests
+      (* Launch a prep job *)
+      let artifacts_cache = List.combine prep artifacts_cache in
+      let fetch_digest =
+        List.map (fun (_, x) -> Remote_cache.digest x) artifacts_cache
         |> String.concat "-" |> Digest.string |> Digest.to_hex
       in
+      (* Only prep what's not been successful. *)
       let to_prep =
         List.filter_map
-          (fun (prep, digest) -> if Option.is_none digest then Some prep else None)
-          artifacts_digests
+          (function prep, digest when not (is_success digest) -> Some prep | _ -> None)
+          artifacts_cache
       in
       let base = Misc.get_base_image install in
       let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } =
-        spec ~artifacts_digest:digest ~voodoo ~base ~install to_prep |> Spec.to_ocluster_spec
+        spec ~cache_key ~artifacts_digest:fetch_digest ~voodoo ~base ~install to_prep
+        |> Spec.to_ocluster_spec
       in
       let action = Cluster_api.Submission.obuilder_build spec in
       let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
@@ -179,26 +229,41 @@ module Prep = struct
       Current.Job.log job "Using cache hint %S" cache_hint;
       List.iter
         (fun (prep, digest) ->
-          Current.Job.log job "Current artifacts digest for folder %a: %s" Fpath.pp (folder prep)
-            (Option.value ~default:"<empty>" digest))
-        artifacts_digests;
+          Current.Job.log job "Current artifacts digest for folder %a: %a" Fpath.pp (folder prep)
+            Remote_cache.pp digest)
+        artifacts_cache;
       Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-      let** _ = Current_ocluster.Connection.run_job ~job build_job in
-      let+ () = Folder_digest.sync ~job () in
-      let artifacts_digest =
-        List.map
-          (fun x ->
-            let f = folder x in
-            (x, Folder_digest.get digests f |> Option.get))
-          prep
-      in
-      Ok
-        (List.map
-           (fun (package, digest) ->
-             Current.Job.log job "New artifacts digest for folder %a: %s" Fpath.pp (folder package)
-               digest;
-             Value.{ package_digest = Package.digest package; artifacts_digest = digest })
-           artifacts_digest)
+      let* result = Current_ocluster.Connection.run_job ~job build_job in
+      (* at this point we save the logs.
+         TODO: error handling *)
+      let log_path = Current.Job.(log_path (id job)) |> Result.get_ok in
+      let target_path = prev_logs_path in
+      Current.Job.log job "Saving logs (%a) into %a" Fpath.pp log_path Fpath.pp target_path;
+      Bos.OS.Dir.create (Fpath.parent target_path) |> Result.get_ok |> ignore;
+      Bos.OS.Path.symlink ~force:true ~target:log_path target_path |> Result.get_ok;
+      (* Then, handle the result *)
+      let+ () = Remote_cache.sync ~job () in
+      match result with
+      | Error e -> Error e
+      | Ok _ ->
+          let artifacts_digest =
+            List.map
+              (fun x ->
+                let f = folder x in
+                (x, Remote_cache.get digests f))
+              prep
+          in
+          Ok
+            (List.map
+               (fun (package, digest) ->
+                 Current.Job.log job "New artifacts digest for folder %a: %a" Fpath.pp
+                   (folder package) Remote_cache.pp digest;
+                 Value.
+                   {
+                     package_digest = Package.digest package;
+                     artifacts_digest = Remote_cache.folder_digest_exn digest;
+                   })
+               artifacts_digest)
 end
 
 module PrepCache = Current_cache.Make (Prep)
@@ -222,14 +287,14 @@ let combine ~(job : Jobs.t) artifacts_digests =
     packages
 
 (** Assumption: packages are co-installable *)
-let v ~voodoo ~(digests : Folder_digest.t Current.t) (job : Jobs.t Current.t) =
+let v ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t Current.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep"
-  |> let> voodoo = voodoo and> job = job and> digests = digests in
-     let artifacts_digests =
-       List.map (fun package -> Folder_digest.get digests (folder package)) job.prep
+  |> let> voodoo = voodoo and> job = job and> cache = cache in
+     let artifacts_cache =
+       List.map (fun package -> Remote_cache.get cache (folder package)) job.prep
      in
-     PrepCache.get digests { job; voodoo; artifacts_digests }
+     PrepCache.get cache { job; voodoo; artifacts_cache }
      |> Current.Primitive.map_result (Result.map (combine ~job))
 
 let package (t : t) = t.package
