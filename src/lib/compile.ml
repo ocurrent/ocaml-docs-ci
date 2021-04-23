@@ -93,12 +93,13 @@ module Compile = struct
     }
 
     let digest { deps; prep; blessed; voodoo; compile_cache } =
-      Fmt.str "%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Voodoo.Do.digest voodoo)
         (Remote_cache.digest compile_cache)
+        Config.odoc
       |> Digest.string |> Digest.to_hex
   end
 
@@ -114,8 +115,8 @@ module Compile = struct
         deps
       |> Digest.string |> Digest.to_hex
     in
-    Fmt.str "voodoo-compile-v0-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
-      (Voodoo.Do.digest voodoo)
+    Fmt.str "voodoo-compile-v0-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+      (Voodoo.Do.digest voodoo) (Config.odoc |> Digest.string |> Digest.to_hex)
 
   let build digests job (Key.{ deps; prep; blessed; voodoo; compile_cache } as key) =
     let open Lwt.Syntax in
