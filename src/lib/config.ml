@@ -5,6 +5,7 @@ type ssh = {
   private_key_file : string;
   public_key_file : string;
   folder : string;
+  public_endpoint : string;
 }
 [@@deriving yojson]
 
@@ -78,3 +79,5 @@ let pool = "linux-x86_64"
 let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 cap
 
 let jobs = v.jobs
+
+let docs_public_endpoint = v.ssh_storage.public_endpoint

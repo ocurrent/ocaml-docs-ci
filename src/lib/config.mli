@@ -12,6 +12,9 @@ val ssh_priv_key_file : Fpath.t
 
 val ssh_port : int
 
+val docs_public_endpoint : string
+(** The public URL to access the docs files *)
+
 val storage_folder : string
 (** Path of the global storage folder *)
 

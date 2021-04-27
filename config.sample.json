@@ -6,7 +6,8 @@
         "port": 22,
         "private_key_file": "id_rsa",
         "public_key_file": "id_rsa.pub",
-        "folder": "/storage/folder"
+        "folder": "/storage/folder",
+        "public_endpoint": "127.0.0.1/docs"
     },
     "odoc": "/path/to/odoc",
     "jobs": 6

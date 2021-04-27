@@ -8,9 +8,10 @@ let program_name = "docs-ci"
 
 let main config mode =
   let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
+  let api = Docs_ci_lib.Web.make () in
   let engine =
     Current.Engine.create ~config (fun () ->
-        Docs_ci_pipelines.Docs.v ~opam:repo_opam () |> Current.ignore_value)
+        Docs_ci_pipelines.Docs.v ~api ~opam:repo_opam () |> Current.ignore_value)
   in
   let site =
     let routes = Current_web.routes engine in
@@ -23,6 +24,7 @@ let main config mode =
          (* The main thread evaluating the pipeline. *)
          Current_web.run ~mode site;
          (* Optional: provides a web UI *)
+         Docs_ci_lib.Web.serve api |> Lwt.map Result.ok;
        ])
 
 (* Command-line parsing *)
