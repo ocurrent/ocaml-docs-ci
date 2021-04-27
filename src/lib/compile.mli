@@ -44,3 +44,21 @@ a blessed package or not. [cache] contains the artifacts cache metadata to track
 
 Notably, if compilation artifacts already exists, then the job is a no-op. 
 *)
+
+module Pool : sig
+
+  type compile = t
+
+  type t
+
+  val v : unit -> t
+
+  val update : t -> Package.t -> compile option -> unit 
+
+end
+
+module Monitor : sig 
+
+  val v : Pool.t -> Prep.t Current.t -> t list Current.t
+
+end

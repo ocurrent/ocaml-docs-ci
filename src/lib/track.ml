@@ -40,7 +40,7 @@ module Track = struct
   let rec take n lst =
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
-  let take = match Config.take_n_last_version with 
+  let take = match Config.take_n_last_versions with 
     | Some n -> take n
     | None -> Fun.id
 

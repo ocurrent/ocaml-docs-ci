@@ -70,8 +70,99 @@ let spec ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
          run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
          run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
          (* Extract the digest info *)
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" (Remote_cache.cmd_sync_folder);
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" Remote_cache.cmd_sync_folder;
        ]
+
+module Pool = struct
+  (** The CompilePool module takes care of waching 
+ and updating the compilation state of all packages *)
+
+  type compile = t
+
+  type t = {
+    mutable values : compile option Package.Map.t;
+    mutable watchers : compile option Lwt_condition.t Package.Map.t;
+    mutex : Lwt_mutex.t;
+  }
+
+  let v () =
+    { values = Package.Map.empty; watchers = Package.Map.empty; mutex = Lwt_mutex.create () }
+
+  let update t package status =
+    Lwt.async @@ fun () ->
+    Lwt_mutex.with_lock t.mutex @@ fun () ->
+    ( match Package.Map.find_opt package t.watchers with
+    | None -> ()
+    | Some condition -> Lwt_condition.broadcast condition status );
+    t.values <- Package.Map.add package status t.values;
+    Lwt.return_unit
+
+  let watch t ~f package =
+    let open Lwt.Syntax in
+    let condition =
+      Lwt_mutex.with_lock t.mutex @@ fun () ->
+      match Package.Map.find_opt package t.watchers with
+      | None ->
+          let condition = Lwt_condition.create () in
+          t.watchers <- Package.Map.add package condition t.watchers;
+          Lwt.return condition
+      | Some condition -> Lwt.return condition
+    in
+    let watch () =
+      let* condition = condition in
+      let rec aux () =
+        let* v = Lwt_condition.wait condition in
+        f v;
+        aux ()
+      in
+      aux ()
+    in
+
+    let cancel, set_cancel = Lwt.wait () in
+    Lwt.async (fun () ->
+        Lwt.pick
+          [
+            watch ();
+            (let+ () = cancel in
+             failwith "Job cancelled");
+          ]);
+    set_cancel
+end
+
+module Monitor = struct
+  
+  let make (pool : Pool.t) (prep : Prep.t) =
+    let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
+    let state = ref (List.to_seq targets |> Seq.map (fun t -> (t, None)) |> Package.Map.of_seq) in
+    let read () =
+      if Package.Map.for_all (fun _ v -> Option.is_some v) !state then
+        Lwt.return_ok (Package.Map.bindings !state |> List.map (fun (_, v) -> Option.get v))
+      else Lwt.return_error (`Msg "not ready")
+    in
+    let watch refresh =
+      let cancel =
+        List.map
+          (fun target ->
+            Pool.watch pool
+              ~f:(fun value ->
+                state := Package.Map.add target value !state;
+                refresh ())
+              target)
+          targets
+      in
+      Lwt.return @@ fun () ->
+      List.iter (fun u -> Lwt.wakeup_later u ()) cancel;
+      Lwt.return_unit
+    in
+    let pp f = Fmt.pf f "Watch compilation status for %a" Prep.pp prep in
+    Current.Monitor.create ~read ~watch ~pp
+
+  let v pool prep =
+    let open Current.Syntax in
+    Current.component "Monitor compilation status"
+    |> let> prep = prep in
+       make pool prep |> Current.Monitor.get
+end
 
 module Compile = struct
   type output = t
@@ -92,7 +183,7 @@ module Compile = struct
       compile_cache : Remote_cache.cache_entry;
     }
 
-    let digest { deps; prep; blessed; voodoo; compile_cache } =
+    let key { deps; prep; blessed; voodoo; compile_cache } =
       Fmt.str "%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
@@ -100,7 +191,8 @@ module Compile = struct
         deps (Voodoo.Do.digest voodoo)
         (Remote_cache.digest compile_cache)
         Config.odoc
-      |> Digest.string |> Digest.to_hex
+
+    let digest t = key t |> Digest.string |> Digest.to_hex
   end
 
   let pp f Key.{ prep; _ } = Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
@@ -116,7 +208,8 @@ module Compile = struct
       |> Digest.string |> Digest.to_hex
     in
     Fmt.str "voodoo-compile-v0-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
-      (Voodoo.Do.digest voodoo) (Config.odoc |> Digest.string |> Digest.to_hex)
+      (Voodoo.Do.digest voodoo)
+      (Config.odoc |> Digest.string |> Digest.to_hex)
 
   let build digests job (Key.{ deps; prep; blessed; voodoo; compile_cache } as key) =
     let open Lwt.Syntax in
@@ -135,6 +228,7 @@ module Compile = struct
         Current.Job.log job "Compile step failed for %a." Fpath.pp folder;
         Lwt.return_error (`Msg "Odoc compilation failed.")
     | _ -> (
+        Current.Job.log job "Cache digest: %s" (Key.key key);
         let base = Misc.get_base_image package in
         let spec = spec ~cache_key ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
         let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in

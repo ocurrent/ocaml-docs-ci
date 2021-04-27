@@ -93,8 +93,6 @@ let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep
          env "DUNE_CACHE" (if dune_cache_enabled then "enabled" else "disabled");
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
-         (* Write cache keys *)
-         run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
          (* Intall packages: this might fail.
             TODO: we could still do the prep step for the installed packages. *)
          run ~secrets:Config.ssh_secrets ~network ~cache
@@ -109,7 +107,8 @@ let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep
          (* Upload artifacts *)
          run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz prep %s:%s/ && echo '%s'"
            Config.ssh_host Config.storage_folder artifacts_digest;
-         (* Compute artifacts digests and upload them *)
+         (* Compute artifacts digests, write cache key and upload them *)
+         run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
          run "%s" (Remote_cache.cmd_compute_sha256 (prep |> List.rev_map folder));
          run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" Remote_cache.cmd_sync_folder;
        ]
@@ -269,6 +268,12 @@ module PrepCache = Current_cache.Make (Prep)
 
 type t = { package : Package.t; artifacts_digest : string }
 
+let pp f t = Package.pp f t.package
+
+let compare a b = match Package.compare a.package b.package with 
+  | 0 -> String.compare a.artifacts_digest b.artifacts_digest
+  | v -> v
+
 module StringMap = Map.Make (String)
 
 let combine ~(job : Jobs.t) artifacts_digests =
@@ -288,7 +293,8 @@ let combine ~(job : Jobs.t) artifacts_digests =
 (** Assumption: packages are co-installable *)
 let v ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t Current.t) =
   let open Current.Syntax in
-  Current.component "voodoo-prep"
+  let* jobv = job in 
+  Current.component "voodoo-prep %s" (jobv.install |> Package.digest)
   |> let> voodoo = voodoo and> job = job and> cache = cache in
      let artifacts_cache =
        List.map (fun package -> Remote_cache.get cache (folder package)) job.prep

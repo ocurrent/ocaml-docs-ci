@@ -20,58 +20,86 @@ end
 module CharListMap = ListMap (Map.Make (Char))
 module NameListMap = ListMap (Map.Make (OpamPackage.Name))
 
-let compile ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t) (preps : Prep.t list Current.t)
-    =
-  let open Current.Syntax in
-  let preps_current = preps in
-  (* this bind is heavy, and we expect the preps list to update a lot *)
-  let* preps = preps in
-  let pkg_preps =
-    List.map (fun prep -> (Prep.package prep, prep)) preps |> List.to_seq |> Package.Map.of_seq
-  in
-  let jobs : Compile.t Current.t option Package.Map.t ref = ref Package.Map.empty in
-  let rec get_compilation_job pkg =
-    match Package.Map.find_opt pkg !jobs with
-    | Some job -> job
+module PrepStatus = struct
+  type prep_result =
+    (Prep.t list, [ `Active of Current_term.Output.active | `Msg of string ]) result
+
+  type t = Jobs.t * prep_result
+
+  let pp f (t, _) = Fmt.pf f "Prep status %a" Jobs.pp t
+
+  let compare (j1, r1) (j2, r2) =
+    match Jobs.compare j1 j2 with
+    | 0 ->
+        Result.compare
+          ~ok:(fun _ _ -> 0 (*twp same jobs yield the same prep list*))
+          ~error:Stdlib.compare r1 r2
+    | v -> v
+end
+
+
+let get_compilation_job ~preps ~voodoo ~cache ~blessed pkg =
+  let v = ref Package.Map.empty in
+  let rec aux_get_job package =
+    match Package.Map.find_opt package !v with
+    | Some v -> v
     | None ->
+        v := Package.Map.add package None !v;
         let deps =
-          pkg |> Package.universe |> Package.Universe.deps
-          |> List.filter_map get_compilation_job
+          package 
+          |> Package.universe 
+          |> Package.Universe.deps 
+          |> List.filter_map aux_get_job 
           |> Current.list_seq
         in
         let result =
-          Package.Map.find_opt pkg pkg_preps
-          |> Option.map (fun prep ->
-                 prep |> Current.return |> Compile.v ~cache ~voodoo ~blessed ~deps)
+          match Package.Map.find_opt package preps with
+          | Some prep ->
+              Some
+                (Compile.v ~cache ~voodoo ~blessed ~deps
+                   (Current.return prep))
+          | None -> None
         in
-        jobs := Package.Map.add pkg result !jobs;
+        v := Package.Map.add package result !v;
         result
   in
-  preps
-  |> List.sort_uniq (fun a b -> Package.compare (Prep.package a) (Prep.package b))
-  |> List.filter_map (fun prep ->
-         let package = Prep.package prep in
-         get_compilation_job package
-         |> Option.map (fun x ->
-                ( (package |> Package.opam |> OpamPackage.name_to_string).[0] |> Char.uppercase_ascii,
-                  ( package |> Package.opam |> OpamPackage.name,
-                    x |> Current.state ~hidden:true |> Current.pair blessed
-                    |> Current.map (fun (blessed, x) ->
-                           (prep, Package.Blessed.is_blessed blessed package, x))
-                    |> Current.collapse
-                         ~key:(package |> Package.opam |> OpamPackage.to_string)
-                         ~value:"" ~input:preps_current ) )))
-  |> CharListMap.of_list
-  |> CharListMap.mapi (fun c names_versions ->
-         names_versions |> NameListMap.of_list
-         |> NameListMap.mapi (fun name versions ->
-                versions |> Current.list_seq
-                |> Current.collapse ~key:(OpamPackage.Name.to_string name) ~value:""
-                     ~input:preps_current)
-         |> NameListMap.values |> Current.list_seq
-         |> Current.collapse ~key:(String.make 1 c) ~value:"" ~input:preps_current)
-  |> CharListMap.values |> Current.list_seq
-  |> Current.map (fun l -> l |> List.flatten |> List.flatten)
+  match aux_get_job pkg with 
+  | Some v -> Current.map Option.some v 
+  | None -> Current.return None
+
+let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
+    (preps : PrepStatus.t list Current.t) =
+  let open Current.Syntax in
+  let valid_preps =
+    Current.collapse ~key:"get preps status" ~value:"" ~input
+    @@ Current.list_map ~collapse_key:"prep status"
+         (module PrepStatus)
+         (fun prep_status ->
+           let+ _, status = prep_status in
+           match status with Ok preps -> preps | _ -> [])
+         preps
+    |> Current.map (fun x ->
+           x |> List.flatten
+           |> List.sort_uniq (fun a b -> Package.compare (Prep.package a) (Prep.package b)))
+  in
+  let pool = Compile.Pool.v () 
+  in
+  Current.list_map
+    ( module Prep )
+    ~collapse_key:"compile item"
+    (fun prep ->
+      let deps = Compile.Monitor.v pool prep in
+      Compile.v ~cache ~voodoo ~blessed ~deps prep 
+      |> Current.state ~hidden:true 
+      |> Current.pair blessed
+      |> Current.pair prep
+      |> Current.map (fun (prep, (blessed, x)) ->
+      let package = Prep.package prep in
+        Compile.Pool.update pool package (Result.to_option x);
+        (package, Package.Blessed.is_blessed blessed package, x))
+      )
+    valid_preps
+  |> Current.collapse ~key:"compile" ~value:"" ~input:valid_preps
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
@@ -103,8 +131,8 @@ let v ~api ~opam () =
       Jobs.schedule ~targets all_packages_jobs
     in
     (* 5) Run the preparation step *)
-    Current.collapse ~key:"prep" ~value:"" ~input:jobs
-    @@ Current.list_map
+    Current.collapse ~key:"preps" ~value:"" ~input:jobs
+    @@ Current.list_map ~collapse_key:"prep"
          (module Jobs)
          (fun job ->
            Prep.v ~cache ~voodoo:v_prep job |> Current.state ~hidden:true |> Current.pair job)
@@ -114,7 +142,7 @@ let v ~api ~opam () =
   let blessed =
     Current.map
       (fun prep_status ->
-        (* We don't know yet about all preps so *)
+        (* We don't know yet about all preps status so we're optimistic here *)
         prep_status
         |> List.filter_map (function
              | _, Error (`Msg _) -> None
@@ -123,16 +151,8 @@ let v ~api ~opam () =
         |> List.flatten |> Package.Blessed.v)
       prepped
   in
-
   (* 7) Odoc compile and html-generate artifacts *)
-  let compiled =
-    let prepped =
-      Current.map
-        (fun x -> x |> List.filter_map (fun (_, b) -> Result.to_option b) |> List.flatten)
-        prepped
-    in
-    compile ~cache ~voodoo:v_do ~blessed prepped
-  in
+  let compiled = compile ~input:blessed ~cache ~voodoo:v_do ~blessed prepped in
   let package_status =
     let+ compiled = compiled and+ prepped = prepped in
     let status = ref Package.Map.empty in
@@ -150,8 +170,7 @@ let v ~api ~opam () =
         | Jobs.{ prep; _ }, Error (`Active _) -> List.iter (set_if_better (Pending Prep)) prep)
       prepped;
     List.iter
-      (fun (prep, blessed, status) ->
-        let package = Prep.package prep in
+      (fun (package, blessed, status) ->
         let blessed = if blessed then Docs_ci_lib.Web.Status.Blessed else Universe in
         match status with
         | Ok _ -> set (Success blessed) package

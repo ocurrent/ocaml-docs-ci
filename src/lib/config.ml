@@ -16,11 +16,13 @@ type config = {
   odoc : string option;
   jobs : int;
   track_packages : string list [@default []];
-  take_n_last_version : int option;
+  take_n_last_versions : int option;
 }
 [@@deriving yojson]
 
-let v = Yojson.Safe.from_file "config.json" |> config_of_yojson |> Result.get_ok
+let v = match Yojson.Safe.from_file "config.json" |> config_of_yojson with 
+  | Ok v -> v 
+  | Error msg -> failwith ("Failed to parse config.json: "^msg) 
 
 let vat = Capnp_rpc_unix.client_only_vat ()
 
@@ -86,4 +88,4 @@ let docs_public_endpoint = v.ssh_storage.public_endpoint
 
 let track_packages = v.track_packages
 
-let take_n_last_version = v.take_n_last_version
+let take_n_last_versions = v.take_n_last_versions

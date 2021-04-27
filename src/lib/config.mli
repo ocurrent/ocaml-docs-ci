@@ -37,5 +37,5 @@ val jobs : int
 val track_packages : string list
 (** List of packages to track (or all packages if the list is empty) *)
 
-val take_n_last_version : int option
+val take_n_last_versions : int option
 (** Number of versions to take (None for all) *)

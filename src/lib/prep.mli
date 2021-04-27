@@ -9,3 +9,7 @@ val v : voodoo:Voodoo.Prep.t Current.t -> cache:Remote_cache.t Current.t -> Jobs
 val folder : t -> Fpath.t
 
 val artifacts_digest : t -> string
+
+val pp : t Fmt.t
+
+val compare : t -> t -> int
