@@ -10,5 +10,7 @@
         "public_endpoint": "127.0.0.1/docs"
     },
     "odoc": "/path/to/odoc",
-    "jobs": 6
+    "jobs": 6,
+    "track_packages": ["uri"],
+    "take_n_last_versions": 3
 }

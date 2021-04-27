@@ -40,6 +40,10 @@ module Track = struct
   let rec take n lst =
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
+  let take = match Config.take_n_last_version with 
+    | Some n -> take n
+    | None -> Fun.id
+
   let get_digest path =
     let content = Bos.OS.File.read path |> Result.get_ok in
     Digestif.SHA256.(digest_string content |> to_hex)
@@ -53,7 +57,7 @@ module Track = struct
                  (path |> Fpath.basename |> OpamPackage.of_string, get_digest Fpath.(path / "opam"))))
     |> Result.get_ok
     |> List.sort (fun (a, _) (b, _) -> OpamPackage.compare a b)
-    |> List.rev |> take 1
+    |> List.rev |> take
 
   let build No_context job { Key.repo; filter } =
     let open Lwt.Syntax in

@@ -83,7 +83,7 @@ let v ~api ~opam () =
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   let solver_result =
     (* 1) Track the list of packages in the opam repository *)
-    let tracked = Track.v ~filter:[ "result"; "fmt" ] opam in
+    let tracked = Track.v ~filter:Config.track_packages opam in
     (* 2) For each package.version, call the solver.  *)
     Solver.incremental ~blacklist ~opam tracked
   in

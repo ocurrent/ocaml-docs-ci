@@ -15,6 +15,8 @@ type config = {
   ssh_storage : ssh;
   odoc : string option;
   jobs : int;
+  track_packages : string list [@default []];
+  take_n_last_version : int option;
 }
 [@@deriving yojson]
 
@@ -81,3 +83,7 @@ let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 ca
 let jobs = v.jobs
 
 let docs_public_endpoint = v.ssh_storage.public_endpoint
+
+let track_packages = v.track_packages
+
+let take_n_last_version = v.take_n_last_version

@@ -33,3 +33,9 @@ val ocluster_connection : Current_ocluster.Connection.t
 
 val jobs : int
 (** Number of jobs that can be spawned for the steps that are locally executed. *)
+
+val track_packages : string list
+(** List of packages to track (or all packages if the list is empty) *)
+
+val take_n_last_version : int option
+(** Number of versions to take (None for all) *)
