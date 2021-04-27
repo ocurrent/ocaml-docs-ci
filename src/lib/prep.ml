@@ -95,12 +95,11 @@ let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep
          env "DUNE_CACHE_DUPLICATION" "copy";
          (* Write cache keys *)
          run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
-         (* Intall packages: this might fail - we upload updated keys in case of failures.
+         (* Intall packages: this might fail.
             TODO: we could still do the prep step for the installed packages. *)
          run ~secrets:Config.ssh_secrets ~network ~cache
-           "(sudo apt update && opam depext -viy %s) || (echo 'Package installation failed, \
-            reporting failure.' && %s && exit 1)"
-           packages_str Remote_cache.cmd_sync_folder;
+           "sudo apt update && opam depext -viy %s"
+           packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
          run "mkdir -p %s" (base_folders prep);
