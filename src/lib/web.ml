@@ -152,10 +152,10 @@ module Graphql = struct
 
   module Graphql_cohttp_lwt = Graphql_cohttp.Make (Schema) (Cohttp_lwt_unix.IO) (Cohttp_lwt.Body)
 
-  let run (ctx : state) =
+  let run ~port (ctx : state) =
     let callback = Graphql_cohttp_lwt.make_callback (fun _req -> ctx) schema in
     let server = Cohttp_lwt_unix.Server.make_response_action ~callback () in
-    let mode = `TCP (`Port 8081) in
+    let mode = `TCP (`Port port) in
     Cohttp_lwt_unix.Server.create ~mode server
 end
 
@@ -182,10 +182,10 @@ let update package status t =
       { name; versions = OpamPackage.Version.Map.empty }
       t.data
 
-let serve t =
+let serve ~port t =
   let state = { data = OpamPackage.Name.Map.empty } in
   Lwt.choose
     [
       Lwt_stream.iter (fun (package, status) -> update package status state) t.updates;
-      Graphql.run state;
+      Graphql.run ~port state;
     ]
