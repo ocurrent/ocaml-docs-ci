@@ -24,7 +24,7 @@ let vat = Capnp_rpc_unix.client_only_vat ()
 
 let cap = Capnp_rpc_unix.Cap_file.load vat v.cap_file |> Result.get_ok
 
-let odoc = "https://github.com/ocaml/odoc.git#50fcb86ae66bb7d223b0d5e90488c7a911d22541"
+let odoc = "https://github.com/ocaml/odoc.git#38f6d0b0dc391505b787e15675b0c1b125c9d7db"
 
 let odoc_bin = Option.value ~default:"odoc" v.odoc
 
