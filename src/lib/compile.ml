@@ -237,11 +237,11 @@ module Compile = struct
     match compile_cache with
     (* Here, we first look if there are already artifacts in the compilation folder.
        TODO: invalidation when the cache key changes. *)
-    | Some (key, Ok compile_digest) when key = cache_key ->
+    | Some (key, Ok compile_digest) when String.trim key = cache_key ->
         let* () = Current.Job.start ~level:Harmless job in
         Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder compile_digest;
         Lwt.return_ok compile_digest
-    | Some (key, Failed) when key = cache_key ->
+    | Some (key, Failed) when String.trim key = cache_key ->
         let* () = Current.Job.start ~level:Harmless job in
         Current.Job.log job "Compile step failed for %a." Fpath.pp folder;
         Lwt.return_error (`Msg "Odoc compilation failed.")
