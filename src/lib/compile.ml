@@ -95,7 +95,7 @@ module Pool = struct
   let update t package status =
     Lwt.async @@ fun () ->
     Lwt_mutex.with_lock t.mutex @@ fun () ->
-    Fmt.pr "\n%a => %a\n" Package.pp package pp_output status;
+    Fmt.pr "%a => %a\n" Package.pp package pp_output status;
     ( match Package.Map.find_opt package t.watchers with
     | None -> ()
     | Some condition -> Lwt_condition.broadcast condition status );
@@ -152,7 +152,7 @@ module Monitor = struct
     let state =
       ref
         ( List.to_seq targets
-        |> Seq.map (fun t -> (t, Error (`Msg "No state recorded")))
+        |> Seq.map (fun t -> (t, Error (`Active `Ready)))
         |> Package.Map.of_seq )
     in
     let read () =
