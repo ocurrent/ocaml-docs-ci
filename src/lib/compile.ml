@@ -91,18 +91,19 @@ module Pool = struct
   let pp_output =
     Current_term.Output.pp (fun f (t : compile) ->
         Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
-  
-  let status_eq = Result.equal 
-    ~ok:(fun a b -> digest a = digest b)
-    ~error:(Stdlib.(=))
+
+  let status_eq = Result.equal ~ok:(fun a b -> digest a = digest b) ~error:Stdlib.( = )
 
   let update t package status =
     Lwt.async @@ fun () ->
     Lwt_mutex.with_lock t.mutex @@ fun () ->
-    Fmt.pr "%a => %a\n" Package.pp package pp_output status;
-    ( match Package.Map.find_opt package t.watchers, Package.Map.find_opt package t.values with
-    | Some condition, None -> Lwt_condition.broadcast condition status
-    | Some condition, Some status' when not (status_eq status status') -> Lwt_condition.broadcast condition status
+    ( match (Package.Map.find_opt package t.watchers, Package.Map.find_opt package t.values) with
+    | Some condition, None -> (
+        Fmt.pr "%a => %a\n" Package.pp package pp_output status;
+        Lwt_condition.broadcast condition status)
+    | Some condition, Some status' when not (status_eq status status') ->
+        (Fmt.pr "%a => %a\n" Package.pp package pp_output status;
+        Lwt_condition.broadcast condition status)
     | _ -> () );
     t.values <- Package.Map.add package status t.values;
     Lwt.return_unit
@@ -118,6 +119,9 @@ module Pool = struct
           Lwt.return condition
       | Some condition -> Lwt.return condition
     in
+
+    let cancel, set_cancel = Lwt.wait () in
+
     let watch () =
       let* condition = condition in
       let rec aux () =
@@ -125,17 +129,10 @@ module Pool = struct
         f v;
         aux ()
       in
-      aux ()
+      Lwt.pick [ aux (); cancel ]
     in
 
-    let cancel, set_cancel = Lwt.wait () in
-    Lwt.async (fun () ->
-        Lwt.pick
-          [
-            watch ();
-            (let+ () = cancel in
-             failwith "Job cancelled");
-          ]);
+    Lwt.async watch;
     set_cancel
 end
 
@@ -156,15 +153,11 @@ module Monitor = struct
     let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
     let state =
       ref
-        ( List.to_seq targets
-        |> Seq.map (fun t -> (t, Error (`Active `Ready)))
-        |> Package.Map.of_seq )
+        (List.to_seq targets |> Seq.map (fun t -> (t, Error (`Active `Ready))) |> Package.Map.of_seq)
     in
-    let read () =
-      Package.Map.bindings !state |> List.map snd
-      |> state_output 
-      |> Lwt.return_ok
-    in
+    let get_state_output () = Package.Map.bindings !state |> List.map snd |> state_output in
+    let state_output = ref (get_state_output ()) in
+    let read () = !state_output |> Lwt.return_ok in
     let watch refresh =
       let cancel =
         List.map
@@ -172,7 +165,11 @@ module Monitor = struct
             Pool.watch pool
               ~f:(fun value ->
                 state := Package.Map.add target value !state;
-                refresh ())
+                let old_v = !state_output in
+                state_output := get_state_output ();
+                if !state_output <> old_v then 
+                  refresh () 
+                else ())
               target)
           targets
       in

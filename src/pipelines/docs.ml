@@ -91,11 +91,12 @@ let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
       let deps = Compile.Monitor.v pool prep in
       Compile.v ~cache ~voodoo ~blessed ~deps prep 
       |> Current.state ~hidden:true 
-      |> Current.pair blessed
       |> Current.pair prep
-      |> Current.map (fun (prep, (blessed, x)) ->
-      let package = Prep.package prep in
-        Compile.Pool.update pool package x;
+      |> Current.map (fun (prep, x) -> 
+        let package = Prep.package prep in
+        Compile.Pool.update pool package x; (package, x))
+      |> Current.pair blessed
+      |> Current.map (fun (blessed, (package, x)) ->
         (package, Package.Blessed.is_blessed blessed package, x))
       )
     valid_preps
