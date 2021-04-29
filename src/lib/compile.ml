@@ -130,26 +130,39 @@ module Pool = struct
 end
 
 module Monitor = struct
-
-
   let state_output =
-    let v = function
-      | `Active `Running -> 1
-      | `Active `Ready -> 2
-      | `Msg _ -> 3
-    in 
-    List.fold_left 
-      (fun a b -> match (a, b) with
-      | Ok a, Ok b -> Ok (b::a)
-      | Error a, Error b when v a < v b -> Error b
-      | a, _ -> a ) 
+    let v = function `Active `Ready -> 1 | `Active `Running -> 2 | `Msg _ -> 3 in
+    List.fold_left
+      (fun a b ->
+        match (a, b) with
+        | Ok a, Ok b -> Ok (b :: a)
+        | Ok _, Error b -> Error b
+        | a, Ok _ -> a
+        | Error a, Error b when v a < v b -> Error b
+        | a, _ -> a)
       (Ok [])
+
+  let pp_output =
+    Current_term.Output.pp (fun f (t : t) ->
+        Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
 
   let make (pool : Pool.t) (prep : Prep.t) =
     let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
-    let state = ref (List.to_seq targets |> Seq.map (fun t -> (t, Error (`Msg "No state recorded"))) |> Package.Map.of_seq) in
+    let state =
+      ref
+        ( List.to_seq targets
+        |> Seq.map (fun t -> (t, Error (`Msg "No state recorded")))
+        |> Package.Map.of_seq )
+    in
     let read () =
-      Package.Map.bindings !state |> List.map snd |> state_output |> Lwt.return_ok
+    (*  Fmt.pr "\n\nRead state: %a\n" Prep.pp prep;*)
+      Package.Map.bindings !state |> List.map snd
+   (*   |> List.map (fun x ->
+             Fmt.pr "- %a\n" pp_output x;
+             x)*)
+      |> state_output 
+   (*   |> fun output -> (Fmt.pr "==> %a\n" (Current_term.Output.pp Fmt.(const string "")) output; output)*)
+      |> Lwt.return_ok
     in
     let watch refresh =
       let cancel =
@@ -157,6 +170,7 @@ module Monitor = struct
           (fun target ->
             Pool.watch pool
               ~f:(fun value ->
+                Fmt.pr "\nWrite state: %a -> %a\n" Package.pp target pp_output value;
                 state := Package.Map.add target value !state;
                 refresh ())
               target)
@@ -171,16 +185,13 @@ module Monitor = struct
 
   let v pool prep =
     let open Current.Syntax in
-    let* component = 
+    let* component =
       Current.component "Monitor compilation status"
       |> let> prep = prep in
-        make pool prep |> Current.Monitor.get
+         make pool prep |> Current.Monitor.get
     in
     Current.of_output component
 end
-
-
-
 
 module Compile = struct
   type output = t
@@ -234,6 +245,7 @@ module Compile = struct
     let package = Prep.package prep in
     let folder = folder ~blessed package in
     let cache_key = remote_cache_key key in
+    Current.Job.log job "Cache digest: %s" (Key.key key);
     match compile_cache with
     (* Here, we first look if there are already artifacts in the compilation folder.
        TODO: invalidation when the cache key changes. *)
@@ -246,7 +258,6 @@ module Compile = struct
         Current.Job.log job "Compile step failed for %a." Fpath.pp folder;
         Lwt.return_error (`Msg "Odoc compilation failed.")
     | _ -> (
-        Current.Job.log job "Cache digest: %s" (Key.key key);
         let base = Misc.get_base_image package in
         let spec = spec ~cache_key ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
         let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
