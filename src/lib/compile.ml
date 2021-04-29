@@ -88,9 +88,14 @@ module Pool = struct
   let v () =
     { values = Package.Map.empty; watchers = Package.Map.empty; mutex = Lwt_mutex.create () }
 
+  let pp_output =
+    Current_term.Output.pp (fun f (t : compile) ->
+        Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
+  
   let update t package status =
     Lwt.async @@ fun () ->
     Lwt_mutex.with_lock t.mutex @@ fun () ->
+    Fmt.pr "\n%a => %a\n" Package.pp package pp_output status;
     ( match Package.Map.find_opt package t.watchers with
     | None -> ()
     | Some condition -> Lwt_condition.broadcast condition status );
@@ -142,10 +147,6 @@ module Monitor = struct
         | a, _ -> a)
       (Ok [])
 
-  let pp_output =
-    Current_term.Output.pp (fun f (t : t) ->
-        Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
-
   let make (pool : Pool.t) (prep : Prep.t) =
     let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
     let state =
@@ -155,13 +156,8 @@ module Monitor = struct
         |> Package.Map.of_seq )
     in
     let read () =
-    (*  Fmt.pr "\n\nRead state: %a\n" Prep.pp prep;*)
       Package.Map.bindings !state |> List.map snd
-   (*   |> List.map (fun x ->
-             Fmt.pr "- %a\n" pp_output x;
-             x)*)
       |> state_output 
-   (*   |> fun output -> (Fmt.pr "==> %a\n" (Current_term.Output.pp Fmt.(const string "")) output; output)*)
       |> Lwt.return_ok
     in
     let watch refresh =
@@ -170,7 +166,6 @@ module Monitor = struct
           (fun target ->
             Pool.watch pool
               ~f:(fun value ->
-                Fmt.pr "\nWrite state: %a -> %a\n" Package.pp target pp_output value;
                 state := Package.Map.add target value !state;
                 refresh ())
               target)
