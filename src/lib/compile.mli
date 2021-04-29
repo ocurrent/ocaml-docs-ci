@@ -53,7 +53,7 @@ module Pool : sig
 
   val v : unit -> t
 
-  val update : t -> Package.t -> compile option -> unit 
+  val update : t -> Package.t -> compile Current_term.Output.t -> unit 
 
 end
 

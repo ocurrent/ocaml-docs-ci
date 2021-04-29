@@ -95,7 +95,7 @@ let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
       |> Current.pair prep
       |> Current.map (fun (prep, (blessed, x)) ->
       let package = Prep.package prep in
-        Compile.Pool.update pool package (Result.to_option x);
+        Compile.Pool.update pool package x;
         (package, Package.Blessed.is_blessed blessed package, x))
       )
     valid_preps

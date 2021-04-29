@@ -80,8 +80,8 @@ module Pool = struct
   type compile = t
 
   type t = {
-    mutable values : compile option Package.Map.t;
-    mutable watchers : compile option Lwt_condition.t Package.Map.t;
+    mutable values : compile Current_term.Output.t Package.Map.t;
+    mutable watchers : compile Current_term.Output.t Lwt_condition.t Package.Map.t;
     mutex : Lwt_mutex.t;
   }
 
@@ -130,14 +130,26 @@ module Pool = struct
 end
 
 module Monitor = struct
-  
+
+
+  let state_output =
+    let v = function
+      | `Active `Running -> 1
+      | `Active `Ready -> 2
+      | `Msg _ -> 3
+    in 
+    List.fold_left 
+      (fun a b -> match (a, b) with
+      | Ok a, Ok b -> Ok (b::a)
+      | Error a, Error b when v a < v b -> Error b
+      | a, _ -> a ) 
+      (Ok [])
+
   let make (pool : Pool.t) (prep : Prep.t) =
     let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
-    let state = ref (List.to_seq targets |> Seq.map (fun t -> (t, None)) |> Package.Map.of_seq) in
+    let state = ref (List.to_seq targets |> Seq.map (fun t -> (t, Error (`Msg "No state recorded"))) |> Package.Map.of_seq) in
     let read () =
-      if Package.Map.for_all (fun _ v -> Option.is_some v) !state then
-        Lwt.return_ok (Package.Map.bindings !state |> List.map (fun (_, v) -> Option.get v))
-      else Lwt.return_error (`Msg "not ready")
+      Package.Map.bindings !state |> List.map snd |> state_output |> Lwt.return_ok
     in
     let watch refresh =
       let cancel =
@@ -159,10 +171,16 @@ module Monitor = struct
 
   let v pool prep =
     let open Current.Syntax in
-    Current.component "Monitor compilation status"
-    |> let> prep = prep in
-       make pool prep |> Current.Monitor.get
+    let* component = 
+      Current.component "Monitor compilation status"
+      |> let> prep = prep in
+        make pool prep |> Current.Monitor.get
+    in
+    Current.of_output component
 end
+
+
+
 
 module Compile = struct
   type output = t
