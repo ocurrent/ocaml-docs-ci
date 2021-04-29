@@ -28,8 +28,11 @@ the same version as odoc *)
 val pool : string
 (** The ocluster pool to use *)
 
-val ocluster_connection : Current_ocluster.Connection.t
-(** Connection to the cluster *)
+val ocluster_connection_prep : Current_ocluster.Connection.t
+(** Connection to the cluster for Prep *)
+
+val ocluster_connection_do : Current_ocluster.Connection.t
+(** Connection to the cluster for Do *)
 
 val jobs : int
 (** Number of jobs that can be spawned for the steps that are locally executed. *)

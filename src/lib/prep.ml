@@ -221,7 +221,7 @@ module Prep = struct
       let cache_hint = "docs-universe-prep-" ^ version in
       let build_pool =
         Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint ~src
-          ~secrets:Config.ssh_secrets_values Config.ocluster_connection
+          ~secrets:Config.ssh_secrets_values Config.ocluster_connection_prep
       in
       let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
       Current.Job.log job "Using cache hint %S" cache_hint;

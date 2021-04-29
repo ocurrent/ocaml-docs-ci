@@ -80,7 +80,9 @@ let ssh_secrets_values =
 
 let pool = "linux-x86_64"
 
-let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 cap
+let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:10 cap
+
+let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:10 cap
 
 let jobs = v.jobs
 
