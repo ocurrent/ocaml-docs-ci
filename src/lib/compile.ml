@@ -92,13 +92,18 @@ module Pool = struct
     Current_term.Output.pp (fun f (t : compile) ->
         Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
   
+  let status_eq = Result.equal 
+    ~ok:(fun a b -> digest a = digest b)
+    ~error:(Stdlib.(=))
+
   let update t package status =
     Lwt.async @@ fun () ->
     Lwt_mutex.with_lock t.mutex @@ fun () ->
     Fmt.pr "%a => %a\n" Package.pp package pp_output status;
-    ( match Package.Map.find_opt package t.watchers with
-    | None -> ()
-    | Some condition -> Lwt_condition.broadcast condition status );
+    ( match Package.Map.find_opt package t.watchers, Package.Map.find_opt package t.values with
+    | Some condition, None -> Lwt_condition.broadcast condition status
+    | Some condition, Some status' when not (status_eq status status') -> Lwt_condition.broadcast condition status
+    | _ -> () );
     t.values <- Package.Map.add package status t.values;
     Lwt.return_unit
 
