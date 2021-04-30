@@ -1,30 +1,7 @@
 open Docs_ci_lib
 
-module ListMap (M : Map.S) = struct
-  include M
-
-  type 'v t = 'v list M.t
-
-  let of_list bindings =
-    let t = ref M.empty in
-    List.iter
-      (fun (k, v) ->
-        t :=
-          match M.find_opt k !t with None -> M.add k [ v ] !t | Some lst -> M.add k (v :: lst) !t)
-      bindings;
-    !t
-
-  let values t = t |> bindings |> List.map snd
-end
-
-module CharListMap = ListMap (Map.Make (Char))
-module NameListMap = ListMap (Map.Make (OpamPackage.Name))
-
 module PrepStatus = struct
-  type prep_result =
-    (Prep.t list, [ `Active of Current_term.Output.active | `Msg of string ]) result
-
-  type t = Jobs.t * prep_result
+  type t = Jobs.t * Prep.t list Current_term.Output.t
 
   let pp f (t, _) = Fmt.pf f "Prep status %a" Jobs.pp t
 
@@ -37,7 +14,6 @@ module PrepStatus = struct
     | v -> v
 end
 
-
 let get_compilation_job ~preps ~voodoo ~cache ~blessed pkg =
   let v = ref Package.Map.empty in
   let rec aux_get_job package =
@@ -46,33 +22,25 @@ let get_compilation_job ~preps ~voodoo ~cache ~blessed pkg =
     | None ->
         v := Package.Map.add package None !v;
         let deps =
-          package 
-          |> Package.universe 
-          |> Package.Universe.deps 
-          |> List.filter_map aux_get_job 
+          package |> Package.universe |> Package.Universe.deps |> List.filter_map aux_get_job
           |> Current.list_seq
         in
         let result =
           match Package.Map.find_opt package preps with
-          | Some prep ->
-              Some
-                (Compile.v ~cache ~voodoo ~blessed ~deps
-                   (Current.return prep))
+          | Some prep -> Some (Compile.v ~cache ~voodoo ~blessed ~deps (Current.return prep))
           | None -> None
         in
         v := Package.Map.add package result !v;
         result
   in
-  match aux_get_job pkg with 
-  | Some v -> Current.map Option.some v 
-  | None -> Current.return None
+  match aux_get_job pkg with Some v -> Current.map Option.some v | None -> Current.return None
 
 let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
     (preps : PrepStatus.t list Current.t) =
   let open Current.Syntax in
   let valid_preps =
     Current.collapse ~key:"get preps status" ~value:"" ~input
-    @@ Current.list_map ~collapse_key:"prep status"
+    @@ Current.list_map
          (module PrepStatus)
          (fun prep_status ->
            let+ _, status = prep_status in
@@ -82,23 +50,20 @@ let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
            x |> List.flatten
            |> List.sort_uniq (fun a b -> Package.compare (Prep.package a) (Prep.package b)))
   in
-  let pool = Compile.Pool.v () 
-  in
+  let pool = Compile.Pool.v () in
   Current.list_map
-    ( module Prep )
-    ~collapse_key:"compile item"
+    (module Prep)
     (fun prep ->
       let deps = Compile.Monitor.v pool prep in
-      Compile.v ~cache ~voodoo ~blessed ~deps prep 
-      |> Current.state ~hidden:true 
-      |> Current.pair prep
-      |> Current.map (fun (prep, x) -> 
-        let package = Prep.package prep in
-        Compile.Pool.update pool package x; (package, x))
+      Compile.v ~cache ~voodoo ~blessed ~deps prep
+      |> Current.state ~hidden:true |> Current.pair prep
+      |> Current.map (fun (prep, x) ->
+             let package = Prep.package prep in
+             Compile.Pool.update pool package x;
+             (package, x))
       |> Current.pair blessed
       |> Current.map (fun (blessed, (package, x)) ->
-        (package, Package.Blessed.is_blessed blessed package, x))
-      )
+             (package, Package.Blessed.is_blessed blessed package, x)))
     valid_preps
   |> Current.collapse ~key:"compile" ~value:"" ~input:valid_preps
 
@@ -110,12 +75,10 @@ let v ~api ~opam () =
   let voodoo = Voodoo.v () in
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
-  let solver_result =
-    (* 1) Track the list of packages in the opam repository *)
-    let tracked = Track.v ~filter:Config.track_packages opam in
-    (* 2) For each package.version, call the solver.  *)
-    Solver.incremental ~blacklist ~opam tracked
-  in
+  (* 1) Track the list of packages in the opam repository *)
+  let tracked = Track.v ~filter:Config.track_packages opam in
+  (* 2) For each package.version, call the solver.  *)
+  let solver_result = Solver.incremental ~blacklist ~opam tracked in
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
   let all_packages_jobs =
     solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get)
@@ -132,8 +95,10 @@ let v ~api ~opam () =
       Jobs.schedule ~targets all_packages_jobs
     in
     (* 5) Run the preparation step *)
+    Current.with_context v_prep @@ fun () ->
+    Current.with_context cache @@ fun () ->
     Current.collapse ~key:"preps" ~value:"" ~input:jobs
-    @@ Current.list_map ~collapse_key:"prep"
+    @@ Current.list_map
          (module Jobs)
          (fun job ->
            Prep.v ~cache ~voodoo:v_prep job |> Current.state ~hidden:true |> Current.pair job)
