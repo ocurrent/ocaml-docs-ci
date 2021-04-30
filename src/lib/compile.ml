@@ -112,6 +112,7 @@ module Pool = struct
     let open Lwt.Syntax in
     let condition =
       Lwt_mutex.with_lock t.mutex @@ fun () ->
+      Option.iter f (Package.Map.find_opt package t.values);
       match Package.Map.find_opt package t.watchers with
       | None ->
           let condition = Lwt_condition.create () in
