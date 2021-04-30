@@ -23,7 +23,9 @@ module Track = struct
   module Key = struct
     type t = { repo : Git.Commit.t; filter : string list }
 
-    let digest { repo; filter } = Git.Commit.hash repo ^ String.concat ";" filter
+    let digest { repo; filter } =
+      Git.Commit.hash repo ^ String.concat ";" filter ^ "; "
+      ^ (Config.take_n_last_versions |> Option.map string_of_int |> Option.value ~default:"")
   end
 
   let pp f { Key.repo; filter } =
@@ -40,9 +42,7 @@ module Track = struct
   let rec take n lst =
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
-  let take = match Config.take_n_last_versions with 
-    | Some n -> take n
-    | None -> Fun.id
+  let take = match Config.take_n_last_versions with Some n -> take n | None -> Fun.id
 
   let get_digest path =
     let content = Bos.OS.File.read path |> Result.get_ok in
@@ -71,7 +71,7 @@ module Track = struct
     |> Lwt.return
 end
 
-module TrackCache = Current_cache.Make (Track)
+module TrackCache = Misc.LatchedBuilder (Track)
 
 type t = O.OpamPackage.t * string [@@deriving yojson]
 
