@@ -154,6 +154,15 @@ let v ~api ~opam () =
   in
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled = compile ~input:blessed ~cache ~voodoo:v_do ~blessed prepped in
+  let package_registry =
+    let+ tracked = tracked in
+
+    List.iter
+      (fun p ->
+        Log.app (fun f -> f "Track: %s" (OpamPackage.to_string (Track.pkg p)));
+        Web.register (Track.pkg p) api)
+      tracked
+  in
   let package_status =
     let+ compiled = compiled and+ prepped = prepped in
     let status = ref Package.Map.empty in
@@ -188,10 +197,11 @@ let v ~api ~opam () =
          let compare (a1, a2) (b1, b2) =
            match Package.compare a1 b1 with 0 -> Web.Status.compare a2 b2 | v -> v
 
-         let pp f (package, status) = Fmt.pf f "%a -> %a" Package.pp package Web.Status.pp status
+         let pp f (package, status) = Fmt.pf f "%a => %a" Package.pp package Web.Status.pp status
        end )
        (fun pkg_value ->
          let package = Current.map fst pkg_value in
          let status = Current.map snd pkg_value in
          Web.set_package_status ~package ~status api)
   |> Current.collapse ~key:"status-update" ~value:"" ~input:package_status
+  |> Current.pair package_registry

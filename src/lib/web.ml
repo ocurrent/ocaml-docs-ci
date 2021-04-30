@@ -31,16 +31,21 @@ end
 type t = {
   updates : (Package.t * Status.t) Lwt_stream.t;
   push_update : (Package.t * Status.t) option -> unit;
+  packages : OpamPackage.t Lwt_stream.t;
+  push_package : OpamPackage.t option -> unit;
 }
 
 let make () =
   let updates, push_update = Lwt_stream.create () in
-  { updates; push_update }
+  let packages, push_package = Lwt_stream.create () in
+  { updates; push_update; packages; push_package }
 
 let set_package_status ~package ~status t =
   let open Current.Syntax in
   let+ package = package and+ status = status in
   t.push_update (Some (package, status))
+
+let register package t = t.push_package (Some package)
 
 module SMap = Map.Make (String)
 
@@ -144,10 +149,9 @@ module Graphql = struct
             ~typ:(non_null (list (non_null package)))
             ~args:Arg.[]
             ~resolve:(fun { ctx; _ } () -> OpamPackage.Name.Map.values ctx.data);
-          field "static_files_endpoint"
-            ~typ:(non_null string)
+          field "static_files_endpoint" ~typ:(non_null string)
             ~args:Arg.[]
-            ~resolve:(fun _ () -> Config.docs_public_endpoint)
+            ~resolve:(fun _ () -> Config.docs_public_endpoint);
         ])
 
   module Graphql_cohttp_lwt = Graphql_cohttp.Make (Schema) (Cohttp_lwt_unix.IO) (Cohttp_lwt.Body)
@@ -182,10 +186,29 @@ let update package status t =
       { name; versions = OpamPackage.Version.Map.empty }
       t.data
 
+let perform_register opam t =
+  let name = OpamPackage.name opam in
+  let version = OpamPackage.version opam in
+  let package_name_update { name; versions } =
+    let versions =
+      OpamPackage.Version.Map.update version Fun.id
+        { name; version; universes = SMap.empty }
+        versions
+    in
+    { name; versions }
+  in
+  t.data <-
+    OpamPackage.Name.Map.update 
+      name 
+      package_name_update
+      { name; versions = OpamPackage.Version.Map.empty }
+      t.data
+
 let serve ~port t =
   let state = { data = OpamPackage.Name.Map.empty } in
   Lwt.choose
     [
       Lwt_stream.iter (fun (package, status) -> update package status state) t.updates;
+      Lwt_stream.iter (fun opam -> perform_register opam state) t.packages;
       Graphql.run ~port state;
     ]

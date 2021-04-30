@@ -23,5 +23,7 @@ end
 
 val set_package_status : package:Package.t Current.t -> status:Status.t Current.t -> t -> unit Current.t
 
+val register : OpamPackage.t -> t -> unit
+
 val serve : port:int -> t -> unit Lwt.t
 (** Serve the API *)
