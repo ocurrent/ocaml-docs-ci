@@ -90,7 +90,7 @@ module Pool = struct
 
   let pp_output =
     Current_term.Output.pp (fun f (t : compile) ->
-        Fmt.pf f "%a-%s" Package.pp (package t) (artifacts_digest t))
+        Fmt.pf f "%s" (String.sub (artifacts_digest t) 0 16))
 
   let status_eq = Result.equal ~ok:(fun a b -> digest a = digest b) ~error:Stdlib.( = )
 
@@ -99,10 +99,10 @@ module Pool = struct
     Lwt_mutex.with_lock t.mutex @@ fun () ->
     ( match (Package.Map.find_opt package t.watchers, Package.Map.find_opt package t.values) with
     | Some condition, None -> (
-        Fmt.pr "%a => %a\n" Package.pp package pp_output status;
+        Log.app (fun f -> f "%a => %a" Package.pp package pp_output status);
         Lwt_condition.broadcast condition status)
     | Some condition, Some status' when not (status_eq status status') ->
-        (Fmt.pr "%a => %a\n" Package.pp package pp_output status;
+        (Log.app (fun f -> f "%a => %a" Package.pp package pp_output status);
         Lwt_condition.broadcast condition status)
     | _ -> () );
     t.values <- Package.Map.add package status t.values;
@@ -184,7 +184,7 @@ module Monitor = struct
   let v pool prep =
     let open Current.Syntax in
     let* component =
-      Current.component "Monitor compilation status"
+      Current.component "Wait for\ncompilation dependencies"
       |> let> prep = prep in
          make pool prep |> Current.Monitor.get
     in
