@@ -32,15 +32,33 @@ val odoc : t -> Mld.Gen.odoc_dyn
 
 val v :
   voodoo:Voodoo.Do.t Current.t ->
-  digests:Folder_digest.t Current.t ->
+  cache:Remote_cache.t Current.t ->
   blessed:Package.Blessed.t Current.t ->
   deps:t list Current.t ->
   Prep.t Current.t ->
   t Current.t
-(** [v ~voodoo ~digests ~blessed ~deps prep] is the ocurrent component in charge of building [prep],
+(** [v ~voodoo ~cache ~blessed ~deps prep] is the ocurrent component in charge of building [prep],
 using the previously-compiled [deps]. [blessed] contains the information to figure out if [prep] is
-a blessed package or not. [digests] contains the artifacts digests to track eventual changes.
+a blessed package or not. [cache] contains the artifacts cache metadata to track eventual changes.
 [voodoo] is the voodoo-do tool tracker. 
 
 Notably, if compilation artifacts already exists, then the job is a no-op. 
 *)
+
+module Pool : sig
+
+  type compile = t
+
+  type t
+
+  val v : unit -> t
+
+  val update : t -> Package.t -> compile Current_term.Output.t -> unit 
+
+end
+
+module Monitor : sig 
+
+  val v : Pool.t -> Prep.t Current.t -> t list Current.t
+
+end

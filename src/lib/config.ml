@@ -5,6 +5,7 @@ type ssh = {
   private_key_file : string;
   public_key_file : string;
   folder : string;
+  public_endpoint : string;
 }
 [@@deriving yojson]
 
@@ -14,16 +15,20 @@ type config = {
   ssh_storage : ssh;
   odoc : string option;
   jobs : int;
+  track_packages : string list [@default []];
+  take_n_last_versions : int option;
 }
 [@@deriving yojson]
 
-let v = Yojson.Safe.from_file "config.json" |> config_of_yojson |> Result.get_ok
+let v = match Yojson.Safe.from_file "config.json" |> config_of_yojson with 
+  | Ok v -> v 
+  | Error msg -> failwith ("Failed to parse config.json: "^msg) 
 
 let vat = Capnp_rpc_unix.client_only_vat ()
 
 let cap = Capnp_rpc_unix.Cap_file.load vat v.cap_file |> Result.get_ok
 
-let odoc = "https://github.com/ocaml/odoc.git#50fcb86ae66bb7d223b0d5e90488c7a911d22541"
+let odoc = "https://github.com/ocaml/odoc.git#38f6d0b0dc391505b787e15675b0c1b125c9d7db"
 
 let odoc_bin = Option.value ~default:"odoc" v.odoc
 
@@ -75,6 +80,14 @@ let ssh_secrets_values =
 
 let pool = "linux-x86_64"
 
-let ocluster_connection = Current_ocluster.Connection.create ~max_pipeline:10 cap
+let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:10 cap
+
+let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:10 cap
 
 let jobs = v.jobs
+
+let docs_public_endpoint = v.ssh_storage.public_endpoint
+
+let track_packages = v.track_packages
+
+let take_n_last_versions = v.take_n_last_versions

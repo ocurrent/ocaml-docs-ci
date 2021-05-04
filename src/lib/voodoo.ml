@@ -116,7 +116,7 @@ module Prep = struct
            run "cp $(opam config var bin)/voodoo-prep /home/opam";
          ]
 
-  let digest = Git.Commit_id.digest
+  let digest = Git.Commit_id.hash
 end
 
 module Do = struct
@@ -139,5 +139,5 @@ module Do = struct
            run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do /home/opam";
          ]
 
-  let digest = Git.Commit_id.digest
+  let digest = Git.Commit_id.hash
 end

@@ -12,6 +12,9 @@ val ssh_priv_key_file : Fpath.t
 
 val ssh_port : int
 
+val docs_public_endpoint : string
+(** The public URL to access the docs files *)
+
 val storage_folder : string
 (** Path of the global storage folder *)
 
@@ -25,8 +28,17 @@ the same version as odoc *)
 val pool : string
 (** The ocluster pool to use *)
 
-val ocluster_connection : Current_ocluster.Connection.t
-(** Connection to the cluster *)
+val ocluster_connection_prep : Current_ocluster.Connection.t
+(** Connection to the cluster for Prep *)
+
+val ocluster_connection_do : Current_ocluster.Connection.t
+(** Connection to the cluster for Do *)
 
 val jobs : int
 (** Number of jobs that can be spawned for the steps that are locally executed. *)
+
+val track_packages : string list
+(** List of packages to track (or all packages if the list is empty) *)
+
+val take_n_last_versions : int option
+(** Number of versions to take (None for all) *)

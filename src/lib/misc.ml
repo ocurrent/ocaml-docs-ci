@@ -38,3 +38,30 @@ let rsync_pull ?(digest = "") folders =
       Obuilder_spec.run ~secrets:Config.ssh_secrets ~cache ~network
         "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
+
+
+module LatchedBuilder(B: Current_cache.S.BUILDER) = struct
+  module Adaptor = struct
+    type t = B.t
+
+    let id = B.id
+
+    module Key = B.Key
+    module Value = Current.Unit
+    module Outcome = B.Value
+
+    let run op job key () =
+      B.build op job key
+
+    let pp f (key, ()) = B.pp f key
+
+    let auto_cancel = B.auto_cancel
+
+    let latched = true
+  end
+
+  include Current_cache.Generic(Adaptor)
+
+  let get ?schedule ctx key =
+    run ?schedule ctx key ()
+end

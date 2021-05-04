@@ -98,7 +98,7 @@ module Op = struct
     | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
 end
 
-module Solver_cache = Current_cache.Make (Op)
+module Solver_cache = Misc.LatchedBuilder (Op)
 
 let v ~system ~repo ~packages ~constraints =
   let open Current.Syntax in

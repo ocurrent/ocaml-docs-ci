@@ -25,7 +25,7 @@ let import_deps t =
   let folders = List.map (fun { package; blessed; _ } -> folder ~blessed package) t in
   Misc.rsync_pull folders
 
-let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
+let spec ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
@@ -67,16 +67,134 @@ let spec ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
          run ~secrets:Config.ssh_secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            Config.ssh_host Config.storage_folder;
          (* Compute compile folder digest *)
-         run "%s" (Folder_digest.compute_cmd [ compile_folder ]);
+         run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
+         run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
          (* Extract the digest info *)
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz digests %s:%s/"
-           Config.ssh_host Config.storage_folder;
+         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" Remote_cache.cmd_sync_folder;
        ]
+
+module Pool = struct
+  (** The CompilePool module takes care of waching 
+ and updating the compilation state of all packages *)
+
+  type compile = t
+
+  type t = {
+    mutable values : compile Current_term.Output.t Package.Map.t;
+    mutable watchers : compile Current_term.Output.t Lwt_condition.t Package.Map.t;
+    mutex : Lwt_mutex.t;
+  }
+
+  let v () =
+    { values = Package.Map.empty; watchers = Package.Map.empty; mutex = Lwt_mutex.create () }
+
+  let pp_output =
+    Current_term.Output.pp (fun f (t : compile) ->
+        Fmt.pf f "%s" (String.sub (artifacts_digest t) 0 16))
+
+  let status_eq = Result.equal ~ok:(fun a b -> digest a = digest b) ~error:Stdlib.( = )
+
+  let update t package status =
+    Lwt.async @@ fun () ->
+    Lwt_mutex.with_lock t.mutex @@ fun () ->
+    ( match (Package.Map.find_opt package t.watchers, Package.Map.find_opt package t.values) with
+    | Some condition, None -> (
+        Log.app (fun f -> f "%a => %a" Package.pp package pp_output status);
+        Lwt_condition.broadcast condition status)
+    | Some condition, Some status' when not (status_eq status status') ->
+        (Log.app (fun f -> f "%a => %a" Package.pp package pp_output status);
+        Lwt_condition.broadcast condition status)
+    | _ -> () );
+    t.values <- Package.Map.add package status t.values;
+    Lwt.return_unit
+
+  let watch t ~f package =
+    let open Lwt.Syntax in
+    let condition =
+      Lwt_mutex.with_lock t.mutex @@ fun () ->
+      Option.iter f (Package.Map.find_opt package t.values);
+      match Package.Map.find_opt package t.watchers with
+      | None ->
+          let condition = Lwt_condition.create () in
+          t.watchers <- Package.Map.add package condition t.watchers;
+          Lwt.return condition
+      | Some condition -> Lwt.return condition
+    in
+
+    let cancel, set_cancel = Lwt.wait () in
+
+    let watch () =
+      let* condition = condition in
+      let rec aux () =
+        let* v = Lwt_condition.wait condition in
+        f v;
+        aux ()
+      in
+      Lwt.pick [ aux (); cancel ]
+    in
+
+    Lwt.async watch;
+    set_cancel
+end
+
+module Monitor = struct
+  let state_output =
+    let v = function `Active `Ready -> 1 | `Active `Running -> 2 | `Msg _ -> 3 in
+    List.fold_left
+      (fun a b ->
+        match (a, b) with
+        | Ok a, Ok b -> Ok (b :: a)
+        | Ok _, Error b -> Error b
+        | a, Ok _ -> a
+        | Error a, Error b when v a < v b -> Error b
+        | a, _ -> a)
+      (Ok [])
+
+  let make (pool : Pool.t) (prep : Prep.t) =
+    let targets = Prep.package prep |> Package.universe |> Package.Universe.deps in
+    let state =
+      ref
+        (List.to_seq targets |> Seq.map (fun t -> (t, Error (`Active `Ready))) |> Package.Map.of_seq)
+    in
+    let get_state_output () = Package.Map.bindings !state |> List.map snd |> state_output in
+    let state_output = ref (get_state_output ()) in
+    let read () = !state_output |> Lwt.return_ok in
+    let watch refresh =
+      let cancel =
+        List.map
+          (fun target ->
+            Pool.watch pool
+              ~f:(fun value ->
+                state := Package.Map.add target value !state;
+                let old_v = !state_output in
+                state_output := get_state_output ();
+                if !state_output <> old_v then 
+                  refresh () 
+                else ())
+              target)
+          targets
+      in
+      Lwt.return @@ fun () ->
+      List.iter (fun u -> Lwt.wakeup_later u ()) cancel;
+      Lwt.return_unit
+    in
+    let pp f = Fmt.pf f "Watch compilation status for %a" Prep.pp prep in
+    Current.Monitor.create ~read ~watch ~pp
+
+  let v pool prep =
+    let open Current.Syntax in
+    let* component =
+      Current.component "Wait for\ncompilation dependencies"
+      |> let> prep = prep in
+         make pool prep |> Current.Monitor.get
+    in
+    Current.of_output component
+end
 
 module Compile = struct
   type output = t
 
-  type t = Folder_digest.t
+  type t = Remote_cache.t
 
   let id = "voodoo-do"
 
@@ -89,44 +207,64 @@ module Compile = struct
       prep : Prep.t;
       blessed : bool;
       voodoo : Voodoo.Do.t;
-      existing_artifacts_digest : string option;
+      compile_cache : Remote_cache.cache_entry;
     }
 
-    let digest { deps; prep; blessed; voodoo; existing_artifacts_digest } =
-      Fmt.str "%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+    let key { deps; prep; blessed; voodoo; compile_cache } =
+      Fmt.str "%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
         deps (Voodoo.Do.digest voodoo)
-        (Option.value ~default:"<empty>" existing_artifacts_digest)
-      |> Digest.string |> Digest.to_hex
+        (Remote_cache.digest compile_cache)
+        Config.odoc
+
+    let digest t = key t |> Digest.string |> Digest.to_hex
   end
 
   let pp f Key.{ prep; _ } = Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
 
   let auto_cancel = true
 
-  let build digests job Key.{ deps; prep; blessed; voodoo; existing_artifacts_digest } =
+  let remote_cache_key Key.{ voodoo; prep; deps; _ } =
+    (* When this key changes, the remote artifacts will be invalidated. *)
+    let deps_digest =
+      Fmt.to_to_string
+        Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
+        deps
+      |> Digest.string |> Digest.to_hex
+    in
+    Fmt.str "voodoo-compile-v0-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+      (Voodoo.Do.digest voodoo)
+      (Config.odoc |> Digest.string |> Digest.to_hex)
+
+  let build digests job (Key.{ deps; prep; blessed; voodoo; compile_cache } as key) =
     let open Lwt.Syntax in
     let package = Prep.package prep in
     let folder = folder ~blessed package in
-    match existing_artifacts_digest with
+    let cache_key = remote_cache_key key in
+    Current.Job.log job "Cache digest: %s" (Key.key key);
+    match compile_cache with
     (* Here, we first look if there are already artifacts in the compilation folder.
        TODO: invalidation when the cache key changes. *)
-    | Some artifacts_digest ->
+    | Some (key, Ok compile_digest) when String.trim key = cache_key ->
         let* () = Current.Job.start ~level:Harmless job in
-        Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder artifacts_digest;
-        Lwt.return_ok artifacts_digest
-    | None -> (
+        Current.Job.log job "Using existing artifacts for %a: %s" Fpath.pp folder compile_digest;
+        Lwt.return_ok compile_digest
+    | Some (key, Failed) when String.trim key = cache_key ->
+        let* () = Current.Job.start ~level:Harmless job in
+        Current.Job.log job "Compile step failed for %a." Fpath.pp folder;
+        Lwt.return_error (`Msg "Odoc compilation failed.")
+    | _ -> (
         let base = Misc.get_base_image package in
-        let spec = spec ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
+        let spec = spec ~cache_key ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep in
         let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
         let action = Cluster_api.Submission.obuilder_build spec in
         let version = Misc.base_image_version package in
         let cache_hint = "docs-universe-compile-" ^ version in
         let build_pool =
           Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint
-            ~secrets:Config.ssh_secrets_values Config.ocluster_connection
+            ~secrets:Config.ssh_secrets_values Config.ocluster_connection_do
         in
         let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
         Current.Job.log job "Using cache hint %S" cache_hint;
@@ -135,20 +273,22 @@ module Compile = struct
         match result with
         | Error (`Msg _) as e -> Lwt.return e
         | Ok _ ->
-            let+ () = Folder_digest.sync ~job () in
-            let artifacts_digest = Folder_digest.get digests folder |> Option.get in
+            let+ () = Remote_cache.sync ~job () in
+            let artifacts_digest =
+              Remote_cache.get digests folder |> Remote_cache.folder_digest_exn
+            in
             Current.Job.log job "New artifacts digest => %s" artifacts_digest;
             Ok artifacts_digest )
 end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~name ~voodoo ~digests ~blessed ~deps prep =
+let v ~name ~voodoo ~cache ~blessed ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
   |> let> prep = prep
      and> voodoo = voodoo
-     and> digests = digests
+     and> cache = cache
      and> blessed = blessed
      and> deps = deps in
      let package = Prep.package prep in
@@ -165,19 +305,18 @@ let v ~name ~voodoo ~digests ~blessed ~deps prep =
            kind = Mld;
          }
      in
-     let existing_artifacts_digest = Folder_digest.get digests compile_folder in
+     let compile_cache = Remote_cache.get cache compile_folder in
      let digest =
-       CompileCache.get digests
-         Compile.Key.{ prep; blessed; voodoo; deps; existing_artifacts_digest }
+       CompileCache.get cache Compile.Key.{ prep; blessed; voodoo; deps; compile_cache }
      in
      Current.Primitive.map_result
        (Result.map (fun artifacts_digest -> { package; blessed; odoc = Mld odoc; artifacts_digest }))
        digest
 
-let v ~voodoo ~digests ~blessed ~deps prep =
+let v ~voodoo ~cache ~blessed ~deps prep =
   let open Current.Syntax in
   let* b_prep = prep in
   let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
-  v ~name ~voodoo ~digests ~blessed ~deps prep
+  v ~name ~voodoo ~cache ~blessed ~deps prep
 
 let folder { package; blessed; _ } = folder ~blessed package

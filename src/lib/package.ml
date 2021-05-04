@@ -90,13 +90,16 @@ end = struct
       match OpamPackage.Map.find_opt package !memo with
       | Some package -> package
       | None ->
-          memo := OpamPackage.Map.add package (Package.v package [] commit) !memo;
-          let deps_pkg = OpamPackage.Map.find_opt package package_deps |> Option.value ~default:[] |> List.map obtain in
-          let pkg = Package.v package deps_pkg commit in
+          memo := OpamPackage.Map.add package None !memo;
+          let deps_pkg =
+            OpamPackage.Map.find_opt package package_deps
+            |> Option.value ~default:[] |> List.filter_map obtain
+          in
+          let pkg = Some (Package.v package deps_pkg commit) in
           memo := OpamPackage.Map.add package pkg !memo;
           pkg
     in
-    obtain root
+    obtain root |> Option.get
 end
 
 and Blessed : sig
