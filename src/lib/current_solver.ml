@@ -2,8 +2,6 @@ module Solver = Opam_0install.Solver.Make (Opam_0install.Dir_context)
 
 type commit = string [@@deriving yojson]
 
-let solver = Solver_pool.spawn_local ()
-
 let job_log job =
   let module X = Solver_api.Raw.Service.Log in
   X.local
@@ -21,7 +19,7 @@ let job_log job =
 let pool = Current.Pool.create ~label:"solver" 8
 
 module Op = struct
-  type t = No_context
+  type t = Solver_api.Solver.t
 
   module Key = struct
     type t = {
@@ -60,7 +58,7 @@ module Op = struct
 
   open Lwt.Syntax
 
-  let build No_context job { Key.repo; packages; system; constraints } =
+  let build solver job { Key.repo; packages; system; constraints } =
     let open Lwt.Infix in
     let* () = Current.Job.start ~pool ~level:Harmless job in
     let request =
@@ -100,8 +98,19 @@ end
 
 module Solver_cache = Misc.LatchedBuilder (Op)
 
-let v ~system ~repo ~packages ~constraints =
+let solver = ref None
+
+let solver config =
+  match !solver with
+  | None ->
+      let s = Solver_pool.spawn_local ~jobs:(Config.jobs config) () in
+      solver := Some s;
+      s
+  | Some s -> s
+
+let v ~config ~system ~repo ~packages ~constraints =
   let open Current.Syntax in
+  let solver = solver config in
   Current.component "solver"
   |> let> repo = repo and> constraints = constraints and> packages = packages in
-     Solver_cache.get No_context { system; repo; packages; constraints }
+     Solver_cache.get solver { system; repo; packages; constraints }

@@ -2,8 +2,6 @@ module Git = Current_git
 
 (* -------------------------- *)
 
-let solver = Solver_pool.spawn_local ()
-
 let job_log job =
   let module X = Solver_api.Raw.Service.Log in
   X.local
@@ -18,9 +16,7 @@ let job_log job =
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
 
-let pool = Current.Pool.create ~label:"solver" Config.jobs
-
-let perform_solve ~job ~(platform : Platform.t) ~opam track =
+let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   let open Lwt.Syntax in
   let package = Track.pkg track in
   let packages = [ OpamPackage.name_to_string package; "ocaml-base-compiler" ] in
@@ -55,22 +51,23 @@ let perform_solve ~job ~(platform : Platform.t) ~opam track =
   match res with
   | Ok [] -> Fmt.error_msg "no platform"
   | Ok [ x ] ->
-    let solution = List.map
-      (fun (a, b) ->
-        Current.Job.log job "%s: %s" a (String.concat "; " b);
-        (OpamPackage.of_string a, List.map OpamPackage.of_string b))
-      x.packages
-    in
-    let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
-    let compiler = List.find (fun (p,_) -> OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler") solution |> fst in
-    let version = OpamPackage.version compiler in
-    if OpamPackage.Version.compare version min_compiler_version >= 0
-    then
-      Ok
-        ( solution,
-          x.commit )
-  else
-    Fmt.error_msg "Solution requires compiler verion older than minimum"
+      let solution =
+        List.map
+          (fun (a, b) ->
+            Current.Job.log job "%s: %s" a (String.concat "; " b);
+            (OpamPackage.of_string a, List.map OpamPackage.of_string b))
+          x.packages
+      in
+      let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
+      let compiler =
+        List.find
+          (fun (p, _) -> OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler")
+          solution
+        |> fst
+      in
+      let version = OpamPackage.version compiler in
+      if OpamPackage.Version.compare version min_compiler_version >= 0 then Ok (solution, x.commit)
+      else Fmt.error_msg "Solution requires compiler verion older than minimum"
   | Ok _ -> Fmt.error_msg "??"
   | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
 
@@ -118,7 +115,7 @@ let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
 
 (* ------------------------- *)
 module Solver = struct
-  type t = No_context
+  type t = Solver_api.Solver.t * unit Current.Pool.t
 
   let id = "incremental-solver"
 
@@ -152,14 +149,14 @@ module Solver = struct
     let unmarshal t = Marshal.from_string t 0
   end
 
-  let run No_context job Key.{ packages; blacklist; platform } opam =
+  let run (solver, pool) job Key.{ packages; blacklist; platform } opam =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
     let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->
-          let+ res = perform_solve ~job ~opam ~platform pkg in
+          let+ res = perform_solve ~solver ~pool ~job ~opam ~platform pkg in
           let root = Track.pkg pkg in
           let result =
             match res with
@@ -182,9 +179,22 @@ end
 
 module SolverCache = Current_cache.Generic (Solver)
 
-let incremental ~(blacklist : string list) ~(opam : Git.Commit.t Current.t)
+let solver_pool = ref None
+
+let solver_pool config =
+  match !solver_pool with
+  | None ->
+      let jobs = Config.jobs config in
+      let s = Solver_pool.spawn_local ~jobs () in
+      let pool = Current.Pool.create ~label:"solver" jobs in
+      solver_pool := Some (s, pool);
+      (s, pool)
+  | Some s -> s
+
+let incremental ~config ~(blacklist : string list) ~(opam : Git.Commit.t Current.t)
     (packages : Track.t list Current.t) : t Current.t =
   let open Current.Syntax in
+  let solver_pool = solver_pool config in
   Current.component "incremental solver"
   |> let> opam = opam and> packages = packages in
-     SolverCache.run No_context { packages; blacklist; platform = Platform.platform_amd64 } opam
+     SolverCache.run solver_pool { packages; blacklist; platform = Platform.platform_amd64 } opam

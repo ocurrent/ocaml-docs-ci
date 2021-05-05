@@ -21,14 +21,14 @@ module Track = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { repo : Git.Commit.t; filter : string list }
+    type t = { limit: int option; repo : Git.Commit.t; filter : string list }
 
-    let digest { repo; filter } =
+    let digest { repo; filter; limit } =
       Git.Commit.hash repo ^ String.concat ";" filter ^ "; "
-      ^ (Config.take_n_last_versions |> Option.map string_of_int |> Option.value ~default:"")
+      ^ (limit |> Option.map string_of_int |> Option.value ~default:"")
   end
 
-  let pp f { Key.repo; filter } =
+  let pp f { Key.repo; filter; _ } =
     Fmt.pf f "opam repo track\n%a\n%a" Git.Commit.pp_short repo Fmt.(list string) filter
 
   module Value = struct
@@ -42,13 +42,13 @@ module Track = struct
   let rec take n lst =
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
-  let take = match Config.take_n_last_versions with Some n -> take n | None -> Fun.id
+  let take = function Some n -> take n | None -> Fun.id
 
   let get_digest path =
     let content = Bos.OS.File.read path |> Result.get_ok in
     Digestif.SHA256.(digest_string content |> to_hex)
 
-  let get_versions path =
+  let get_versions ~limit path =
     let open Rresult in
     Bos.OS.Dir.contents path
     >>| (fun versions ->
@@ -57,9 +57,9 @@ module Track = struct
                  (path |> Fpath.basename |> OpamPackage.of_string, get_digest Fpath.(path / "opam"))))
     |> Result.get_ok
     |> List.sort (fun (a, _) (b, _) -> OpamPackage.compare a b)
-    |> List.rev |> take
+    |> List.rev |> take limit
 
-  let build No_context job { Key.repo; filter } =
+  let build No_context job { Key.repo; filter; limit } =
     let open Lwt.Syntax in
     let open Rresult in
     let filter name = match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst in
@@ -67,7 +67,7 @@ module Track = struct
     Git.with_checkout ~job repo @@ fun dir ->
     Bos.OS.Dir.contents Fpath.(dir / "packages")
     >>= (fun packages ->
-          packages |> List.filter filter |> List.rev_map get_versions |> List.flatten |> Result.ok)
+          packages |> List.filter filter |> List.rev_map (get_versions ~limit) |> List.flatten |> Result.ok)
     |> Lwt.return
 end
 
@@ -91,8 +91,8 @@ module Map = OpamStd.Map.Make (struct
   let to_string (pkg, _) = OpamPackage.to_string pkg
 end)
 
-let v ~(filter : string list) (repo : Git.Commit.t Current.t) =
+let v ~limit ~(filter : string list) (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "Track packages - %a" Fmt.(list string) filter
   |> let> repo = repo in
-     TrackCache.get No_context { filter; repo }
+     TrackCache.get No_context { filter; repo; limit }

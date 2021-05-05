@@ -22,10 +22,10 @@ let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
 (** Obuilder operation to locally pull the selected folders. The [digests] option 
 is used to invalidate the operation if the expected value changes. *)
-let rsync_pull ?(digest = "") folders =
+let rsync_pull ~ssh ?(digest = "") folders =
   let sources =
     List.map
-      (fun folder -> Fmt.str "%s:%s/./%a" Config.ssh_host Config.storage_folder Fpath.pp folder)
+      (fun folder -> Fmt.str "%s:%s/./%a" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) Fpath.pp folder)
       folders
     |> String.concat " "
   in
@@ -35,7 +35,7 @@ let rsync_pull ?(digest = "") folders =
   match folders with
   | [] -> Obuilder_spec.comment "no sources to pull"
   | _ ->
-      Obuilder_spec.run ~secrets:Config.ssh_secrets ~cache ~network
+      Obuilder_spec.run ~secrets:Config.Ssh.secrets ~cache ~network
         "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
 

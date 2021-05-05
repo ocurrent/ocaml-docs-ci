@@ -1,6 +1,6 @@
 type t
 
-val make : unit -> t
+val make : Config.t -> t
 (** Create a Web API instance *)
 
 module Status : sig

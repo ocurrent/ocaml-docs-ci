@@ -1,93 +1,185 @@
-type ssh = {
-  host : string;
-  user : string;
-  port : int;
-  private_key_file : string;
-  public_key_file : string;
-  folder : string;
-  public_endpoint : string;
-}
-[@@deriving yojson]
+open Cmdliner
 
-type config = {
-  (* Capability file for ocluster submissions *)
-  cap_file : string;
-  ssh_storage : ssh;
-  odoc : string option;
+module Ssh = struct
+  type t = {
+    host : string;
+    user : string;
+    port : int;
+    private_key : string;
+    private_key_file : string;
+    public_key : string;
+    folder : string;
+    html_endpoint : string;
+  }
+
+  let named f = Cmdliner.Term.(app (const f))
+
+  let ssh_host =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH storage server host" ~docv:"HOST" [ "ssh-host" ]
+    |> named (fun x -> `SSH_host x)
+
+  let ssh_user =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH storage server user" ~docv:"USER" [ "ssh-user" ]
+    |> named (fun x -> `SSH_user x)
+
+  let ssh_port =
+    Arg.required
+    @@ Arg.opt Arg.(some int) (Some 22)
+    @@ Arg.info ~doc:"SSH storage server port" ~docv:"PORT" [ "ssh-port" ]
+    |> named (fun x -> `SSH_port x)
+
+  let ssh_privkey =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH private key file" ~docv:"FILE" [ "ssh-privkey" ]
+    |> named (fun x -> `SSH_privkey x)
+
+  let ssh_pubkey =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH public key file" ~docv:"FILE" [ "ssh-pubkey" ]
+    |> named (fun x -> `SSH_pubkey x)
+
+  let ssh_folder =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH storage folder" ~docv:"FILE" [ "ssh-folder" ]
+    |> named (fun x -> `SSH_folder x)
+
+  let ssh_endpoint =
+    Arg.required
+    @@ Arg.opt Arg.(some string) None
+    @@ Arg.info ~doc:"SSH <storage folder>/html/ public endpoint" ~docv:"FILE" [ "ssh-endpoint" ]
+    |> named (fun x -> `SSH_endpoint x)
+
+  let load_file path =
+    try
+      let ch = open_in path in
+      let len = in_channel_length ch in
+      let data = really_input_string ch len in
+      close_in ch;
+      data
+    with ex ->
+      if Sys.file_exists path then failwith @@ Fmt.str "Error loading %S: %a" path Fmt.exn ex
+      else failwith @@ Fmt.str "File %S does not exist" path
+
+  let v (`SSH_host host) (`SSH_user user) (`SSH_port port) (`SSH_pubkey pubkey)
+      (`SSH_privkey privkey) (`SSH_folder folder) (`SSH_endpoint endpoint) =
+    {
+      host;
+      user;
+      port;
+      private_key = load_file privkey;
+      private_key_file = privkey;
+      public_key = load_file pubkey;
+      folder;
+      html_endpoint = endpoint;
+    }
+
+  let cmdliner =
+    Term.(
+      const v $ ssh_host $ ssh_user $ ssh_port $ ssh_pubkey $ ssh_privkey $ ssh_folder
+      $ ssh_endpoint)
+
+  let config t =
+    Fmt.str
+      {|Host %s
+          IdentityFile ~/.ssh/id_rsa
+          Port %d
+          User %s
+          StrictHostKeyChecking=no
+        |}
+      t.host t.port t.user
+
+  let secrets =
+    Obuilder_spec.Secret.
+      [
+        v ~target:"/home/opam/.ssh/id_rsa" "ssh_privkey";
+        v ~target:"/home/opam/.ssh/id_rsa.pub" "ssh_pubkey";
+        v ~target:"/home/opam/.ssh/config" "ssh_config";
+      ]
+
+  let secrets_values t =
+    [ ("ssh_privkey", t.private_key); ("ssh_pubkey", t.public_key); ("ssh_config", config t) ]
+
+  let storage_folder t = t.folder
+
+  let host t = t.host
+
+  let user t = t.user
+
+  let priv_key_file t = Fpath.v t.private_key_file
+
+  let port t = t.port
+
+  let docs_public_endpoint t = t.html_endpoint
+end
+
+type t = {
   jobs : int;
-  track_packages : string list [@default []];
+  track_packages : string list;
   take_n_last_versions : int option;
+  ocluster_connection_prep : Current_ocluster.Connection.t;
+  ocluster_connection_do : Current_ocluster.Connection.t;
+  ssh : Ssh.t;
 }
-[@@deriving yojson]
 
-let v = match Yojson.Safe.from_file "config.json" |> config_of_yojson with 
-  | Ok v -> v 
-  | Error msg -> failwith ("Failed to parse config.json: "^msg) 
+let cap_file =
+  Arg.required
+  @@ Arg.opt Arg.(some string) None
+  @@ Arg.info ~doc:"Ocluster capability file" ~docv:"FILE" [ "ocluster-submission" ]
 
-let vat = Capnp_rpc_unix.client_only_vat ()
+let jobs =
+  Arg.required
+  @@ Arg.opt Arg.(some int) (Some 8)
+  @@ Arg.info ~doc:"Number of parallel jobs on the host machine (for solver)" ~docv:"JOBS"
+       [ "jobs"; "j" ]
 
-let cap = Capnp_rpc_unix.Cap_file.load vat v.cap_file |> Result.get_ok
+let track_packages =
+  Arg.value
+  @@ Arg.opt Arg.(list string) []
+  @@ Arg.info ~doc:"Filter the name of packages to track. " ~docv:"PKGS" [ "filter" ]
 
-let odoc = "https://github.com/ocaml/odoc.git#38f6d0b0dc391505b787e15675b0c1b125c9d7db"
+let take_n_last_versions =
+  Arg.value
+  @@ Arg.opt Arg.(some int) None
+  @@ Arg.info ~doc:"Limit the number of versions" ~docv:"LIMIT" [ "limit" ]
 
-let odoc_bin = Option.value ~default:"odoc" v.odoc
+let v cap_file jobs track_packages take_n_last_versions ssh =
+  let vat = Capnp_rpc_unix.client_only_vat () in
+  let cap = Capnp_rpc_unix.Cap_file.load vat cap_file |> Result.get_ok in
 
-let storage_folder = v.ssh_storage.folder
+  let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:10 cap in
+  let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:10 cap in
 
-let ssh_host = v.ssh_storage.host
+  {
+    jobs;
+    track_packages;
+    take_n_last_versions;
+    ocluster_connection_prep;
+    ocluster_connection_do;
+    ssh;
+  }
 
-let ssh_user = v.ssh_storage.user
+let cmdliner =
+  Term.(const v $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
 
-let ssh_priv_key_file = Fpath.v v.ssh_storage.private_key_file
+let odoc _ = "https://github.com/ocaml/odoc.git#38f6d0b0dc391505b787e15675b0c1b125c9d7db"
 
-let ssh_port = v.ssh_storage.port
+let pool _ = "linux-x86_64"
 
-let ssh_config =
-  Fmt.str
-    {|Host %s
-    IdentityFile ~/.ssh/id_rsa
-    Port %d
-    User %s
-    StrictHostKeyChecking=no
-  |}
-    v.ssh_storage.host v.ssh_storage.port v.ssh_storage.user
+let jobs t = t.jobs
 
-let ssh_secrets =
-  Obuilder_spec.Secret.
-    [
-      v ~target:"/home/opam/.ssh/id_rsa" "ssh_privkey";
-      v ~target:"/home/opam/.ssh/id_rsa.pub" "ssh_pubkey";
-      v ~target:"/home/opam/.ssh/config" "ssh_config";
-    ]
+let track_packages t = t.track_packages
 
-let load_file path =
-  try
-    let ch = open_in path in
-    let len = in_channel_length ch in
-    let data = really_input_string ch len in
-    close_in ch;
-    data
-  with ex ->
-    if Sys.file_exists path then failwith @@ Fmt.str "Error loading %S: %a" path Fmt.exn ex
-    else failwith @@ Fmt.str "File %S does not exist" path
+let take_n_last_versions t = t.take_n_last_versions
 
-let ssh_privkey = load_file v.ssh_storage.private_key_file
+let ocluster_connection_do t = t.ocluster_connection_do
 
-let ssh_pubkey = load_file v.ssh_storage.public_key_file
+let ocluster_connection_prep t = t.ocluster_connection_prep
 
-let ssh_secrets_values =
-  [ ("ssh_privkey", ssh_privkey); ("ssh_pubkey", ssh_pubkey); ("ssh_config", ssh_config) ]
-
-let pool = "linux-x86_64"
-
-let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:10 cap
-
-let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:10 cap
-
-let jobs = v.jobs
-
-let docs_public_endpoint = v.ssh_storage.public_endpoint
-
-let track_packages = v.track_packages
-
-let take_n_last_versions = v.take_n_last_versions
+let ssh t = t.ssh

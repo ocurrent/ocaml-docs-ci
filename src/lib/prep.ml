@@ -34,7 +34,8 @@ let universes_assoc packages =
          name ^ ":" ^ hash)
   |> String.concat ","
 
-let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
+let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t)
+    (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
   let all_deps = Package.all_deps install in
@@ -95,8 +96,7 @@ let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep
          env "DUNE_CACHE_DUPLICATION" "copy";
          (* Intall packages: this might fail.
             TODO: we could still do the prep step for the installed packages. *)
-         run ~secrets:Config.ssh_secrets ~network ~cache
-           "sudo apt update && opam depext -viy %s"
+         run ~secrets:Config.Ssh.secrets ~network ~cache "sudo apt update && opam depext -viy %s"
            packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
@@ -105,12 +105,13 @@ let spec ~cache_key ~artifacts_digest ~voodoo ~base ~(install : Package.t) (prep
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "rsync -avz prep %s:%s/ && echo '%s'"
-           Config.ssh_host Config.storage_folder artifacts_digest;
+         run ~secrets:Config.Ssh.secrets ~network:Misc.network "rsync -avz prep %s:%s/ && echo '%s'"
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) artifacts_digest;
          (* Compute artifacts digests, write cache key and upload them *)
          run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
          run "%s" (Remote_cache.cmd_compute_sha256 (prep |> List.rev_map folder));
-         run ~secrets:Config.ssh_secrets ~network:Misc.network "%s" Remote_cache.cmd_sync_folder;
+         run ~secrets:Config.Ssh.secrets ~network:Misc.network "%s"
+           (Remote_cache.cmd_sync_folder remote_cache);
        ]
 
 module Prep = struct
@@ -125,6 +126,7 @@ module Prep = struct
       job : Jobs.t;
       voodoo : Voodoo.Prep.t;
       artifacts_cache : Remote_cache.cache_entry list;
+      config : Config.t;
     }
 
     let partial_digest { job = { install; _ }; voodoo; _ } =
@@ -151,7 +153,7 @@ module Prep = struct
     (* When this key changes, the remote artifacts will be invalidated. *)
     Fmt.str "voodoo-prep-v0-%s" (Voodoo.Prep.digest voodoo)
 
-  let build digests job (Key.{ job = { install; prep }; voodoo; artifacts_cache } as key) =
+  let build digests job (Key.{ job = { install; prep }; voodoo; artifacts_cache; config } as key) =
     let open Lwt.Syntax in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
        Should be fixed by adding the oldest opam-repository commit in the universe hash, but that
@@ -212,7 +214,8 @@ module Prep = struct
       in
       let base = Misc.get_base_image install in
       let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } =
-        spec ~cache_key ~artifacts_digest:fetch_digest ~voodoo ~base ~install to_prep
+        spec ~ssh:(Config.ssh config) ~remote_cache:digests ~cache_key
+          ~artifacts_digest:fetch_digest ~voodoo ~base ~install to_prep
         |> Spec.to_ocluster_spec
       in
       let action = Cluster_api.Submission.obuilder_build spec in
@@ -220,8 +223,9 @@ module Prep = struct
       let version = Misc.base_image_version install in
       let cache_hint = "docs-universe-prep-" ^ version in
       let build_pool =
-        Current_ocluster.Connection.pool ~job ~pool:Config.pool ~action ~cache_hint ~src
-          ~secrets:Config.ssh_secrets_values Config.ocluster_connection_prep
+        Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint ~src
+          ~secrets:(Config.Ssh.secrets_values (Config.ssh config))
+          (Config.ocluster_connection_prep config)
       in
       let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
       Current.Job.log job "Using cache hint %S" cache_hint;
@@ -240,7 +244,7 @@ module Prep = struct
       Bos.OS.Dir.create (Fpath.parent target_path) |> Result.get_ok |> ignore;
       Bos.OS.Path.symlink ~force:true ~target:log_path target_path |> Result.get_ok;
       (* Then, handle the result *)
-      let+ () = Remote_cache.sync ~job () in
+      let+ () = Remote_cache.sync ~job digests in
       match result with
       | Error e -> Error e
       | Ok _ ->
@@ -270,7 +274,8 @@ type t = { package : Package.t; artifacts_digest : string }
 
 let pp f t = Package.pp f t.package
 
-let compare a b = match Package.compare a.package b.package with 
+let compare a b =
+  match Package.compare a.package b.package with
   | 0 -> String.compare a.artifacts_digest b.artifacts_digest
   | v -> v
 
@@ -291,15 +296,15 @@ let combine ~(job : Jobs.t) artifacts_digests =
     packages
 
 (** Assumption: packages are co-installable *)
-let v ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t Current.t) =
+let v ~config ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t Current.t) =
   let open Current.Syntax in
-  let* jobv = job in 
+  let* jobv = job in
   Current.component "voodoo-prep %s" (jobv.install |> Package.digest)
   |> let> voodoo = voodoo and> job = job and> cache = cache in
      let artifacts_cache =
        List.map (fun package -> Remote_cache.get cache (folder package)) job.prep
      in
-     PrepCache.get cache { job; voodoo; artifacts_cache }
+     PrepCache.get cache { job; voodoo; artifacts_cache; config }
      |> Current.Primitive.map_result (Result.map (combine ~job))
 
 let package (t : t) = t.package

@@ -1,6 +1,6 @@
 type t
 
-val v : unit -> t Current.t
+val v : Config.t -> t Current.t
 
 val cache : Obuilder_spec.Cache.t list
 

@@ -33,12 +33,13 @@ type t = {
   push_update : (Package.t * Status.t) option -> unit;
   packages : OpamPackage.t Lwt_stream.t;
   push_package : OpamPackage.t option -> unit;
+  config: Config.t
 }
 
-let make () =
+let make config =
   let updates, push_update = Lwt_stream.create () in
   let packages, push_package = Lwt_stream.create () in
-  { updates; push_update; packages; push_package }
+  { updates; push_update; packages; push_package; config }
 
 let set_package_status ~package ~status t =
   let open Current.Syntax in
@@ -72,7 +73,7 @@ let get_blessed_universe t =
 
 type package = { name : OpamPackage.Name.t; versions : version OpamPackage.Version.Map.t }
 
-type state = { mutable data : package OpamPackage.Name.Map.t }
+type state = { mutable data : package OpamPackage.Name.Map.t; ssh_public_endpoint : string }
 
 module Graphql = struct
   open Graphql_lwt
@@ -141,7 +142,7 @@ module Graphql = struct
               ~resolve:(fun _ { versions; _ } -> OpamPackage.Version.Map.values versions);
           ]))
 
-  let schema =
+  let schema ~ssh_public_endpoint =
     Schema.(
       schema
         [
@@ -151,13 +152,17 @@ module Graphql = struct
             ~resolve:(fun { ctx; _ } () -> OpamPackage.Name.Map.values ctx.data);
           field "static_files_endpoint" ~typ:(non_null string)
             ~args:Arg.[]
-            ~resolve:(fun _ () -> Config.docs_public_endpoint);
+            ~resolve:(fun _ () -> ssh_public_endpoint);
         ])
 
   module Graphql_cohttp_lwt = Graphql_cohttp.Make (Schema) (Cohttp_lwt_unix.IO) (Cohttp_lwt.Body)
 
   let run ~port (ctx : state) =
-    let callback = Graphql_cohttp_lwt.make_callback (fun _req -> ctx) schema in
+    let callback =
+      Graphql_cohttp_lwt.make_callback
+        (fun _req -> ctx)
+        (schema ~ssh_public_endpoint:ctx.ssh_public_endpoint)
+    in
     let server = Cohttp_lwt_unix.Server.make_response_action ~callback () in
     let mode = `TCP (`Port port) in
     Cohttp_lwt_unix.Server.create ~mode server
@@ -198,14 +203,17 @@ let perform_register opam t =
     { name; versions }
   in
   t.data <-
-    OpamPackage.Name.Map.update 
-      name 
-      package_name_update
+    OpamPackage.Name.Map.update name package_name_update
       { name; versions = OpamPackage.Version.Map.empty }
       t.data
 
 let serve ~port t =
-  let state = { data = OpamPackage.Name.Map.empty } in
+  let state =
+    {
+      data = OpamPackage.Name.Map.empty;
+      ssh_public_endpoint = Config.ssh t.config |> Config.Ssh.docs_public_endpoint;
+    }
+  in
   Lwt.choose
     [
       Lwt_stream.iter (fun (package, status) -> update package status state) t.updates;
