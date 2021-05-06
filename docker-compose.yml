@@ -1,0 +1,109 @@
+version: "3.8"
+services:
+
+  scheduler:
+    image: ocurrent/ocluster-scheduler:live
+    command:
+      - --secrets-dir=/capnp-secrets
+      - --capnp-secret-key-file=/capnp-secrets/key.pem
+      - --capnp-listen-address=tcp:0.0.0.0:9000
+      - --capnp-public-address=tcp:scheduler:9000
+      - --pools=linux-x86_64,linux-arm64,linux-ppc64
+      - --state-dir=/var/lib/ocluster-scheduler
+      - --default-clients=docs-ci
+    init: true
+    ports:
+      - "9000:9000"
+    volumes:
+      - 'scheduler-data:/var/lib/ocluster-scheduler'
+      - 'capnp-secrets:/capnp-secrets'
+
+  worker:
+    image: ocurrent/ocluster-worker:live
+    command:
+      - /capnp-secrets/pool-linux-x86_64.cap
+      - --name=local
+      - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
+      - --capacity=1
+      - --state-dir=/var/lib/ocluster
+    init: true
+    restart: on-failure         # (wait for the scheduler to write the pool cap)
+    volumes:
+      - 'worker-data:/var/lib/ocluster'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - 'capnp-secrets:/capnp-secrets:ro'
+    environment:
+      - DOCKER_BUILDKIT=1
+
+  generate-ssh-keys:
+    image: kroniak/ssh-client
+    command: >
+      bash -c "ssh-keygen -q -t ed25519 -f /ssh/id_ed25519 -N '' <<<y
+      && cp /ssh/id_ed25519.pub /ssh/authorized_keys
+      && cat /ssh/id_ed25519
+      && cat /ssh/authorized_keys"
+    volumes:
+      - 'ssh-credentials:/ssh/'
+
+  storage-server:
+    image: axiom/rsync-server
+    environment:
+      - PUBLIC_KEY_FILE=/ssh/id_ed25519.pub
+    depends_on:
+      - "generate-ssh-keys"
+    ports:
+      - "2222:22"
+    volumes:
+      - 'ssh-credentials:/root/.ssh/'
+      - 'docs-data:/data'
+
+  http-server:
+    image: nginx
+    ports:
+        - 8000:80
+    volumes:
+      - 'docs-data:/usr/share/nginx/html'
+
+  docs-ci:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    depends_on:
+      - "storage-server"
+      - "scheduler"
+      - "worker"
+    command:
+      - --confirm=above-average
+      - --ocluster-submission=/capnp-secrets/submit-docs-ci.cap
+      - --ssh-host=172.17.0.1 # ocluster jobs are spawned by the host's docker, so they don't have 
+                              # access to this docker-compose's network. therefore we have to get 
+                              # to the storage server through the host network.
+      - --ssh-port=2222
+      - --ssh-user=root
+      - --ssh-privkey=/ssh/id_ed25519
+      - --ssh-pubkey=/ssh/id_ed25519.pub
+      - --ssh-folder=/data
+      - --ssh-endpoint=http://http-server:8000/
+      - --jobs=6
+      - --limit=1
+      - --filter=uri
+    init: true
+    restart: on-failure         # (wait for the scheduler to write the submission cap)
+    ports:
+      - 8080:8080 # HTTP UI
+      - 8081:8081 # GraphQL endpoint for docs2web
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - 'docs-ci-data:/var/lib/ocurrent'
+      - "capnp-secrets:/capnp-secrets"
+      - 'ssh-credentials:/ssh/'
+    environment:
+      - CI_PROFILE=docker
+
+volumes:
+  docs-ci-data:
+  worker-data:
+  scheduler-data:
+  capnp-secrets:
+  docs-data:
+  ssh-credentials:
