@@ -260,8 +260,7 @@ module Compile = struct
           spec ~ssh:(Config.ssh config) ~remote_cache:digests ~cache_key ~artifacts_digest:""
             ~voodoo ~base ~deps ~blessed prep
         in
-        let Cluster_api.Obuilder_job.Spec.{ spec = `Contents spec } = Spec.to_ocluster_spec spec in
-        let action = Cluster_api.Submission.obuilder_build spec in
+        let action = Misc.to_ocluster_submission spec in
         let version = Misc.base_image_version package in
         let cache_hint = "docs-universe-compile-" ^ version in
         let build_pool =

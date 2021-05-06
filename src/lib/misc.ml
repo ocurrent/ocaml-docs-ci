@@ -65,3 +65,28 @@ module LatchedBuilder(B: Current_cache.S.BUILDER) = struct
   let get ?schedule ctx key =
     run ?schedule ctx key ()
 end
+
+let profile =
+  match Sys.getenv_opt "CI_PROFILE" with
+  | Some "production" -> `Production
+  | Some "dev" | None -> `Dev
+  | Some "docker" -> `Docker
+  | Some x -> Fmt.failwith "Unknown $PROFILE setting %S" x
+
+let to_obuilder_job build_spec =
+  Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish)
+
+let to_docker_job build_spec =
+  let spec_str =
+    Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (build_spec |> Spec.finish)
+  in
+  `Contents spec_str
+
+let to_ocluster_submission spec =
+  match profile with
+  | `Production | `Dev ->
+      to_obuilder_job spec |> 
+      Cluster_api.Submission.obuilder_build
+  | `Docker ->
+      to_docker_job spec |> 
+      Cluster_api.Submission.docker_build
