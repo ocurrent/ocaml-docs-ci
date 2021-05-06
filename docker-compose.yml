@@ -59,10 +59,15 @@ services:
 
   http-server:
     image: nginx
+    command: >
+      bash -c "rm -rf /usr/share/nginx/html
+      && ln -s /data/html /usr/share/nginx/html
+      && ls -lah /usr/share/nginx/html/
+      && nginx -g 'daemon off;'"
     ports:
         - 8000:80
     volumes:
-      - 'docs-data:/usr/share/nginx/html'
+      - 'docs-data:/data/'
 
   docs-ci:
     build:
@@ -83,7 +88,7 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://http-server:8000/
+      - --ssh-endpoint=http://localhost:8000/ # docs2web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri
