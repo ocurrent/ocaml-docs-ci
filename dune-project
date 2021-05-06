@@ -23,4 +23,8 @@
   fmt
   lwt
   cmdliner
+  git-unix
+  dockerfile
+  graphql-cohttp
+  graphql-lwt
   (ocaml (>= 4.08.0))))
