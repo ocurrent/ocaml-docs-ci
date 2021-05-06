@@ -33,7 +33,7 @@ type t = {
   push_update : (Package.t * Status.t) option -> unit;
   packages : OpamPackage.t Lwt_stream.t;
   push_package : OpamPackage.t option -> unit;
-  config: Config.t
+  config : Config.t;
 }
 
 let make config =
@@ -73,7 +73,11 @@ let get_blessed_universe t =
 
 type package = { name : OpamPackage.Name.t; versions : version OpamPackage.Version.Map.t }
 
-type state = { mutable data : package OpamPackage.Name.Map.t; ssh_public_endpoint : string }
+type state = {
+  mutable data : package OpamPackage.Name.Map.t;
+  mutable last_update : string;
+  ssh_public_endpoint : string;
+}
 
 module Graphql = struct
   open Graphql_lwt
@@ -150,6 +154,9 @@ module Graphql = struct
             ~typ:(non_null (list (non_null package)))
             ~args:Arg.[]
             ~resolve:(fun { ctx; _ } () -> OpamPackage.Name.Map.values ctx.data);
+          field "last_update" ~typ:(non_null string)
+            ~args:Arg.[]
+            ~resolve:(fun { ctx; _ } () -> ctx.last_update);
           field "static_files_endpoint" ~typ:(non_null string)
             ~args:Arg.[]
             ~resolve:(fun _ () -> ssh_public_endpoint);
@@ -167,6 +174,8 @@ module Graphql = struct
     let mode = `TCP (`Port port) in
     Cohttp_lwt_unix.Server.create ~mode server
 end
+
+let now () = Unix.gettimeofday () |> Float.to_string
 
 let update package status t =
   let opam = Package.opam package in
@@ -189,7 +198,8 @@ let update package status t =
   t.data <-
     OpamPackage.Name.Map.update name package_name_update
       { name; versions = OpamPackage.Version.Map.empty }
-      t.data
+      t.data;
+  t.last_update <- now ()
 
 let perform_register opam t =
   let name = OpamPackage.name opam in
@@ -205,13 +215,15 @@ let perform_register opam t =
   t.data <-
     OpamPackage.Name.Map.update name package_name_update
       { name; versions = OpamPackage.Version.Map.empty }
-      t.data
+      t.data;
+  t.last_update <- now ()
 
 let serve ~port t =
   let state =
     {
       data = OpamPackage.Name.Map.empty;
       ssh_public_endpoint = Config.ssh t.config |> Config.Ssh.docs_public_endpoint;
+      last_update = "none";
     }
   in
   Lwt.choose
