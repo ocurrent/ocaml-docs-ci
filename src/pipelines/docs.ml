@@ -14,28 +14,7 @@ module PrepStatus = struct
     | v -> v
 end
 
-let get_compilation_job ~preps ~voodoo ~cache ~blessed pkg =
-  let v = ref Package.Map.empty in
-  let rec aux_get_job package =
-    match Package.Map.find_opt package !v with
-    | Some v -> v
-    | None ->
-        v := Package.Map.add package None !v;
-        let deps =
-          package |> Package.universe |> Package.Universe.deps |> List.filter_map aux_get_job
-          |> Current.list_seq
-        in
-        let result =
-          match Package.Map.find_opt package preps with
-          | Some prep -> Some (Compile.v ~cache ~voodoo ~blessed ~deps (Current.return prep))
-          | None -> None
-        in
-        v := Package.Map.add package result !v;
-        result
-  in
-  match aux_get_job pkg with Some v -> Current.map Option.some v | None -> Current.return None
-
-let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
+let compile ~config ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
     (preps : PrepStatus.t list Current.t) =
   let open Current.Syntax in
   let valid_preps =
@@ -55,7 +34,7 @@ let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
     (module Prep)
     (fun prep ->
       let deps = Compile.Monitor.v pool prep in
-      Compile.v ~cache ~voodoo ~blessed ~deps prep
+      Compile.v ~config ~cache ~voodoo ~blessed ~deps prep
       |> Current.state ~hidden:true |> Current.pair prep
       |> Current.map (fun (prep, x) ->
              let package = Prep.package prep in
@@ -69,16 +48,18 @@ let compile ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
-let v ~api ~opam () =
+let v ~config ~api ~opam () =
   let open Current.Syntax in
-  let cache = Remote_cache.v () in
-  let voodoo = Voodoo.v () in
+  let cache = Remote_cache.v (Config.ssh config) in
+  let voodoo = Voodoo.v config in
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   (* 1) Track the list of packages in the opam repository *)
-  let tracked = Track.v ~filter:Config.track_packages opam in
+  let tracked =
+    Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
+  in
   (* 2) For each package.version, call the solver.  *)
-  let solver_result = Solver.incremental ~blacklist ~opam tracked in
+  let solver_result = Solver.incremental ~config ~blacklist ~opam tracked in
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
   let all_packages_jobs =
     solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get)
@@ -101,7 +82,8 @@ let v ~api ~opam () =
     @@ Current.list_map
          (module Jobs)
          (fun job ->
-           Prep.v ~cache ~voodoo:v_prep job |> Current.state ~hidden:true |> Current.pair job)
+           Prep.v ~config ~cache ~voodoo:v_prep job
+           |> Current.state ~hidden:true |> Current.pair job)
          jobs
   in
   (* 6) Promote packages to the main tree *)
@@ -118,7 +100,7 @@ let v ~api ~opam () =
       prepped
   in
   (* 7) Odoc compile and html-generate artifacts *)
-  let compiled = compile ~input:blessed ~cache ~voodoo:v_do ~blessed prepped in
+  let compiled = compile ~config ~input:blessed ~cache ~voodoo:v_do ~blessed prepped in
   let package_registry =
     let+ tracked = tracked in
 

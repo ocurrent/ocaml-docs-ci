@@ -4,9 +4,11 @@ let state_dir = Current.state_dir id
 
 let ssh_pool = Current.Pool.create ~label:"ssh" 30
 
-let sync ~job () =
+let sync ~job t =
   let open Lwt.Syntax in
-  let remote_folder = Fmt.str "%s@@%s:%s/" Config.ssh_user Config.ssh_host Config.storage_folder in
+  let remote_folder =
+    Fmt.str "%s@@%s:%s/" (Config.Ssh.user t) (Config.Ssh.host t) (Config.Ssh.storage_folder t)
+  in
   let switch = Current.Switch.create ~label:"ssh" () in
   let* () = Current.Job.use_pool ~switch job ssh_pool in
   let* _ =
@@ -16,14 +18,14 @@ let sync ~job () =
           "rsync";
           "-avzR";
           "-e";
-          Fmt.str "ssh -p %d -i %a" Config.ssh_port Fpath.pp Config.ssh_priv_key_file;
+          Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port t) Fpath.pp (Config.Ssh.priv_key_file t);
           remote_folder ^ "/cache/./";
           Fpath.to_string state_dir;
         |] )
   in
   Current.Switch.turn_off switch
 
-type t = unit
+type t = Config.Ssh.t
 
 type cache_key = string
 
@@ -49,7 +51,7 @@ let key_file path = Fpath.(state_dir // add_ext ".key" path)
 
 let digest_file path = Fpath.(state_dir // add_ext ".sha256" path)
 
-let get () path =
+let get _ path =
   Bos.OS.File.read (key_file path)
   |> Result.to_option
   |> Option.map (fun key ->
@@ -74,10 +76,11 @@ let cmd_compute_sha256 paths =
   in
   Fmt.(str "%a" (list ~sep:(any " && ") pp_compute_digest) paths)
 
-let cmd_sync_folder = Fmt.str "rsync -avz cache %s:%s/" Config.ssh_host Config.storage_folder
+let cmd_sync_folder t =
+  Fmt.str "rsync -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
 
 module Op = struct
-  type t = No_context
+  type t = Config.Ssh.t
 
   let pp f _ = Fmt.pf f "remote cache"
 
@@ -88,16 +91,20 @@ module Op = struct
 
   let id = id
 
-  let build No_context job () =
+  let build ssh job () =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Mostly_harmless job in
-    let* () = sync ~job () in
+    let* () = sync ~job ssh in
     Lwt.return_ok ()
 end
 
 module Cache = Current_cache.Make (Op)
 
-let v () =
-  Current.primitive
-    ~info:(Current.component "remote cache pull")
-    (Cache.get No_context) (Current.return ())
+let v ssh =
+  let open Current.Syntax in
+  let+ _ = 
+    Current.primitive
+      ~info:(Current.component "remote cache pull")
+      (Cache.get ssh) (Current.return ())
+  in
+  ssh

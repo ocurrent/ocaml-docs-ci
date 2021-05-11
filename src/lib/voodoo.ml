@@ -8,10 +8,10 @@ let cache = [ download_cache; dune_cache ]
 
 module Git = Current_git
 
-type t = { voodoo_do : Git.Commit_id.t; voodoo_prep : Git.Commit_id.t }
+type t0 = { voodoo_do : Git.Commit_id.t; voodoo_prep : Git.Commit_id.t }
 
 module Op = struct
-  type voodoo = t
+  type voodoo = t0
 
   type t = No_context
 
@@ -94,6 +94,13 @@ let v () =
   |> let> git = git in
      VoodooCache.get No_context git
 
+type t = { voodoo_do : Git.Commit_id.t; voodoo_prep : Git.Commit_id.t; config : Config.t }
+
+let v config =
+  let open Current.Syntax in
+  let+ { voodoo_do; voodoo_prep } = v () in
+  { voodoo_do; voodoo_prep; config }
+
 let remote_uri commit =
   let repo = Git.Commit_id.repo commit in
   let commit = Git.Commit_id.hash commit in
@@ -122,9 +129,9 @@ end
 module Do = struct
   type voodoo = t
 
-  type t = Git.Commit_id.t
+  type t = { commit : Git.Commit_id.t; config : Config.t }
 
-  let v { voodoo_do; _ } = voodoo_do
+  let v { voodoo_do; config; _ } = { commit = voodoo_do; config }
 
   let spec ~base t =
     let open Obuilder_spec in
@@ -134,10 +141,10 @@ module Do = struct
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
-             Config.odoc;
-           run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t);
+             (Config.odoc t.config);
+           run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t.commit);
            run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do /home/opam";
          ]
 
-  let digest = Git.Commit_id.hash
+  let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
 end

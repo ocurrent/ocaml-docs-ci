@@ -20,10 +20,11 @@ val folder_digest_exn : cache_entry -> string
 val get : t -> Fpath.t -> cache_entry
 (** [get t path] retrieves the hash of [path], or returns None if it doesn't exist. *)
 
-val v : unit -> t Current.t
-(** [v ()] is an ocurrent component that synchronises the remote `cache/` folder with a local one. *)
+val v : Config.Ssh.t -> t Current.t
+(** [v ssh] is an ocurrent component that synchronises the remote `cache/` folder with a local one. 
+  It requires the [ssh] configuration. *)
 
-val sync : job:Current.Job.t -> unit -> unit Lwt.t
+val sync : job:Current.Job.t -> t -> unit Lwt.t
 (** Synchronize the local folder *)
 
 val cmd_write_key : cache_key -> Fpath.t list -> string
@@ -33,5 +34,5 @@ val cmd_compute_sha256 : Fpath.t list -> string
 (** [cmd_compute_sha256 paths] is the command to run in order to compute the hashes of the given [paths], 
   and store the data in a file in the `cache/` folder. *)
 
-val cmd_sync_folder : string
-(** [cmd_sync_folder] is the command to synchronise the digests folder with upstream. To run with ocluster, the command needs to be provided with Config.ssh_secrets and network access*)
+val cmd_sync_folder : t -> string
+(** [cmd_sync_folder] is the command to synchronise the digests folder with upstream. To run with ocluster, the command needs to be provided with Config.Ssh.secrets and network access*)

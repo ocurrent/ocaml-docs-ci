@@ -3,7 +3,7 @@ type t
 
 val package : t -> Package.t
 
-val v : voodoo:Voodoo.Prep.t Current.t -> cache:Remote_cache.t Current.t -> Jobs.t Current.t -> t list Current.t
+val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> cache:Remote_cache.t Current.t -> Jobs.t Current.t -> t list Current.t
 (** Install a package universe, extract useful files and push obtained universes. *)
 
 val folder : t -> Fpath.t
