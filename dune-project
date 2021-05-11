@@ -31,6 +31,7 @@
   dockerfile
   graphql-cohttp
   graphql-lwt
+  conf-libev
   (ocaml
    (>= 4.08.0))))
 
