@@ -42,10 +42,17 @@
   (ocaml
    (>= 4.08.0))
   dune
-  dream
-  git-unix
-  tyxml-jsx
-  lambdasoup
-  reason
-  omd
-  graphql_ppx))
+  (dream
+   (>= 1.0.0~alpha))
+  (git-unix
+   (>= 3.3.3))
+  (tyxml-jsx
+   (>= 4.4.0))
+  (lambdasoup
+   (>= 0.7.2))
+  (reason
+   (>= 3.7.0))
+  (omd
+   (>= 2.0.0~alpha))
+  (graphql_ppx
+   (>= 1.0.1))))
