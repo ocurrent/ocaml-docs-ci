@@ -1,5 +1,6 @@
 (executable
  (name main)
+ (package docs-ci)
  (public_name docs-ci-solver)
  (preprocess
   (pps ppx_deriving.std ppx_deriving_yojson))

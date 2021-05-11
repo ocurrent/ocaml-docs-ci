@@ -88,7 +88,7 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://localhost:8000/ # docs2web access the documentation files using this endpoint
+      - --ssh-endpoint=http://http-server/ # docs-ci-web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri
@@ -98,15 +98,30 @@ services:
       - 8080:8080 # HTTP UI
       - 8081:8081 # GraphQL endpoint for docs2web
     volumes:
-      - '/var/run/docker.sock:/var/run/docker.sock'
       - 'docs-ci-data:/var/lib/ocurrent'
       - "capnp-secrets:/capnp-secrets"
       - 'ssh-credentials:/ssh/'
     environment:
       - CI_PROFILE=docker
 
+  docs-ci-web:
+    build:
+      dockerfile: Dockerfile.web
+      context: .
+    command:
+      - --api=http://docs-ci:8081/graphql
+      - --port=8082
+      - --prefix=/
+      - --interface=0.0.0.0
+    init: true
+    ports:
+      - '8082:8082' # Docs2web UI
+    volumes:
+      - 'docs-ci-web-data:/var/lib/docs-ci-web/var'
+
 volumes:
   docs-ci-data:
+  docs-ci-web-data:
   worker-data:
   scheduler-data:
   capnp-secrets:
