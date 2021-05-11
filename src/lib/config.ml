@@ -170,7 +170,7 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
 let cmdliner =
   Term.(const v $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
 
-let odoc _ = "https://github.com/ocaml/odoc.git#38f6d0b0dc391505b787e15675b0c1b125c9d7db"
+let odoc _ = "https://github.com/ocaml/odoc.git#e5a2c3128d26e3901db9ddf21062575feb7cd534"
 
 let pool _ = "linux-x86_64"
 
