@@ -52,9 +52,10 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~bl
          run "rm -f compile/packages/%s/*.odoc" name;
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
+         [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
+         run "cp ~/voodoo-gen $(opam config var bin)/voodoo-gen";
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
