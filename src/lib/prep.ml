@@ -96,8 +96,7 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~voodoo ~base ~(install
          env "DUNE_CACHE_DUPLICATION" "copy";
          (* Intall packages: this might fail.
             TODO: we could still do the prep step for the installed packages. *)
-         run ~network ~cache "sudo apt update && opam depext -viy %s"
-           packages_str;
+         run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
          (* empty preps should yield an empty folder *)
          run "mkdir -p %s" (base_folders prep);
@@ -105,13 +104,12 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~voodoo ~base ~(install
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avz -e 'ssh -vv' prep %s:%s/ && echo '%s'"
+         run ~secrets:Config.Ssh.secrets ~network "rsync -avz prep %s:%s/ && echo '%s'"
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) artifacts_digest;
          (* Compute artifacts digests, write cache key and upload them *)
          run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
          run "%s" (Remote_cache.cmd_compute_sha256 (prep |> List.rev_map folder));
-         run ~secrets:Config.Ssh.secrets ~network "%s"
-           (Remote_cache.cmd_sync_folder remote_cache);
+         run ~secrets:Config.Ssh.secrets ~network "%s" (Remote_cache.cmd_sync_folder remote_cache);
        ]
 
 module Prep = struct
@@ -288,18 +286,18 @@ let combine ~(job : Jobs.t) artifacts_digests =
            (package_digest, artifacts_digest))
     |> StringMap.of_seq
   in
-  List.map
-    (fun package ->
-      let digest = StringMap.find (Package.digest package) artifacts_digests in
-      { package; artifacts_digest = digest })
-    packages
+  packages |> List.to_seq
+  |> Seq.map (fun package ->
+         ( package,
+           let digest = StringMap.find (Package.digest package) artifacts_digests in
+           { package; artifacts_digest = digest } ))
+  |> Package.Map.of_seq
 
 (** Assumption: packages are co-installable *)
-let v ~config ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t Current.t) =
+let v ~config ~voodoo ~(cache : Remote_cache.t Current.t) (job : Jobs.t) =
   let open Current.Syntax in
-  let* jobv = job in
-  Current.component "voodoo-prep %s" (jobv.install |> Package.digest)
-  |> let> voodoo = voodoo and> job = job and> cache = cache in
+  Current.component "voodoo-prep %s" (job.install |> Package.digest)
+  |> let> voodoo = voodoo and> cache = cache in
      let artifacts_cache =
        List.map (fun package -> Remote_cache.get cache (folder package)) job.prep
      in

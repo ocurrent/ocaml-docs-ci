@@ -36,7 +36,7 @@ let rsync_pull ~ssh ?(digest = "") folders =
   | [] -> Obuilder_spec.comment "no sources to pull"
   | _ ->
       Obuilder_spec.run ~secrets:Config.Ssh.secrets ~cache ~network
-        "rsync -e 'ssh -vv' --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
+        "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
 
 

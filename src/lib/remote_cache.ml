@@ -77,21 +77,26 @@ let cmd_compute_sha256 paths =
   Fmt.(str "%a" (list ~sep:(any " && ") pp_compute_digest) paths)
 
 let cmd_sync_folder t =
-  Fmt.str "rsync -e 'ssh -vv' -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
+  Fmt.str "rsync -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
 
 module Op = struct
-  type t = Config.Ssh.t
+  type t = No_context
 
   let pp f _ = Fmt.pf f "remote cache"
 
-  module Key = Current.Unit
+  module Key = struct
+    type t = Config.Ssh.t
+
+    let digest = Config.Ssh.digest
+  end
+
   module Value = Current.Unit
 
   let auto_cancel = true
 
   let id = id
 
-  let build ssh job () =
+  let build No_context job ssh =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Mostly_harmless job in
     let* () = sync ~job ssh in
@@ -105,6 +110,6 @@ let v ssh =
   let+ _ = 
     Current.primitive
       ~info:(Current.component "remote cache pull")
-      (Cache.get ssh) (Current.return ())
+      (Cache.get No_context) (Current.return ssh)
   in
   ssh

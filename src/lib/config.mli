@@ -20,6 +20,8 @@ module Ssh : sig
   val docs_public_endpoint : t -> string
   (** The public URL to access the docs files *)
   
+  val digest : t -> string
+  (** Updated when the storage location changes *)
 end
 
 type t
