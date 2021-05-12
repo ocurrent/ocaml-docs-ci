@@ -57,7 +57,7 @@ module Op = struct
 
   let voodoo_prep_paths = Fpath.[ v "voodoo-prep.opam"; v "bin/prep/" ]
 
-  let voodoo_do_paths = Fpath.[ v "voodoo-do.opam"; v "voodoo-lib.opam"; v "bin/do/"; v "lib/" ]
+  let voodoo_do_paths = Fpath.[ v "voodoo-do.opam"; v "voodoo-lib.opam"; v "bin/do/"; v "lib/"; v "gen/"; v "vendor/" ]
 
   let get_oldest_commit_for ~job ~dir ~from paths =
     let paths = List.map Fpath.to_string paths in
