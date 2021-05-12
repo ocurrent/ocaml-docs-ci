@@ -65,7 +65,7 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~bl
            "rsync -avzR /home/opam/docs/./compile/ %s:%s/ && echo '%s'" (Config.Ssh.host ssh)
            (Config.Ssh.storage_folder ssh) artifacts_digest;
          (* Extract html output *)
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
+         run ~secrets:Config.Ssh.secrets ~network "rsync -e 'ssh -vv' -avzR /home/opam/docs/./html/ %s:%s/"
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* Compute compile folder digest *)
          run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);

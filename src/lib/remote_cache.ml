@@ -77,7 +77,7 @@ let cmd_compute_sha256 paths =
   Fmt.(str "%a" (list ~sep:(any " && ") pp_compute_digest) paths)
 
 let cmd_sync_folder t =
-  Fmt.str "rsync -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
+  Fmt.str "rsync -e 'ssh -vv' -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
 
 module Op = struct
   type t = Config.Ssh.t
