@@ -14,7 +14,7 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~config ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.t)
+let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -38,10 +38,9 @@ let compile ~config ~voodoo ~cache ~input ~(blessed : Package.Blessed.t Current.
     |> Option.map @@ fun job ->
        job |> Current.state ~hidden:true |> Current.pair blessed
        |> Current.map (fun (blessed, x) -> (package, Package.Blessed.is_blessed blessed package, x))
-       |> Current.collapse ~key:"compile" ~value:(Fmt.to_to_string Package.pp package) ~input
   in
   Package.Map.filter_map get_compilation_node preps
-  |> Package.Map.bindings |> List.rev_map snd |> Current.list_seq
+  |> Package.Map.bindings
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
@@ -56,6 +55,47 @@ let take_any_success jobs =
   in
   let max a b = if to_int a >= to_int b then a else b in
   List.fold_left max (List.hd statuses) (List.tl statuses) |> Current.of_output
+
+module StringMap = Map.Make (String)
+
+let collapse_by ~key ~input (criteria : 'k -> string) (list : ('k * 'v Current.t) list) :
+    ('k * 'v Current.t) list =
+  let groups = ref StringMap.empty in
+  List.iter
+    (fun (pkg, value) ->
+      groups :=
+        StringMap.update (criteria pkg)
+          (function None -> Some [ (pkg, value) ] | Some v -> Some ((pkg, value) :: v))
+          !groups)
+    list;
+
+  !groups
+  |> StringMap.mapi (fun k v ->
+         let curr = List.map snd v in
+         let keys = List.map fst v in
+         let current = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
+         List.combine keys current)
+  |> StringMap.bindings |> List.rev_map snd |> List.flatten
+
+let prep_hierarchical_collapse ~input lst =
+  let key = "prep" in
+  lst
+  |> collapse_by ~key ~input (fun x -> x.Jobs.install |> Package.opam |> OpamPackage.name_to_string)
+  |> collapse_by ~key ~input (fun x ->
+         let name = x.Jobs.install |> Package.opam |> OpamPackage.name_to_string in
+         String.sub name 0 1 |> String.uppercase_ascii)
+  |> collapse_by ~key ~input (fun _ -> "")
+
+let compile_hierarchical_collapse ~input lst =
+  let key = "compile" in
+  lst
+  |> collapse_by ~key ~input (Fmt.to_to_string Package.pp)
+  |> collapse_by ~key ~input (fun x -> x |> Package.opam |> OpamPackage.to_string)
+  |> collapse_by ~key ~input (fun x -> x |> Package.opam |> OpamPackage.name_to_string)
+  |> collapse_by ~key ~input (fun x ->
+         let name = x |> Package.opam |> OpamPackage.name_to_string in
+         String.sub name 0 1 |> String.uppercase_ascii)
+  |> collapse_by ~key ~input (fun _ -> "")
 
 let v ~config ~api ~opam () =
   let open Current.Syntax in
@@ -82,13 +122,13 @@ let v ~config ~api ~opam () =
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
   (* 5) Run the preparation step *)
   let prepped =
-    List.map
-      (fun job ->
-        let result = Prep.v ~config ~cache ~voodoo:v_prep job in
-        job.Jobs.prep |> List.to_seq
-        |> Seq.map (fun p -> (p, [ Current.map (Package.Map.find p) result ]))
-        |> Package.Map.of_seq)
-      jobs
+    jobs
+    |> List.map (fun job -> (job, Prep.v ~config ~cache ~voodoo:v_prep job))
+    |> prep_hierarchical_collapse ~input:solver_result
+    |> List.map (fun (job, result) ->
+           job.Jobs.prep |> List.to_seq
+           |> Seq.map (fun p -> (p, [ Current.map (Package.Map.find p) result ]))
+           |> Package.Map.of_seq)
     |> List.fold_left (Package.Map.union (fun _ a b -> Some (a @ b))) Package.Map.empty
     |> Package.Map.map take_any_success
   in
@@ -110,10 +150,14 @@ let v ~config ~api ~opam () =
     |> Package.Blessed.v
   in
   (* 7) Odoc compile and html-generate artifacts *)
-  let compiled = compile ~config ~input:blessed ~cache ~voodoo:v_do ~blessed prepped in
+  let compiled =
+    compile ~config ~cache ~voodoo:v_do ~blessed prepped
+    |> compile_hierarchical_collapse ~input:blessed
+    |> List.rev_map snd 
+    |> Current.list_seq
+  in
   let package_registry =
     let+ tracked = tracked in
-
     List.iter
       (fun p ->
         Log.app (fun f -> f "Track: %s" (OpamPackage.to_string (Track.pkg p)));
