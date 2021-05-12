@@ -105,7 +105,7 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~voodoo ~base ~(install
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Upload artifacts *)
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avz prep %s:%s/ && echo '%s'"
+         run ~secrets:Config.Ssh.secrets ~network "rsync -avz -e 'ssh -vv' prep %s:%s/ && echo '%s'"
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) artifacts_digest;
          (* Compute artifacts digests, write cache key and upload them *)
          run "%s" (Remote_cache.cmd_write_key cache_key (prep |> List.rev_map folder));
