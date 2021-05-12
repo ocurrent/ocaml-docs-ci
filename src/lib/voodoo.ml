@@ -143,7 +143,7 @@ module Do = struct
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t.commit);
-           run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do /home/opam";
+           run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do $(opam config var bin)/voodoo-gen /home/opam";
          ]
 
   let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
