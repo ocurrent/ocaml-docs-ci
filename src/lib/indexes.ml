@@ -41,9 +41,16 @@ module Index = struct
 
   let mkdir_p d =
     let segs = Fpath.segs (Fpath.normalize d) |> List.filter (fun s -> String.length s > 0) in
+    let init, segs =
+      match segs with
+      | "" :: xs -> Fpath.v "/", xs
+      | _ -> Fpath.v ".", segs
+    in
     let _ = List.fold_left (fun path seg ->
     let d = Fpath.(path // v seg) in
-      try Unix.mkdir (Fpath.to_string d) 0o755; d with
+      try
+        Log.app (fun f -> f "mkdir %a" Fpath.pp d);
+        Unix.mkdir (Fpath.to_string d) 0o755; d with
       | Unix.Unix_error (Unix.EEXIST, _, _) -> d
       | exn -> raise exn) (Fpath.v ".") segs in
     ()
