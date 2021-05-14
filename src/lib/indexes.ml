@@ -52,7 +52,7 @@ module Index = struct
         Log.app (fun f -> f "mkdir %a" Fpath.pp d);
         Unix.mkdir (Fpath.to_string d) 0o755; d with
       | Unix.Unix_error (Unix.EEXIST, _, _) -> d
-      | exn -> raise exn) (Fpath.v ".") segs in
+      | exn -> raise exn) init segs in
     ()
   
   let publish ssh job package_name v =
