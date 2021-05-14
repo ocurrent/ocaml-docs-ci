@@ -3,6 +3,8 @@ type t
  Basically it's a way to tell the pipeline if something gets deleted on the storage server, or needs to be rebuilt. 
 *)
 
+val ssh_pool : unit Current.Pool.t
+
 type cache_key = string 
 
 type digest = string
