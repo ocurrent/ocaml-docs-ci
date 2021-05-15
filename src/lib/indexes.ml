@@ -49,7 +49,7 @@ module Index = struct
     let _ = List.fold_left (fun path seg ->
     let d = Fpath.(path // v seg) in
       try
-        Log.app (fun f -> f "mkdir %a" Fpath.pp d);
+        Log.err (fun f -> f "mkdir %a" Fpath.pp d);
         Unix.mkdir (Fpath.to_string d) 0o755; d with
       | Unix.Unix_error (Unix.EEXIST, _, _) -> d
       | exn -> raise exn) init segs in
@@ -58,7 +58,7 @@ module Index = struct
   let publish ssh job package_name v =
     let open Lwt.Syntax in
     let dir = Fpath.(state_dir / package_name) in
-    mkdir_p dir;
+    Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
     let file = Fpath.(dir / "state.json") in
     let ts = List.map (fun (version, status) -> 
       { version;
@@ -81,8 +81,8 @@ module Index = struct
           "-avzR";
           "-e";
           Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port ssh) Fpath.pp (Config.Ssh.priv_key_file ssh);
-          remote_folder ^ "/html/tailwind/packages/./";
           Fpath.to_string state_dir;
+          remote_folder ^ "/html/tailwind/packages/./";
         |] )
   in
   let* () = Current.Switch.turn_off switch in
