@@ -33,14 +33,8 @@ let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t)
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
   in
-  let get_compilation_node package _ =
-    get_compilation_job package
-    |> Option.map @@ fun job ->
-       job |> Current.state ~hidden:true |> Current.pair blessed
-       |> Current.map (fun (blessed, x) -> (package, Package.Blessed.is_blessed blessed package, x))
-  in
-  Package.Map.filter_map get_compilation_node preps
-  |> Package.Map.bindings
+  let get_compilation_node package _ = get_compilation_job package in
+  Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
@@ -153,7 +147,7 @@ let v ~config ~api ~opam () =
   let compiled =
     compile ~config ~cache ~voodoo:v_do ~blessed prepped
     |> compile_hierarchical_collapse ~input:blessed
-    |> List.rev_map snd 
+    |> List.rev_map (fun (package, task) -> Current.state ~hidden:true task |> Current.map (fun v -> package, v))
     |> Current.list_seq
   in
   let package_registry =
@@ -165,7 +159,7 @@ let v ~config ~api ~opam () =
       tracked
   in
   let package_status =
-    let+ compiled = compiled and+ prepped = prep_list in
+    let+ compiled = compiled and+ prepped = prep_list and+ blessed = blessed in
     let status = ref Package.Map.empty in
     let set value package = status := Package.Map.add package value !status in
     let set_if_better value package =
@@ -181,8 +175,8 @@ let v ~config ~api ~opam () =
         | package, Error (`Active _) -> (set_if_better (Pending Prep)) package)
       prepped;
     List.iter
-      (fun (package, blessed, status) ->
-        let blessed = if blessed then Docs_ci_lib.Web.Status.Blessed else Universe in
+      (fun (package, status) ->
+        let blessed = if Package.Blessed.is_blessed blessed package then Docs_ci_lib.Web.Status.Blessed else Universe in
         match status with
         | Ok _ -> set (Success blessed) package
         | Error (`Msg _) -> set Failed package

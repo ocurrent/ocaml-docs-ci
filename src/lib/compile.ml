@@ -39,6 +39,7 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~bl
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
          (* obtain the compiled dependencies *)
+         Spec.add_rsync_retry_script;
          import_deps ~ssh deps;
          (* obtain the prep folder *)
          Misc.rsync_pull ~ssh ~digest:(Prep.artifacts_digest prep) [ prep_folder ];

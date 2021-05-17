@@ -6,6 +6,34 @@ let children ~name spec { base; ops; children } = { base; ops; children = (name,
 
 let finish { base; ops; children } = Obuilder_spec.stage ~child_builds:children ~from:base ops
 
+(* https://gist.github.com/iangreenleaf/279849 *)
+let rsync_retry_script =
+  {|#!/bin/bash
+
+MAX_RETRIES=10
+i=0
+
+# Set the initial return value to failure
+false
+
+while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]
+do
+ i=$(($i+1))
+ echo "Rsync ($i)"
+ /usr/bin/rsync $@
+done
+
+if [ $i -eq $MAX_RETRIES ]
+then
+  echo "Hit maximum number of retries, giving up."
+fi
+|}
+
+let add_rsync_retry_script =
+  Obuilder_spec.run
+    "echo '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && which \
+     rsync" rsync_retry_script
+
 let make base =
   let open Obuilder_spec in
   {
