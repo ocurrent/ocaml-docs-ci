@@ -26,6 +26,7 @@ done
 if [ $i -eq $MAX_RETRIES ]
 then
   echo "Hit maximum number of retries, giving up."
+  exit 1
 fi
 |}
 
