@@ -15,7 +15,7 @@ module Index = struct
     
 
   let digest package_name =
-    Format.asprintf "status-%s" package_name 
+    Format.asprintf "status2-%s" package_name 
 
   end
 
@@ -73,16 +73,17 @@ module Index = struct
     in
     let switch = Current.Switch.create ~label:"ssh" () in
   let* () = Current.Job.use_pool ~switch job Remote_cache.ssh_pool in
+  let* () = Current.Job.start ~level:Mostly_harmless job in
   let* _ =
     Current.Process.exec ~cancellable:true ~job
-      ( "",
+      ( Fpath.to_string state_dir,
         [|
           "rsync";
           "-avzR";
           "-e";
           Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port ssh) Fpath.pp (Config.Ssh.priv_key_file ssh);
-          Fpath.to_string state_dir;
-          remote_folder ^ "/html/tailwind/packages/./";
+          ".";
+          remote_folder ^ "html/tailwind/packages/./";
         |] )
   in
   let* () = Current.Switch.turn_off switch in
