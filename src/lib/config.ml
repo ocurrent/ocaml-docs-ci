@@ -94,6 +94,7 @@ module Ssh = struct
           StrictHostKeyChecking=no
           GlobalKnownHostsFile=/dev/null
           UserKnownHostsFile=/dev/null
+          ConnectTimeout=10
         |}
       t.host t.port t.user
 
