@@ -17,6 +17,7 @@ let sync ~job t =
         [|
           "rsync";
           "-avzR";
+          "--delete";
           "-e";
           Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port t) Fpath.pp (Config.Ssh.priv_key_file t);
           remote_folder ^ "/cache/./";
