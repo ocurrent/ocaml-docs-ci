@@ -75,8 +75,8 @@ module Index = struct
   let* () = Current.Job.use_pool ~switch job Remote_cache.ssh_pool in
   let* () = Current.Job.start ~level:Mostly_harmless job in
   let* _ =
-    Current.Process.exec ~cancellable:true ~job
-      ( Fpath.to_string state_dir,
+    Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
+      ( "",
         [|
           "rsync";
           "-avzR";
