@@ -94,6 +94,6 @@ module StatCache = Current_cache.Output (Index)
 
 let v ~ssh ~package_name ~statuses : unit Current.t =
   let open Current.Syntax in
-  Current.component "set-status" |>
+  Current.component "set-status for %s" package_name |>
   let> statuses = statuses in
   StatCache.set ssh package_name statuses
