@@ -118,7 +118,7 @@ let v ~config ~api ~opam () =
   let prepped =
     jobs
     |> List.map (fun job -> (job, Prep.v ~config ~cache ~voodoo:v_prep job))
-    |> prep_hierarchical_collapse ~input:solver_result
+    |> prep_hierarchical_collapse ~input:(Current.pair solver_result cache)
     |> List.map (fun (job, result) ->
            job.Jobs.prep |> List.to_seq
            |> Seq.map (fun p -> (p, [ Current.map (Package.Map.find p) result ]))
@@ -147,9 +147,9 @@ let v ~config ~api ~opam () =
   let compiled =
     compile ~config ~cache ~voodoo:v_do ~blessed prepped
     |> compile_hierarchical_collapse ~input:blessed
-    |> List.rev_map (fun (package, task) -> Current.state ~hidden:true task |> Current.map (fun v -> package, v))
-    |> Current.list_seq
+    |> List.to_seq |> Package.Map.of_seq
   in
+  (* 8) Report status *)
   let package_registry =
     let+ tracked = tracked in
     List.iter
@@ -159,65 +159,50 @@ let v ~config ~api ~opam () =
       tracked
   in
   let package_status =
-    let+ compiled = compiled and+ prepped = prep_list and+ blessed = blessed in
-    let status = ref Package.Map.empty in
-    let set value package = status := Package.Map.add package value !status in
-    let set_if_better value package =
-      match Package.Map.find_opt package !status with
-      | None -> set value package
-      | Some v when Web.Status.compare v value < 0 -> set value package
-      | _ -> ()
-    in
-    List.iter
-      (function
-        | _, Ok _ -> ()
-        | package, Error (`Msg _) -> (set_if_better Failed) package
-        | package, Error (`Active _) -> (set_if_better (Pending Prep)) package)
-      prepped;
-    List.iter
-      (fun (package, status) ->
-        let blessed = if Package.Blessed.is_blessed blessed package then Docs_ci_lib.Web.Status.Blessed else Universe in
-        match status with
-        | Ok _ -> set (Success blessed) package
-        | Error (`Msg _) -> set Failed package
-        | Error (`Active _) -> set (Pending (Compile blessed)) package)
-      compiled;
-    !status |> Package.Map.bindings
+    Package.Map.merge
+      (fun _ a b -> match (a, b) with Some a, Some b -> Some (a, b) | _ -> None)
+      prepped compiled
+    |> Package.Map.mapi (fun package (prep_job, compile_job) ->
+           let+ prep = prep_job |> Current.state ~hidden:true
+           and+ compile = compile_job |> Current.state ~hidden:true
+           and+ blessed = blessed in
+           let blessed =
+             if Package.Blessed.is_blessed blessed package then Docs_ci_lib.Web.Status.Blessed
+             else Universe
+           in
+           match (prep, compile) with
+           | Error (`Msg _), _ -> Web.Status.Failed
+           | Error (`Active _), _ -> Pending Prep
+           | _, Ok _ -> Success blessed
+           | _, Error (`Msg _) -> Failed
+           | _, Error (`Active _) -> Pending (Compile blessed))
   in
   let status =
-    let* _s = package_status
-    |> Current.list_map
-       ( module struct
-         type t = Package.t * Web.Status.t
-
-         let compare (a1, a2) (b1, b2) =
-           match Package.compare a1 b1 with 0 -> Web.Status.compare a2 b2 | v -> v
-
-         let pp f (package, status) = Fmt.pf f "%a => %a" Package.pp package Web.Status.pp status
-       end )
-       (fun pkg_value ->
-         let package = Current.map fst pkg_value in
-         let status = Current.map snd pkg_value in
-         Web.set_package_status ~package ~status api)
-    |> Current.collapse ~key:"status-update" ~value:"" ~input:package_status in
-    Current.return ()
+    package_status
+    |> Package.Map.mapi (fun package status ->
+           Web.set_package_status ~package:(Current.return package) ~status api)
+    |> Package.Map.bindings |> List.map snd |> Current.all
   in
   let status2 =
-    let* status = package_status in
     let package_versions = Hashtbl.create 1000 in
-    List.iter (fun (package, status) ->
-      let name = Package.opam package |> OpamPackage.name_to_string in
-      let version = Package.opam package |> OpamPackage.version_to_string in
-      match Hashtbl.find_opt package_versions name with
-      | Some vs ->
-        Hashtbl.replace package_versions name ((version, status)::vs)
-      | None ->
-        Hashtbl.add package_versions name [(version, status)]) status;
+    Package.Map.iter
+      (fun package status ->
+        let name = Package.opam package |> OpamPackage.name_to_string in
+        let version = Package.opam package |> OpamPackage.version_to_string in
+        let version_status =
+          let+ status = status in
+          (version, status)
+        in
+        match Hashtbl.find_opt package_versions name with
+        | Some vs -> Hashtbl.replace package_versions name (version_status :: vs)
+        | None -> Hashtbl.add package_versions name [ version_status ])
+      package_status;
     let ssh = Config.ssh config in
     let vs =
-      Hashtbl.fold (fun k v acc -> (Indexes.v ~ssh ~package_name:k ~statuses:(Current.return v)) :: acc) package_versions []
+      Hashtbl.fold
+        (fun k v acc -> Indexes.v ~ssh ~package_name:k ~statuses:(Current.list_seq v) :: acc)
+        package_versions []
     in
-    Current.all vs
-  in      
-  Current.all [package_registry; status; status2]
-
+    Current.collapse_list ~key:"status json" ~value:"" ~input:status vs |> Current.all
+  in
+  Current.all [ package_registry; status; status2 ]
