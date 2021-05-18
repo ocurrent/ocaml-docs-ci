@@ -13,6 +13,7 @@ COPY --chown=opam \
 	vendor/ocurrent/current_web.opam \
 	/src/vendor/ocurrent/
 WORKDIR /src
+RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
 RUN opam pin add -yn current_ansi.dev "./vendor/ocurrent" && \
     opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
     opam pin add -yn current_github.dev "./vendor/ocurrent" && \
