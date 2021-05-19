@@ -7,6 +7,13 @@ let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
 let program_name = "docs-ci"
 
 let main current_config mode gql_port config =
+  let () =
+    match Docs_ci_lib.Init.setup (Docs_ci_lib.Config.ssh config) with
+    | Ok () -> ()
+    | Error (`Msg msg) ->
+        Docs_ci_lib.Log.err (fun f -> f "Failed to initialize the storage server.");
+        exit 1
+  in
   let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
   let api = Docs_ci_lib.Web.make config in
   let engine =
