@@ -75,14 +75,14 @@ module Index = struct
   let* () = Current.Job.use_pool ~switch job Remote_cache.ssh_pool in
   let* () = Current.Job.start ~level:Mostly_harmless job in
   let* _ =
-    Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
+    Current.Process.exec ~cancellable:true  ~job
       ( "",
         [|
           "rsync";
           "-avzR";
           "-e";
           Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port ssh) Fpath.pp (Config.Ssh.priv_key_file ssh);
-          ".";
+          Fpath.to_string state_dir;
           remote_folder ^ "html/tailwind/packages/./";
         |] )
   in
