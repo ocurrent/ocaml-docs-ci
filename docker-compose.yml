@@ -46,7 +46,7 @@ services:
       - 'ssh-credentials:/ssh/'
 
   storage-server:
-    image: lortex/rsync-server
+    image: lortex/git-rsync-server
     environment:
       - PUBLIC_KEY_FILE=/ssh/id_ed25519.pub
     depends_on:
