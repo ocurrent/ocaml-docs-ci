@@ -17,8 +17,15 @@ let setup ssh =
   in
   let ensure_program program = Fmt.str "%s --version" program in
   let ensure_git_repo dir =
+    let git_init_command =
+      "git init --bare && \
+      echo 'ref: refs/heads/main' > HEAD && \
+      COMMIT=$(git commit-tree $(git write-tree) -m 'root') && \
+      git update-ref refs/heads/main $COMMIT && \
+      git update-ref refs/heads/live $COMMIT"
+    in
     let path = Fpath.(v (Ssh.storage_folder ssh) / dir) in
-    Fmt.str "cd %a && (git rev-parse --git-dir || git init --bare)" Fpath.pp path
+    Fmt.str "cd %a && (git rev-parse --git-dir || (%s))" Fpath.pp path git_init_command
   in
   let run cmd =
     let cmd = Bos.Cmd.(ssh_run_prefix ssh % cmd) in
@@ -27,6 +34,7 @@ let setup ssh =
 
   let ( let* ) = Result.bind in
   let ( let+ ) a b = Result.map b a in
+  let* () = ensure_dir "git" |> run in
   let* () = ensure_dir "cache" |> run in
   let* () = ensure_dir "compile" |> run in
   let* () = ensure_dir "prep" |> run in
