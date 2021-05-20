@@ -121,7 +121,8 @@ module Ssh = struct
 
   let docs_public_endpoint t = t.html_endpoint
 
-  let digest t = Fmt.str "%s-%s-%d-%s" t.host t.user t.port t.folder |> Digest.string |> Digest.to_hex
+  let digest t =
+    Fmt.str "%s-%s-%d-%s" t.host t.user t.port t.folder |> Digest.string |> Digest.to_hex
 end
 
 type t = {

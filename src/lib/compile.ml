@@ -25,7 +25,7 @@ let import_deps t =
   let folders = List.map (fun { package; blessed; _ } -> folder ~blessed package) t in
   Misc.rsync_pull folders
 
-let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
+let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
@@ -53,7 +53,7 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~bl
          run "rm -f compile/packages/%s/*.odoc" name;
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
-         [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
+           [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
          run "cp ~/voodoo-gen $(opam config var bin)/voodoo-gen";
@@ -64,10 +64,17 @@ let spec ~ssh ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~bl
          (* Extract compile output *)
          run ~secrets:Config.Ssh.secrets ~network
            "rsync -avzR /home/opam/docs/./compile/ %s:%s/ && echo '%s'" (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh) artifacts_digest;
+           (Config.Ssh.storage_folder ssh) (artifacts_digest ^ cache_key);
          (* Extract html output *)
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+         Git_store.Cluster.clone ~branch ~directory:"git-store" ssh;
+         run "cp -R html git-store";
+         workdir "git-store";
+         run "git add --all";
+         run "git commit -m 'docs ci update %s\n\n%s' --allow-empty"
+           (Fmt.to_to_string Package.pp package)
+           cache_key;
+         Git_store.Cluster.push ssh;
+         workdir "..";
          (* Compute compile folder digest *)
          run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
          run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
@@ -192,6 +199,8 @@ module Monitor = struct
     Current.of_output component
 end
 
+let git_update_pool = Current.Pool.create ~label:"git merge into live" 1
+
 module Compile = struct
   type output = t
 
@@ -212,7 +221,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo; compile_cache } =
-      Fmt.str "%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v1-%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
@@ -235,12 +244,13 @@ module Compile = struct
         deps
       |> Digest.string |> Digest.to_hex
     in
-    Fmt.str "voodoo-compile-v0-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+    Fmt.str "voodoo-compile-v1-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
       (Voodoo.Do.digest voodoo)
       (Config.odoc config |> Digest.string |> Digest.to_hex)
 
   let build digests job (Key.{ deps; prep; blessed; voodoo; compile_cache; config } as key) =
     let open Lwt.Syntax in
+    let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
     let folder = folder ~blessed package in
     let cache_key = remote_cache_key key in
@@ -258,9 +268,10 @@ module Compile = struct
         Lwt.return_error (`Msg "Odoc compilation failed.")
     | _ -> (
         let base = Misc.get_base_image package in
+        let branch = "html-" ^ (Prep.package prep |> Package.digest) in
         let spec =
-          spec ~ssh:(Config.ssh config) ~remote_cache:digests ~cache_key ~artifacts_digest:""
-            ~voodoo ~base ~deps ~blessed prep
+          spec ~ssh:(Config.ssh config) ~branch ~remote_cache:digests ~cache_key
+            ~artifacts_digest:"" ~voodoo ~base ~deps ~blessed prep
         in
         let action = Misc.to_ocluster_submission spec in
         let version = Misc.base_image_version package in
@@ -277,12 +288,39 @@ module Compile = struct
         match result with
         | Error (`Msg _) as e -> Lwt.return e
         | Ok _ ->
-            let+ () = Remote_cache.sync ~job digests in
-            let artifacts_digest =
-              Remote_cache.get digests folder |> Remote_cache.folder_digest_exn
-            in
-            Current.Job.log job "New artifacts digest => %s" artifacts_digest;
-            Ok artifacts_digest )
+            let ssh = Config.ssh config in
+            let switch = Current.Switch.create ~label:"git merge pool switch" () in
+            let* () = Current.Job.use_pool ~switch job git_update_pool in
+            Lwt.catch
+              (fun () ->
+                let** () =
+                  (* this piece of magic invocations create a merge commit in the 'live' branch *)
+                  Current.Process.exec ~cancellable:false ~job
+                    ( "",
+                      [|
+                        "ssh";
+                        "-i";
+                        Fpath.to_string (Config.Ssh.priv_key_file ssh);
+                        "-p";
+                        Config.Ssh.port ssh |> string_of_int;
+                        Fmt.str "%s@%s" (Config.Ssh.user ssh) (Config.Ssh.host ssh);
+                        Fmt.str
+                          "cd %s/git && git read-tree refs/heads/%s refs/heads/live && git \
+                           update-ref refs/heads/live $(git commit-tree $(git write-tree) -p \
+                           refs/heads/%s -p refs/heads/live -m 'update %a')\n"
+                          (Config.Ssh.storage_folder ssh) branch branch Package.pp package;
+                      |] )
+                in
+                let* () = Current.Switch.turn_off switch in
+                let+ () = Remote_cache.sync ~job digests in
+                let artifacts_digest =
+                  Remote_cache.get digests folder |> Remote_cache.folder_digest_exn
+                in
+                Current.Job.log job "New artifacts digest => %s" artifacts_digest;
+                Ok artifacts_digest)
+              (fun exn ->
+                let* () = Current.Switch.turn_off switch in
+                raise exn) )
 end
 
 module CompileCache = Current_cache.Make (Compile)
