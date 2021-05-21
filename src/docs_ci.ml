@@ -11,7 +11,7 @@ let main current_config mode gql_port config =
     match Docs_ci_lib.Init.setup (Docs_ci_lib.Config.ssh config) with
     | Ok () -> ()
     | Error (`Msg msg) ->
-        Docs_ci_lib.Log.err (fun f -> f "Failed to initialize the storage server.");
+        Docs_ci_lib.Log.err (fun f -> f "Failed to initialize the storage server:\n%s" msg);
         exit 1
   in
   let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
