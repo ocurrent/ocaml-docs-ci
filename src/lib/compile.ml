@@ -65,9 +65,9 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          run ~secrets:Config.Ssh.secrets ~network
            "rsync -avzR /home/opam/docs/./compile/ %s:%s/ && echo '%s'" (Config.Ssh.host ssh)
            (Config.Ssh.storage_folder ssh) (artifacts_digest ^ cache_key);
-         (* Extract html output *)
+         (* Extract html/tailwind output *)
          Git_store.Cluster.clone ~branch ~directory:"git-store" ssh;
-         run "cp -R html git-store";
+         run "rm -rf git-store/html && mv html/tailwind git-store/html";
          workdir "git-store";
          run "git add --all";
          run "git commit -m 'docs ci update %s\n\n%s' --allow-empty"
@@ -75,6 +75,9 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
            cache_key;
          Git_store.Cluster.push ssh;
          workdir "..";
+         (* extract html output*)
+         run ~secrets:Config.Ssh.secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* Compute compile folder digest *)
          run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
          run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
@@ -179,6 +182,23 @@ module Compile = struct
               (fun () ->
                 let** () =
                   (* this piece of magic invocations create a merge commit in the 'live' branch *)
+                  let live_ref = "refs/heads/live" in
+                  let update_ref = "refs/heads/" ^ branch in
+                  (* find nearest common ancestor of the two trees *)
+                  let git_merge_base = Fmt.str "git merge-base %s %s" live_ref update_ref in
+                  (* perform an aggressive merge *)
+                  let git_merge_trees =
+                    Fmt.str "git read-tree --empty && git read-tree -mi --aggressive $(%s) %s %s"
+                      git_merge_base live_ref update_ref
+                  in
+                  (* create a commit object using the newly created tree *)
+                  let git_commit_tree =
+                    Fmt.str "git commit-tree $(git write-tree) -p %s -p %s -m 'update %a'" live_ref
+                      update_ref Package.pp package
+                  in
+                  (* update the live branch *)
+                  let git_update_ref = Fmt.str "git update-ref %s $(%s)" live_ref git_commit_tree in
+
                   Current.Process.exec ~cancellable:false ~job
                     ( "",
                       [|
@@ -188,11 +208,8 @@ module Compile = struct
                         "-p";
                         Config.Ssh.port ssh |> string_of_int;
                         Fmt.str "%s@%s" (Config.Ssh.user ssh) (Config.Ssh.host ssh);
-                        Fmt.str
-                          "cd %s/git && git read-tree refs/heads/%s refs/heads/live && git \
-                           update-ref refs/heads/live $(git commit-tree $(git write-tree) -p \
-                           refs/heads/%s -p refs/heads/live -m 'update %a')\n"
-                          (Config.Ssh.storage_folder ssh) branch branch Package.pp package;
+                        Fmt.str "cd %s/git && %s && %s" (Config.Ssh.storage_folder ssh)
+                          git_merge_trees git_update_ref;
                       |] )
                 in
                 let* () = Current.Switch.turn_off switch in
