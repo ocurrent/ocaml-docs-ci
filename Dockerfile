@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:experimental
 FROM ocaml/opam:debian-ocaml-4.12 AS build
 RUN cd ~/opam-repository && git pull origin master && git reset --hard a147c4ecea9e6eaa71a0f3bc152d502695c569c4 && opam update
 COPY --chown=opam \
