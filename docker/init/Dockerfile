@@ -4,4 +4,4 @@ RUN apk add --no-cache \
   ca-certificates \
   bash
 ADD init.sh /
-CMD init.sh
+CMD /init.sh

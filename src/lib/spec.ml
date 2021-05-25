@@ -8,32 +8,26 @@ let finish { base; ops; children } = Obuilder_spec.stage ~child_builds:children 
 
 (* https://gist.github.com/iangreenleaf/279849 *)
 let rsync_retry_script =
-  {|#!/bin/bash
-
-MAX_RETRIES=10
-i=0
-
-# Set the initial return value to failure
-false
-
-while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]
-do
- i=$(($i+1))
- echo "Rsync ($i)"
- /usr/bin/rsync $@
-done
-
-if [ $i -eq $MAX_RETRIES ]
-then
-  echo "Hit maximum number of retries, giving up."
-  exit 1
-fi
+  {|#!/bin/bash\n
+MAX_RETRIES=10\n
+i=0\n
+false\n
+while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]\n
+do\n
+ i=$(($i+1))\n
+ echo "Rsync ($i)"\n
+ /usr/bin/rsync $@\n
+done\n
+if [ $i -eq $MAX_RETRIES ]\n
+then\n
+  echo "Hit maximum number of retries, giving up."\n
+  exit 1\n
+fi\n
 |}
 
 let add_rsync_retry_script =
   Obuilder_spec.run
-    "echo '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && which \
-     rsync" rsync_retry_script
+    "printf '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && ls -l /usr/bin/rsync && cat /usr/local/bin/rsync" rsync_retry_script
 
 let make base =
   let open Obuilder_spec in
