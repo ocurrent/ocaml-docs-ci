@@ -111,23 +111,30 @@ and Blessed : sig
 end = struct
   module StringSet = Set.Make (String)
 
-  type t = StringSet.t
+  type t = { opam : OpamPackage.t; universe : string }
+
+  let universe_size u = Universe.deps u |> List.length
 
   let v (packages : Package.t list) : t =
-    let state = ref OpamPackage.Map.empty in
-    List.iter
-      (fun package ->
-        let universe_size = Package.universe package |> Universe.deps |> List.length in
-        let key = Package.opam package in
-        match OpamPackage.Map.find_opt key !state with
-        | Some (_, universe_size') when universe_size' > universe_size -> ()
-        | _ -> state := OpamPackage.Map.add (Package.opam package) (package, universe_size) !state)
-      packages;
-    OpamPackage.Map.values !state
-    |> List.map (fun (package, _) -> Package.digest package)
-    |> StringSet.of_list
+    let first_package = List.hd packages in
+    let opam = first_package |> Package.opam in
+    let first_universe = first_package |> Package.universe in
+    let best_universe, _ =
+      List.fold_left
+        (fun (cur_best_universe, cur_best_universe_size) new_package ->
+          assert (Package.opam new_package = opam);
+          let new_universe = Package.universe new_package in
+          let size = universe_size new_universe in
+          if size > cur_best_universe_size then (new_universe, size)
+          else (cur_best_universe, cur_best_universe_size))
+        (first_universe, universe_size first_universe)
+        (List.tl packages)
+    in
+    { opam; universe = Universe.hash best_universe }
 
-  let is_blessed t pkg = StringSet.mem (Package.digest pkg) t
+  let is_blessed { opam; universe } pkg =
+    assert (Package.opam pkg = opam);
+    Universe.hash (Package.universe pkg) = universe
 end
 
 include Package

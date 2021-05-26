@@ -14,7 +14,7 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t)
+let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -27,6 +27,10 @@ let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t)
            let dependencies = Package.universe package |> Package.Universe.deps in
            let compile_dependencies =
              List.filter_map get_compilation_job dependencies |> Current.list_seq
+           in
+           let blessed =
+             OpamPackage.Map.find (Package.opam package) blessed
+             |> Current.map (fun b -> Package.Blessed.is_blessed b package)
            in
            Compile.v ~config ~cache ~voodoo ~blessed ~deps:compile_dependencies prep
       in
@@ -135,18 +139,33 @@ let v ~config ~api ~opam () =
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
-    let+ preps = prep_list in
-    (* We don't know yet about all preps status so we're optimistic here *)
-    preps
-    |> List.filter_map (function
-         | _, Error (`Msg _) -> None
-         | pkg, (Error (`Active _) | Ok _) -> Some pkg)
-    |> Package.Blessed.v
+    let by_opam_package =
+      Package.Map.fold
+        (fun package job opam_map ->
+          let opam = Package.opam package in
+          let job =
+            let+ job = Current.state ~hidden:true job in
+            (package, job)
+          in
+          OpamPackage.Map.update opam (List.cons job) [] opam_map)
+        prepped OpamPackage.Map.empty
+    in
+    by_opam_package
+    |> OpamPackage.Map.map (fun preps ->
+           preps |> Current.list_seq
+           |> Current.map (fun preps ->
+                  (* We don't know yet about all preps status so we're optimistic here *)
+                  preps
+                  |> List.filter_map (function
+                       | _, Error (`Msg _) -> None
+                       | pkg, (Error (`Active _) | Ok _) -> Some pkg)
+                  |> Package.Blessed.v))
   in
+
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled =
     compile ~config ~cache ~voodoo:v_do ~blessed prepped
-    |> compile_hierarchical_collapse ~input:blessed
+    |> compile_hierarchical_collapse ~input:prep_list
     |> List.to_seq |> Package.Map.of_seq
   in
   (* 8) Report status *)
@@ -163,6 +182,7 @@ let v ~config ~api ~opam () =
       (fun _ a b -> match (a, b) with Some a, Some b -> Some (a, b) | _ -> None)
       prepped compiled
     |> Package.Map.mapi (fun package (prep_job, compile_job) ->
+           let blessed = OpamPackage.Map.find (Package.opam package) blessed in
            let+ prep = prep_job |> Current.state ~hidden:true
            and+ compile = compile_job |> Current.state ~hidden:true
            and+ blessed = blessed in
