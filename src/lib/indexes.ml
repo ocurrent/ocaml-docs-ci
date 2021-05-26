@@ -76,9 +76,11 @@ module Index = struct
     if has_changed then state := OpamPackage.Name.Map.add name versions !state;
     has_changed
 
-  let write_state ~state name versions =
+  let write_state ~state ~job name versions =
+    let open Lwt.Syntax in
     if check_has_changed ~state name versions then (
       let package_name = OpamPackage.Name.to_string name in
+      Current.Job.log job "Updating state for %s" package_name;
       let dir = Fpath.(state_dir / package_name) in
       Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
       let file = Fpath.(dir / "state.json") in
@@ -95,10 +97,10 @@ module Index = struct
         |> OpamPackage.Version.Map.values
       in
       let j = v_list_to_yojson ts in
-      let f = open_out (Fpath.to_string file) in
-      output_string f (Yojson.Safe.to_string j);
-      close_out f )
-    else ()
+      let* file = Lwt_io.open_file ~mode:Output (Fpath.to_string file) in
+      let* () = Lwt_io.write file (Yojson.Safe.to_string j) in
+      Lwt_io.close file)
+    else Lwt.return ()
 
   let initialize_state ~job ~ssh () =
     let open Lwt.Syntax in
@@ -117,7 +119,10 @@ module Index = struct
     Lwt.finalize
       (fun () ->
         let** () = initialize_state ~job ~ssh () in
-        OpamPackage.Name.Map.iter (write_state ~state) v;
+        let* () =
+          OpamPackage.Name.Map.bindings v
+          |> Lwt_list.iter_s (fun (name, versions) -> write_state ~job ~state name versions)
+        in
         let** () =
           Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
             ( "",
