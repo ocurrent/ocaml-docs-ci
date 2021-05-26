@@ -188,7 +188,9 @@ module Compile = struct
                   let git_merge_base = Fmt.str "git merge-base %s %s" live_ref update_ref in
                   (* perform an aggressive merge *)
                   let git_merge_trees =
-                    Fmt.str "git read-tree --empty && git read-tree -mi --aggressive $(%s) %s %s"
+                    Fmt.str
+                      "git read-tree --empty && git read-tree -mi --aggressive $(%s) %s %s && git \
+                       merge-index ~/git-take-theirs.sh -a"
                       git_merge_base live_ref update_ref
                   in
                   (* create a commit object using the newly created tree *)

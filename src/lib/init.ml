@@ -9,6 +9,21 @@ let ssh_run_prefix ssh =
     % p (Ssh.priv_key_file ssh)
     % remote)
 
+
+
+(*    
+$1 - original file SHA1 (or empty)
+$2 - file in branch1 SHA1 (or empty)
+$3 - file in branch2 SHA1 (or empty)
+$4 - pathname in repository
+$5 - original file mode (or empty)
+$6 - file in branch1 mode (or empty)
+$7 - file in branch2 mode (or empty)
+*)
+let ssh_server_git_merge_script = 
+  let script = {|#!/bin/sh\ngit update-index --cacheinfo "$7","$3","$4"\n|} in
+  Fmt.str "printf '%s' > ~/git-take-theirs.sh && chmod +x ~/git-take-theirs.sh" script
+
 let setup ssh =
   Log.app (fun f -> f "Checking storage server status..");
   let ensure_dir dir =
@@ -40,5 +55,6 @@ let setup ssh =
   let* () = ensure_dir "prep" |> run in
   let* () = ensure_program "git" |> run in
   let* () = ensure_program "rsync" |> run in
-  let+ () = ensure_git_repo "git" |> run in
+  let* () = ensure_git_repo "git" |> run in
+  let+ () = run ssh_server_git_merge_script in
   Log.app (fun f -> f "..OK!")
