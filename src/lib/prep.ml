@@ -1,5 +1,4 @@
-module Git = Current_git
-
+(** this module stores which packages have already been successfully prepped *)
 module PrepState = struct
   type state = Success | Pending | Failed
 
@@ -42,12 +41,12 @@ let not_base x =
          "ocaml-base-compiler";
        ])
 
-let folder t =
-  let universe = Package.universe t |> Package.Universe.hash in
-  let opam = Package.opam t in
+let folder package =
+  let universe = Package.universe package |> Package.Universe.hash in
+  let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  Fpath.(v "prep" / "universes" / universe / name / version)
+  Fpath.(v "universes" / universe / name / version)
 
 let base_folders packages =
   packages |> List.map (fun x -> folder x |> Fpath.to_string) |> String.concat " "
@@ -60,8 +59,7 @@ let universes_assoc packages =
          name ^ ":" ^ hash)
   |> String.concat ","
 
-let spec ~ssh ~remote_cache ~cache_key ~voodoo ~base ~(install : Package.t)
-    (prep : Package.t list) =
+let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install *)
   let all_deps = Package.all_deps install in
@@ -106,15 +104,12 @@ let spec ~ssh ~remote_cache ~cache_key ~voodoo ~base ~(install : Package.t)
         in
         run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
   in
+  let branches = List.map Git_store.Branch.v all_deps in
 
-  let pp_cmd_compute_digests =
-    let pp_compute_digest f branch =
-      (*output: "<branch>:<commit>;<tree hash>" *)
-      Fmt.pf f
-        {|printf \"%s:$(git rev-parse %s);$(git cat-file -p %s | grep tree | cut -f2- -d' ')\"|}
-        branch branch branch
-    in
-    Fmt.(list ~sep:(any " && ") pp_compute_digest)
+  let folders ?(prefix = "") () =
+    all_deps
+    |> List.map (fun package ->
+           (Git_store.Branch.v package, prefix ^ (folder package |> Fpath.to_string)))
   in
 
   let tools = Voodoo.Prep.spec ~base voodoo |> Spec.finish in
@@ -122,7 +117,9 @@ let spec ~ssh ~remote_cache ~cache_key ~voodoo ~base ~(install : Package.t)
   |> Spec.add
        [
          (* Install required packages *)
-         copy [ "." ] ~dst:"/src";
+         run "sudo mkdir /src";
+         copy [ "packages" ] ~dst:"/src/packages";
+         copy [ "repo" ] ~dst:"/src/repo";
          run "opam repo remove default && opam repo add opam /src";
          (* Pre-install build tools *)
          build_preinstall;
@@ -139,15 +136,12 @@ let spec ~ssh ~remote_cache ~cache_key ~voodoo ~base ~(install : Package.t)
          copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
-         (* Upload artifacts *)
-         Spec.add_rsync_retry_script;
-         run "echo '%s'" cache_key;
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avz prep %s:%s/"
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
-         (* Compute artifacts digests *)
-         run "%s"
-           (Fmt.to_to_string pp_cmd_compute_digests
-              (prep |> List.rev_map Git_store.branch_of_package));
+         (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
+         run "echo '%f'" (Random.float 1.);
+         Git_store.Cluster.write_folders_to_git ~repository:Prep ~ssh ~branches:(folders ())
+           ~folder:"prep" ~message ~git_path:"/tmp/git-store";
+         (* Compute hashes *)
+         run "cd /tmp/git-store && %s" (Git_store.print_branches_info ~prefix:"HASHES" ~branches);
        ]
 
 module Prep = struct
@@ -168,7 +162,7 @@ module Prep = struct
   let pp f Key.{ job = { install; _ }; _ } = Fmt.pf f "Voodoo prep %a" Package.pp install
 
   module Value = struct
-    type item = { package_digest : string; artifacts_digest : string } [@@deriving yojson]
+    type item = Git_store.branch_info [@@deriving yojson]
 
     type t = item list [@@deriving yojson]
 
@@ -177,10 +171,9 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-
-  let build digests job (Key.{ job = { install; prep }; voodoo; config } as key) =
+  let build No_context job (Key.{ job = { install; prep }; voodoo; config } as key) =
     let open Lwt.Syntax in
-    let (let**) = Lwt_result.bind in
+    let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
        Should be fixed by adding the oldest opam-repository commit in the universe hash, but that
        requires changes in the solver.
@@ -193,10 +186,8 @@ module Prep = struct
         prep
     in
     let base = Misc.get_base_image install in
-    let spec =
-      spec ~ssh:(Config.ssh config) ~remote_cache:digests ~cache_key:(Key.digest key)
-        ~voodoo ~base ~install to_prep
-    in
+    let message = Fmt.str "Update\n\n%s" (Key.digest key) in
+    let spec = spec ~ssh:(Config.ssh config) ~message ~voodoo ~base ~install to_prep in
     let action = Misc.to_ocluster_submission spec in
     let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
     let version = Misc.base_image_version install in
@@ -209,38 +200,64 @@ module Prep = struct
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let** result = Current_ocluster.Connection.run_job ~job build_job in
-    (* Then, handle the result *)
-    failwith ("result: "^result)
-    
+    let** _ = Current_ocluster.Connection.run_job ~job build_job in
+    (* extract result from logs *)
+    let rec aux start next_lines accumulator =
+      match next_lines with
+      | [] -> (
+          let* logs = Cluster_api.Job.log build_job start in
+          match logs with
+          | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
+          | Ok ("", _) -> Lwt_result.return accumulator
+          | Ok (data, next) ->
+              let lines = String.split_on_char '\n' data in
+              aux next lines accumulator )
+      | line :: next ->
+          aux start next (Git_store.parse_branch_info ~prefix:"HASHES" line :: accumulator)
+    in
+    aux 0L [] []
+    |> Lwt_result.map
+         (List.filter_map (fun line ->
+              Option.iter
+                (fun (r : Git_store.branch_info) ->
+                  Current.Job.log job "%s -> commit %s / tree %s" r.branch r.commit_hash r.tree_hash)
+                line;
+              line))
 end
 
 module PrepCache = Current_cache.Make (Prep)
 
-type t = { package : Package.t; artifacts_digest : string }
+type t = { commit_hash : string; tree_hash : string; package : Package.t }
 
-let pp f t = Package.pp f t.package
+let commit_hash t = t.commit_hash
+
+let tree_hash t = t.tree_hash
+
+let package t = t.package
+
+let pp f t = Fmt.pf f "%s:%s" t.commit_hash t.tree_hash
 
 let compare a b =
-  match Package.compare a.package b.package with
-  | 0 -> String.compare a.artifacts_digest b.artifacts_digest
+  match String.compare a.commit_hash b.commit_hash with
+  | 0 -> String.compare a.tree_hash b.tree_hash
   | v -> v
 
 module StringMap = Map.Make (String)
 
-let combine ~(job : Jobs.t) artifacts_digests =
+let combine ~(job : Jobs.t) artifacts_branches_output =
   let packages = job.prep in
-  let artifacts_digests =
-    artifacts_digests |> List.to_seq
-    |> Seq.map (fun Prep.Value.{ package_digest; artifacts_digest } ->
-           (package_digest, artifacts_digest))
+  let artifacts_branches_output =
+    artifacts_branches_output |> List.to_seq
+    |> Seq.map (fun Git_store.{ branch; commit_hash; tree_hash } ->
+           (branch, (commit_hash, tree_hash)))
     |> StringMap.of_seq
   in
   packages |> List.to_seq
   |> Seq.map (fun package ->
          ( package,
-           let digest = StringMap.find (Package.digest package) artifacts_digests in
-           { package; artifacts_digest = digest } ))
+           let package_branch = Git_store.branch_of_package package in
+           let commit_hash, tree_hash = StringMap.find package_branch artifacts_branches_output in
+           { package; commit_hash; tree_hash } ))
   |> Package.Map.of_seq
 
 (** Assumption: packages are co-installable *)
@@ -250,9 +267,3 @@ let v ~config ~voodoo (job : Jobs.t) =
   |> let> voodoo = voodoo in
      PrepCache.get No_context { job; voodoo; config }
      |> Current.Primitive.map_result (Result.map (combine ~job))
-
-let package (t : t) = t.package
-
-let artifacts_digest (t : t) = t.artifacts_digest
-
-let folder (t : t) = folder t.package

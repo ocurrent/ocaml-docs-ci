@@ -1,22 +1,57 @@
-module Cluster : sig
-  val clone : branch:string -> directory:string -> Config.Ssh.t -> Obuilder_spec.op
+type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep | Cache
 
-  val push : ?force:bool -> Config.Ssh.t -> Obuilder_spec.op
+module Branch : sig
+  type t
+
+  val v : Package.t -> t
+
+  val to_string : t -> string
+end
+
+module Cluster : sig
+  val write_folder_to_git :
+    repository:repository ->
+    ssh:Config.Ssh.t ->
+    branch:Branch.t ->
+    folder:string ->
+    message:string ->
+    git_path:string ->
+    Obuilder_spec.op
+
+  val write_folders_to_git :
+    repository:repository ->
+    ssh:Config.Ssh.t ->
+    branches:(Branch.t * string) list ->
+    folder:string ->
+    message:string ->
+    git_path:string ->
+    Obuilder_spec.op
+
+  val pull_to_directory :
+    repository:repository ->
+    ssh:Config.Ssh.t ->
+    branches:Branch.t list ->
+    directory:string ->
+    Obuilder_spec.op
 end
 
 module Local : sig
-  val clone : branch:string -> directory:Fpath.t -> Config.Ssh.t -> Bos.Cmd.t
+  val clone : branch:string -> directory:Fpath.t -> repository -> Config.Ssh.t -> Bos.Cmd.t
 
   val push : directory:Fpath.t -> Config.Ssh.t -> Bos.Cmd.t
-
-  val merge_to_live :
-    job:Current.Job.t ->
-    ssh:Config.Ssh.t ->
-    branch:string ->
-    msg:string ->
-    unit Current.or_error Lwt.t
 end
 
-val remote : Config.Ssh.t -> string
-
 val branch_of_package : Package.t -> string
+
+val remote : repository -> Config.Ssh.t -> string
+
+val print_branches_info : prefix:string -> branches:Branch.t list -> string
+
+type branch_info = {
+  branch: string;
+  tree_hash: string;
+  commit_hash: string;
+}
+[@@deriving yojson]
+
+val parse_branch_info : prefix:string -> string -> branch_info option

@@ -45,7 +45,7 @@ module Metadata = struct
     else
       Current.Process.exec ~cancellable:false ~job
         ( "",
-          Git_store.Local.clone ~branch:"status" ~directory:state_dir ssh
+          Git_store.Local.clone ~branch:"status" ~directory:state_dir HtmlTailwind ssh
           |> Bos.Cmd.to_list |> Array.of_list )
 
   let get_versions path =
@@ -112,8 +112,8 @@ module Metadata = struct
         let* _ =
           Current.Process.exec ~cancellable:true ~job
             ("", Git_store.Local.push ~directory:state_dir ssh |> Bos.Cmd.to_list |> Array.of_list)
-        in
-        Git_store.Local.merge_to_live ~job ~ssh ~branch:"status" ~msg:"Update opam metadata")
+        in (* return commit id *)
+        Lwt.return_ok ())
       (fun () -> Current.Switch.turn_off switch)
 end
 

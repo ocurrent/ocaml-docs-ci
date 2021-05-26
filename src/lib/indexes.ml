@@ -107,7 +107,7 @@ module Index = struct
     else
       Current.Process.exec ~cancellable:false ~job
         ( "",
-          Git_store.Local.clone ~branch:"status" ~directory:state_dir ssh
+          Git_store.Local.clone HtmlTailwind ~branch:"status" ~directory:state_dir ssh
           |> Bos.Cmd.to_list |> Array.of_list )
 
   let publish { ssh; state } job _ v =
