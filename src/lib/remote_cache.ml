@@ -2,7 +2,7 @@ let id = "remote-cache"
 
 let state_dir = Current.state_dir id
 
-let ssh_pool = Current.Pool.create ~label:"ssh" 30
+let sync_pool = Current.Pool.create ~label:"ssh" 1
 
 let sync ~job t =
   let open Lwt.Syntax in
@@ -10,21 +10,25 @@ let sync ~job t =
     Fmt.str "%s@@%s:%s/" (Config.Ssh.user t) (Config.Ssh.host t) (Config.Ssh.storage_folder t)
   in
   let switch = Current.Switch.create ~label:"ssh" () in
-  let* () = Current.Job.use_pool ~switch job ssh_pool in
-  let* _ =
-    Current.Process.exec ~cancellable:true ~job
-      ( "",
-        [|
-          "rsync";
-          "-avzR";
-          "--delete";
-          "-e";
-          Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port t) Fpath.pp (Config.Ssh.priv_key_file t);
-          remote_folder ^ "/cache/./";
-          Fpath.to_string state_dir;
-        |] )
-  in
-  Current.Switch.turn_off switch
+  let* () = Current.Job.use_pool ~switch job sync_pool in
+  Lwt.finalize
+    (fun () ->
+      let+ _ =
+        Current.Process.exec ~cancellable:true ~job
+          ( "",
+            [|
+              "rsync";
+              "-avzR";
+              "--delete";
+              "-e";
+              Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port t) Fpath.pp
+                (Config.Ssh.priv_key_file t);
+              remote_folder ^ "/cache/./";
+              Fpath.to_string state_dir;
+            |] )
+      in
+      ())
+    (fun () -> Current.Switch.turn_off switch)
 
 type t = Config.Ssh.t
 
@@ -100,15 +104,15 @@ module Op = struct
   let build No_context job ssh =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Mostly_harmless job in
-    let* () = sync ~job ssh in
-    Lwt.return_ok ()
+    let+ () = sync ~job ssh in 
+    Result.Ok (())
 end
 
 module Cache = Current_cache.Make (Op)
 
 let v ssh =
   let open Current.Syntax in
-  let+ _ = 
+  let+ _ =
     Current.primitive
       ~info:(Current.component "remote cache pull")
       (Cache.get No_context) (Current.return ssh)
