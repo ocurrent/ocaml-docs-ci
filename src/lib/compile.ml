@@ -1,13 +1,20 @@
-type t = { package : Package.t; blessed : bool; odoc : Mld.Gen.odoc_dyn; artifacts_digest : string }
+type hashes = {
+  compile_commit_hash : string;
+  compile_tree_hash : string;
+  linked_commit_hash : string;
+  linked_tree_hash : string;
+  html_tailwind_commit_hash : string;
+  html_tailwind_tree_hash : string;
+  html_classic_commit_hash : string;
+  html_classic_tree_hash : string;
+}
+[@@deriving yojson]
 
-let digest t =
-  Package.digest t.package ^ Bool.to_string t.blessed ^ Mld.Gen.digest t.odoc ^ t.artifacts_digest
+type t = { package : Package.t; blessed : bool; hashes : hashes }
 
-let artifacts_digest t = t.artifacts_digest
+let hashes t = t.hashes
 
 let is_blessed t = t.blessed
-
-let odoc t = t.odoc
 
 let package t = t.package
 
@@ -18,8 +25,8 @@ let compile_folder ~blessed package =
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "compile" / "packages" / name / version)
-  else Fpath.(v "compile" / "universes" / universe / name / version)
+  if blessed then Fpath.(v "packages" / name / version)
+  else Fpath.(v "universes" / universe / name / version)
 
 let linked_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
@@ -29,21 +36,19 @@ let linked_folder ~blessed package =
   if blessed then Fpath.(v "linked" / "packages" / name / version)
   else Fpath.(v "linked" / "universes" / universe / name / version)
 
-let import_deps t =
-  let compile_folders =
-    List.map (fun { package; blessed; _ } -> compile_folder ~blessed package) t
-  in
-  let linked_folders = List.map (fun { package; blessed; _ } -> linked_folder ~blessed package) t in
-  Misc.rsync_pull (linked_folders @ compile_folders)
+let import_compile_deps ~ssh t =
+  let branches = List.map (fun { package; _ } -> Git_store.Branch.v package) t in
+  Git_store.Cluster.pull_to_directory ~repository:Compile ~ssh ~directory:"compile" ~branches
 
-let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
+let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
-  let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
   let compile_folder = compile_folder ~blessed package in
   let linked_folder = linked_folder ~blessed package in
+  let branch = Git_store.Branch.v package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
+  let message = Fmt.str "docs ci update %s\n\n%s" (Fmt.to_to_string Package.pp package) cache_key in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
@@ -51,19 +56,14 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
          (* obtain the compiled dependencies *)
-         Spec.add_rsync_retry_script;
-         import_deps ~ssh deps;
+         import_compile_deps ~ssh deps;
          (* obtain the prep folder *)
-         Misc.rsync_pull ~ssh ~digest:(Prep.artifacts_digest prep) [ prep_folder ];
+         Git_store.Cluster.pull_to_directory ~repository:Prep ~ssh ~directory:"prep"
+           ~branches:[ branch ];
          run "find . -type d";
          (* prepare the compilation folder *)
-         run "%s"
-         @@ Fmt.str "mkdir -p %a && mkdir -p %a" Fpath.pp compile_folder Fpath.pp linked_folder;
-         (* remove eventual leftovers (should not be needed)*)
-         run
-           "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
-            compile/packages/*.odoc";
-         run "rm -f compile/packages/%s/*.odoc" name;
+         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
+         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
@@ -73,29 +73,30 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
-         run "mkdir -p html";
-         (* Cache invalidation *)
-         run "echo '%s'" (artifacts_digest ^ cache_key);
-         (* Extract compile and linked folders *)
-         run ~secrets:Config.Ssh.secrets ~network
-           "rsync -avzR /home/opam/docs/./compile/ /home/opam/docs/./linked/ %s:%s/"
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+         (* Extract compile output *)
+         Git_store.Cluster.write_folder_to_git ~repository:Compile ~ssh ~branch ~folder:"compile"
+           ~message ~git_path:"/tmp/git-compile";
+         Git_store.Cluster.write_folder_to_git ~repository:Linked ~ssh ~branch ~folder:"linked"
+           ~message ~git_path:"/tmp/git-linked";
          (* Extract html/tailwind output *)
-         Git_store.Cluster.clone ~branch ~directory:"git-store" ssh;
-         run "rm -rf git-store/html && mv html/tailwind git-store/html";
-         workdir "git-store";
-         run "git add --all";
-         run "git commit -m 'docs ci update %s\n\n%s' --allow-empty"
-           (Fmt.to_to_string Package.pp package)
-           cache_key;
-         Git_store.Cluster.push ssh;
-         workdir "..";
-         (* extract html output*)
-         run ~secrets:Config.Ssh.secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+         Git_store.Cluster.write_folder_to_git ~repository:HtmlTailwind ~ssh ~branch
+           ~folder:"html/tailwind" ~message ~git_path:"/tmp/git-html-tailwind";
+         (* Extract html output*)
+         Git_store.Cluster.write_folder_to_git ~repository:HtmlClassic ~ssh ~branch ~folder:"html"
+           ~message ~git_path:"/tmp/git-html-classic";
+         run "cd /tmp/git-compile && %s"
+           (Git_store.print_branches_info ~prefix:"COMPILE" ~branches:[ branch ]);
+         run "cd /tmp/git-linked && %s"
+           (Git_store.print_branches_info ~prefix:"LINKED" ~branches:[ branch ]);
+         run "cd /tmp/git-html-tailwind && %s"
+           (Git_store.print_branches_info ~prefix:"TAILWIND" ~branches:[ branch ]);
+         run "cd /tmp/git-html-classic && %s"
+           (Git_store.print_branches_info ~prefix:"HTML" ~branches:[ branch ]);
        ]
 
 let git_update_pool = Current.Pool.create ~label:"git merge into live" 1
+
+let or_default a = function None -> a | b -> b
 
 module Compile = struct
   type output = t
@@ -104,7 +105,13 @@ module Compile = struct
 
   let id = "voodoo-do"
 
-  module Value = Current.String
+  module Value = struct
+    type t = hashes [@@deriving yojson]
+
+    let marshal t = t |> to_yojson |> Yojson.Safe.to_string
+
+    let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
+  end
 
   module Key = struct
     type t = {
@@ -118,8 +125,9 @@ module Compile = struct
     let key { config; deps; prep; blessed; voodoo } =
       Fmt.str "v2-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
-        (Prep.artifacts_digest prep)
-        Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
+        (Prep.tree_hash prep)
+        Fmt.(
+          list (fun f { hashes = { compile_tree_hash; _ }; _ } -> Fmt.pf f "%s" compile_tree_hash))
         deps (Voodoo.Do.digest voodoo) (Config.odoc config)
 
     let digest t = key t |> Digest.string |> Digest.to_hex
@@ -133,27 +141,23 @@ module Compile = struct
     (* When this key changes, the remote artifacts will be invalidated. *)
     let deps_digest =
       Fmt.to_to_string
-        Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
+        Fmt.(
+          list (fun f { hashes = { compile_tree_hash; _ }; _ } -> Fmt.pf f "%s" compile_tree_hash))
         deps
       |> Digest.string |> Digest.to_hex
     in
-    Fmt.str "voodoo-compile-v2-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+    Fmt.str "voodoo-compile-v2-%s-%s-%s-%s" (Prep.tree_hash prep) deps_digest
       (Voodoo.Do.digest voodoo)
       (Config.odoc config |> Digest.string |> Digest.to_hex)
 
-  let build digests job (Key.{ deps; prep; blessed; voodoo; config } as key) =
+  let build No_context job (Key.{ deps; prep; blessed; voodoo; config } as key) =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
-    let folder = compile_folder ~blessed package in
     let cache_key = remote_cache_key key in
     Current.Job.log job "Cache digest: %s" (Key.key key);
     let base = Misc.get_base_image package in
-    let branch = "html-" ^ (Prep.package prep |> Package.digest) in
-    let spec =
-      spec ~ssh:(Config.ssh config) ~branch ~remote_cache:digests ~cache_key ~artifacts_digest:""
-        ~voodoo ~base ~deps ~blessed prep
-    in
+    let spec = spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base ~deps ~blessed prep in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.base_image_version package in
     let cache_hint = "docs-universe-compile-" ^ version in
@@ -165,54 +169,49 @@ module Compile = struct
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let* result = Current_ocluster.Connection.run_job ~job build_job in
-    match result with
-    | Error (`Msg _) as e -> Lwt.return e
-    | Ok _ ->
-        let ssh = Config.ssh config in
-        let switch = Current.Switch.create ~label:"git merge pool switch" () in
-        let* () = Current.Job.use_pool ~switch job git_update_pool in
-        Lwt.catch
-          (fun () ->
-            let** () =
-              (* this piece of magic invocations create a merge commit in the 'live' branch *)
-              let live_ref = "refs/heads/live" in
-              let update_ref = "refs/heads/" ^ branch in
-              (* find nearest common ancestor of the two trees *)
-              let git_merge_base = Fmt.str "git merge-base %s %s" live_ref update_ref in
-              (* perform an aggressive merge *)
-              let git_merge_trees =
-                Fmt.str
-                  "git read-tree --empty && git read-tree -mi --aggressive $(%s) %s %s && git \
-                   merge-index ~/git-take-theirs.sh -a"
-                  git_merge_base live_ref update_ref
-              in
-              (* create a commit object using the newly created tree *)
-              let git_commit_tree =
-                Fmt.str "git commit-tree $(git write-tree) -p %s -p %s -m 'update %a'" live_ref
-                  update_ref Package.pp package
-              in
-              (* update the live branch *)
-              let git_update_ref = Fmt.str "git update-ref %s $(%s)" live_ref git_commit_tree in
+    let** _ = Current_ocluster.Connection.run_job ~job build_job in
+    let rec aux start next_lines
+        ((v_compile, v_linked, v_html_tailwind, v_html_classic) as accumulator) =
+      match next_lines with
+      | [] -> (
+          let* logs = Cluster_api.Job.log build_job start in
+          match logs with
+          | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
+          | Ok ("", _) -> Lwt_result.return accumulator
+          | Ok (data, next) ->
+              let lines = String.split_on_char '\n' data in
+              aux next lines accumulator )
+      | line :: next ->
+          let compile =
+            Git_store.parse_branch_info ~prefix:"COMPILE" line |> or_default v_compile
+          in
+          let linked = Git_store.parse_branch_info ~prefix:"LINKED" line |> or_default v_linked in
+          let html_tailwind =
+            Git_store.parse_branch_info ~prefix:"TAILWIND" line |> or_default v_html_tailwind
+          in
+          let html_classic =
+            Git_store.parse_branch_info ~prefix:"HTML" line |> or_default v_html_classic
+          in
 
-              Current.Process.exec ~cancellable:false ~job
-                ( "",
-                  [|
-                    "ssh";
-                    "-i";
-                    Fpath.to_string (Config.Ssh.priv_key_file ssh);
-                    "-p";
-                    Config.Ssh.port ssh |> string_of_int;
-                    Fmt.str "%s@%s" (Config.Ssh.user ssh) (Config.Ssh.host ssh);
-                    Fmt.str "cd %s/git && %s && %s" (Config.Ssh.storage_folder ssh) git_merge_trees
-                      git_update_ref;
-                  |] )
-            in
-            let* () = Current.Switch.turn_off switch in
-            failwith "todo")
-          (fun exn ->
-            let* () = Current.Switch.turn_off switch in
-            raise exn)
+          aux start next (compile, linked, html_tailwind, html_classic)
+    in
+    let** compile, linked, html_tailwind, html_classic = aux 0L [] (None, None, None, None) in
+    let compile = Option.get compile in
+    let linked = Option.get linked in
+    let html_tailwind = Option.get html_tailwind in
+    let html_classic = Option.get html_classic in
+    Lwt.return_ok
+      Value.
+        {
+          compile_commit_hash = compile.commit_hash;
+          compile_tree_hash = compile.tree_hash;
+          linked_commit_hash = linked.commit_hash;
+          linked_tree_hash = linked.tree_hash;
+          html_tailwind_commit_hash = html_tailwind.commit_hash;
+          html_tailwind_tree_hash = html_tailwind.tree_hash;
+          html_classic_commit_hash = html_classic.commit_hash;
+          html_classic_tree_hash = html_classic.tree_hash;
+        }
 end
 
 module CompileCache = Current_cache.Make (Compile)
@@ -220,27 +219,12 @@ module CompileCache = Current_cache.Make (Compile)
 let v ~config ~name ~voodoo ~blessed ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
-  |> let> prep = prep
-     and> voodoo = voodoo
-     and> blessed = blessed
-     and> deps = deps in
+  |> let> prep = prep and> voodoo = voodoo and> blessed = blessed and> deps = deps in
      let package = Prep.package prep in
-     let opam = package |> Package.opam in
-     let version = opam |> OpamPackage.version_to_string in
-     let compile_folder = compile_folder ~blessed package in
-     let odoc =
-       Mld.
-         {
-           file = Fpath.(parent compile_folder / (version ^ ".mld"));
-           target = None;
-           name = version;
-           kind = Mld;
-         }
-     in
-     let digest = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps; config } in
+     let output = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps; config } in
      Current.Primitive.map_result
-       (Result.map (fun artifacts_digest -> { package; blessed; odoc = Mld odoc; artifacts_digest }))
-       digest
+       (Result.map (fun hashes -> { package; blessed; hashes }))
+       output
 
 let v ~config ~voodoo ~blessed ~deps prep =
   let open Current.Syntax in
