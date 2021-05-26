@@ -5,7 +5,10 @@ let sync_pool = Current.Pool.create ~label:"ssh" 1
 let state_dir = Current.state_dir id
 
 module Index = struct
-  type t = Config.Ssh.t
+  type t = {
+    ssh : Config.Ssh.t;
+    state : Web.Status.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t ref;
+  }
 
   let id = "update-status-metadata"
 
@@ -64,50 +67,67 @@ module Index = struct
 
   let sync_pool = Current.Pool.create ~label:"ssh" 1
 
-  let write_state name versions =
-    let package_name = OpamPackage.Name.to_string name in
-    let dir = Fpath.(state_dir / package_name) in
-    Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
-    let file = Fpath.(dir / "state.json") in
-    let ts =
-      OpamPackage.Version.Map.mapi
-        (fun version status ->
-          let version = OpamPackage.Version.to_string version in
-          {
-            version;
-            link = Format.asprintf "/tailwind/packages/%s/%s/index.html" package_name version;
-            status = Fmt.to_to_string Web.Status.pp status;
-          })
-        versions
-      |> OpamPackage.Version.Map.values
+  let check_has_changed ~state name versions =
+    let has_changed =
+      match OpamPackage.Name.Map.find_opt name !state with
+      | Some versions' -> versions <> versions'
+      | None -> true
     in
-    let j = v_list_to_yojson ts in
-    let f = open_out (Fpath.to_string file) in
-    output_string f (Yojson.Safe.to_string j);
-    close_out f
+    if has_changed then state := OpamPackage.Name.Map.add name versions !state;
+    has_changed
+
+  let write_state ~state name versions =
+    if check_has_changed ~state name versions then (
+      let package_name = OpamPackage.Name.to_string name in
+      let dir = Fpath.(state_dir / package_name) in
+      Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
+      let file = Fpath.(dir / "state.json") in
+      let ts =
+        OpamPackage.Version.Map.mapi
+          (fun version status ->
+            let version = OpamPackage.Version.to_string version in
+            {
+              version;
+              link = Format.asprintf "/tailwind/packages/%s/%s/index.html" package_name version;
+              status = Fmt.to_to_string Web.Status.pp status;
+            })
+          versions
+        |> OpamPackage.Version.Map.values
+      in
+      let j = v_list_to_yojson ts in
+      let f = open_out (Fpath.to_string file) in
+      output_string f (Yojson.Safe.to_string j);
+      close_out f )
+    else ()
 
   let initialize_state ~job ~ssh () =
     let open Lwt.Syntax in
     if Bos.OS.Path.exists Fpath.(state_dir / ".git") |> Result.get_ok then Lwt.return_ok ()
     else
       Current.Process.exec ~cancellable:false ~job
-          ( "",
-            Git_store.Local.clone ~branch:"status" ~directory:state_dir ssh
-            |> Bos.Cmd.to_list |> Array.of_list )
+        ( "",
+          Git_store.Local.clone ~branch:"status" ~directory:state_dir ssh
+          |> Bos.Cmd.to_list |> Array.of_list )
 
-  let publish ssh job _ v =
+  let publish { ssh; state } job _ v =
     let open Lwt.Syntax in
-    let (let**) = Lwt_result.bind in
+    let ( let** ) = Lwt_result.bind in
     let switch = Current.Switch.create ~label:"sync" () in
     let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
     Lwt.finalize
       (fun () ->
         let** () = initialize_state ~job ~ssh () in
-        (* TODO: only write file on change *)
-        OpamPackage.Name.Map.iter write_state v;
+        OpamPackage.Name.Map.iter (write_state ~state) v;
         let** () =
           Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
-            ("", [| "bash"; "-c"; Fmt.str "git add --all && (git diff HEAD --exit-code --quiet || git commit -m 'update status')" |])
+            ( "",
+              [|
+                "bash";
+                "-c";
+                Fmt.str
+                  "git add --all && (git diff HEAD --exit-code --quiet || git commit -m 'update \
+                   status')";
+              |] )
         in
         Current.Process.exec ~cancellable:true ~job
           ("", Git_store.Local.push ~directory:state_dir ssh |> Bos.Cmd.to_list |> Array.of_list))
@@ -117,7 +137,8 @@ end
 module StatCache = Current_cache.Output (Index)
 
 let v ~ssh ~statuses : unit Current.t =
+  let state = ref OpamPackage.Name.Map.empty in
   let open Current.Syntax in
   Current.component "set-status"
   |> let> statuses = statuses in
-     StatCache.set ssh "" statuses
+     StatCache.set { state; ssh } "" statuses
