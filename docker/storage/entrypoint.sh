@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-USERNAME=${USERNAME:-user}
-PASSWORD=${PASSWORD:-pass}
 ALLOW=${ALLOW:-192.168.0.0/16 172.16.0.0/12 127.0.0.1/32}
 VOLUME=${VOLUME:-/data}
 
@@ -16,11 +14,10 @@ setup_sshd(){
 		chown root:root /root/.ssh
     fi
     chmod 750 /root/.ssh
-    echo "root:$PASSWORD" | chpasswd
 }
 
 setup_rsyncd(){
-	echo "$USERNAME:$PASSWORD" > /etc/rsyncd.secrets
+	touch /etc/rsyncd.secrets
 	rm -f /var/run/rsyncd.pid
     chmod 0400 /etc/rsyncd.secrets
 	[ -f /etc/rsyncd.conf ] || cat > /etc/rsyncd.conf <<EOF
