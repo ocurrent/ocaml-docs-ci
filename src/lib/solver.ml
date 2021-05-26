@@ -44,32 +44,39 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
     }
   in
   let switch = Current.Switch.create ~label:"solver switch" () in
-  let* () = Current.Job.use_pool ~switch job pool in
-  Capnp_rpc_lwt.Capability.with_ref (job_log job) @@ fun log ->
-  let* res = Solver_api.Solver.solve solver request ~log in
-  let+ () = Current.Switch.turn_off switch in
-  match res with
-  | Ok [] -> Fmt.error_msg "no platform"
-  | Ok [ x ] ->
-      let solution =
-        List.map
-          (fun (a, b) ->
-            Current.Job.log job "%s: %s" a (String.concat "; " b);
-            (OpamPackage.of_string a, List.map OpamPackage.of_string b))
-          x.packages
-      in
-      let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
-      let compiler =
-        List.find
-          (fun (p, _) -> OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler")
-          solution
-        |> fst
-      in
-      let version = OpamPackage.version compiler in
-      if OpamPackage.Version.compare version min_compiler_version >= 0 then Ok (solution, x.commit)
-      else Fmt.error_msg "Solution requires compiler verion older than minimum"
-  | Ok _ -> Fmt.error_msg "??"
-  | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg
+  Lwt.catch
+    (fun () ->
+      let* () = Current.Job.use_pool ~switch job pool in
+      Capnp_rpc_lwt.Capability.with_ref (job_log job) @@ fun log ->
+      let* res = Solver_api.Solver.solve solver request ~log in
+      let+ () = Current.Switch.turn_off switch in
+      match res with
+      | Ok [] -> Fmt.error_msg "no platform"
+      | Ok [ x ] ->
+          let solution =
+            List.map
+              (fun (a, b) ->
+                Current.Job.log job "%s: %s" a (String.concat "; " b);
+                (OpamPackage.of_string a, List.map OpamPackage.of_string b))
+              x.packages
+          in
+          let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
+          let compiler =
+            List.find
+              (fun (p, _) ->
+                OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler")
+              solution
+            |> fst
+          in
+          let version = OpamPackage.version compiler in
+          if OpamPackage.Version.compare version min_compiler_version >= 0 then
+            Ok (solution, x.commit)
+          else Fmt.error_msg "Solution requires compiler verion older than minimum"
+      | Ok _ -> Fmt.error_msg "??"
+      | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg)
+    (fun exn ->
+      let* () = Current.Switch.turn_off switch in
+      raise exn)
 
 module Cache = struct
   let id = "solver-cache"
