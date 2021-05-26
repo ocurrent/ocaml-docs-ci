@@ -235,7 +235,6 @@ let v ~config ~name ~voodoo ~cache ~blessed ~deps prep =
      and> blessed = blessed
      and> deps = deps in
      let package = Prep.package prep in
-     let blessed = Package.Blessed.is_blessed blessed package in
      let opam = package |> Package.opam in
      let version = opam |> OpamPackage.version_to_string in
      let compile_folder = folder ~blessed package in

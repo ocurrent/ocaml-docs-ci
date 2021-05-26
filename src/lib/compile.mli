@@ -34,7 +34,7 @@ val v :
   config:Config.t ->
   voodoo:Voodoo.Do.t Current.t ->
   cache:Remote_cache.t Current.t ->
-  blessed:Package.Blessed.t Current.t ->
+  blessed:bool Current.t ->
   deps:t list Current.t ->
   Prep.t Current.t ->
   t Current.t
