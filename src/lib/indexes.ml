@@ -18,9 +18,22 @@ module Index = struct
   end
 
   module Value = struct
-    type t = (string * Web.Status.t) list
+    type t = Web.Status.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t
 
-    let digest v = Format.asprintf "%a" (Fmt.list (Fmt.pair Format.pp_print_string Web.Status.pp)) v
+    let digest v =
+      let digest = ref "" in
+      OpamPackage.Name.Map.iter
+        (fun name versions ->
+          OpamPackage.Version.Map.iter
+            (fun version status ->
+              digest :=
+                Digest.string
+                  (Fmt.str "%s-%s-%s-%a" !digest (OpamPackage.Name.to_string name)
+                     (OpamPackage.Version.to_string version)
+                     Web.Status.pp status))
+            versions)
+        v;
+      !digest
   end
 
   let pp f (package_name, _) = Fmt.pf f "Status update package %s" package_name
@@ -49,52 +62,62 @@ module Index = struct
     in
     ()
 
-let sync_pool = Current.Pool.create ~label:"ssh" 1
-  let publish ssh job package_name v =
-    let open Lwt.Syntax in
+  let sync_pool = Current.Pool.create ~label:"ssh" 1
+
+  let write_state name versions =
+    let package_name = OpamPackage.Name.to_string name in
     let dir = Fpath.(state_dir / package_name) in
     Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
     let file = Fpath.(dir / "state.json") in
     let ts =
-      List.map
-        (fun (version, status) ->
+      OpamPackage.Version.Map.mapi
+        (fun version status ->
+          let version = OpamPackage.Version.to_string version in
           {
             version;
             link = Format.asprintf "/tailwind/packages/%s/%s/index.html" package_name version;
             status = Fmt.to_to_string Web.Status.pp status;
           })
-        v
+        versions
+      |> OpamPackage.Version.Map.values
     in
     let j = v_list_to_yojson ts in
     let f = open_out (Fpath.to_string file) in
     output_string f (Yojson.Safe.to_string j);
-    close_out f;
-    let remote_folder =
-      Fmt.str "%s@@%s:%s/" (Config.Ssh.user ssh) (Config.Ssh.host ssh)
-        (Config.Ssh.storage_folder ssh)
-    in
-    let switch = Current.Switch.create ~label:"ssh" () in
+    close_out f
+
+  let initialize_state ~job ~ssh () =
+    let open Lwt.Syntax in
+    if Bos.OS.Path.exists Fpath.(state_dir / ".git") |> Result.get_ok then Lwt.return_ok ()
+    else
+      Current.Process.exec ~cancellable:false ~job
+          ( "",
+            Git_store.Local.clone ~branch:"status" ~directory:state_dir ssh
+            |> Bos.Cmd.to_list |> Array.of_list )
+
+  let publish ssh job _ v =
+    let open Lwt.Syntax in
+    let (let**) = Lwt_result.bind in
+    let switch = Current.Switch.create ~label:"sync" () in
     let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
     Lwt.finalize
       (fun () ->
+        let** () = initialize_state ~job ~ssh () in
+        (* TODO: only write file on change *)
+        OpamPackage.Name.Map.iter write_state v;
+        let** () =
+          Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
+            ("", [| "bash"; "-c"; Fmt.str "git add --all && (git diff HEAD --exit-code --quiet || git commit -m 'update status')" |])
+        in
         Current.Process.exec ~cancellable:true ~job
-          ( "",
-            [|
-              "rsync";
-              "-avzR";
-              "-e";
-              Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port ssh) Fpath.pp
-                (Config.Ssh.priv_key_file ssh);
-              Fpath.to_string state_dir;
-              remote_folder ^ "html/tailwind/packages/./";
-            |] ))
+          ("", Git_store.Local.push ~directory:state_dir ssh |> Bos.Cmd.to_list |> Array.of_list))
       (fun () -> Current.Switch.turn_off switch)
 end
 
 module StatCache = Current_cache.Output (Index)
 
-let v ~ssh ~package_name ~statuses : unit Current.t =
+let v ~ssh ~statuses : unit Current.t =
   let open Current.Syntax in
-  Current.component "set-status for %s" package_name
+  Current.component "set-status"
   |> let> statuses = statuses in
-     StatCache.set ssh package_name statuses
+     StatCache.set ssh "" statuses

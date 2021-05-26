@@ -36,8 +36,9 @@ let setup ssh =
       "git init --bare && \
       echo 'ref: refs/heads/main' > HEAD && \
       COMMIT=$(git commit-tree $(git write-tree) -m 'root') && \
-      git update-ref refs/heads/main $COMMIT && \
-      git update-ref refs/heads/live $COMMIT"
+      git update-ref refs/heads/main   $COMMIT && \
+      git update-ref refs/heads/live   $COMMIT && \
+      git update-ref refs/heads/status $COMMIT"
     in
     let path = Fpath.(v (Ssh.storage_folder ssh) / dir) in
     Fmt.str "cd %a && (git rev-parse --git-dir || (%s))" Fpath.pp path git_init_command

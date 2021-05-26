@@ -1,5 +1,15 @@
 open Docs_ci_lib
 
+module CurrentMap (Map : OpamStd.MAP) = struct
+  let map_seq (input : 'a Current.t Map.t) : 'a Map.t Current.t =
+    Map.bindings input
+    |> List.rev_map (fun (k, v) -> Current.map (fun x -> (k, x)) v)
+    |> Current.list_seq |> Current.map Map.of_list
+end
+
+module OpamPackageNameCurrentMap = CurrentMap (OpamPackage.Name.Map)
+module OpamPackageVersionCurrentMap = CurrentMap (OpamPackage.Version.Map)
+
 module PrepStatus = struct
   type t = Jobs.t * Prep.t list Current_term.Output.t
 
@@ -204,25 +214,22 @@ let v ~config ~api ~opam () =
     |> Package.Map.bindings |> List.map snd |> Current.all
   in
   let status2 =
-    let package_versions = Hashtbl.create 1000 in
-    Package.Map.iter
-      (fun package status ->
-        let name = Package.opam package |> OpamPackage.name_to_string in
-        let version = Package.opam package |> OpamPackage.version_to_string in
-        let version_status =
-          let+ status = status in
-          (version, status)
-        in
-        match Hashtbl.find_opt package_versions name with
-        | Some vs -> Hashtbl.replace package_versions name (version_status :: vs)
-        | None -> Hashtbl.add package_versions name [ version_status ])
-      package_status;
-    let ssh = Config.ssh config in
-    let vs =
-      Hashtbl.fold
-        (fun k v acc -> Indexes.v ~ssh ~package_name:k ~statuses:(Current.list_seq v) :: acc)
-        package_versions []
+    let package_versions =
+      Package.Map.fold
+        (fun package status opam_map ->
+          let name = Package.opam package |> OpamPackage.name in
+          let version = Package.opam package |> OpamPackage.version in
+          OpamPackage.Name.Map.update name
+            (fun versions -> OpamPackage.Version.Map.add version status versions)
+            OpamPackage.Version.Map.empty opam_map)
+        package_status OpamPackage.Name.Map.empty
     in
-    Current.collapse_list ~key:"status json" ~value:"" ~input:status vs |> Current.all
+    let statuses =
+      package_versions
+      |> OpamPackage.Name.Map.map OpamPackageVersionCurrentMap.map_seq
+      |> OpamPackageNameCurrentMap.map_seq
+    in
+    let ssh = Config.ssh config in
+    Indexes.v ~ssh ~statuses
   in
   Current.all [ package_registry; status; status2 ]

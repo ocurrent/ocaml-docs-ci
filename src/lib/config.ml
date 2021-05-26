@@ -74,7 +74,10 @@ module Ssh = struct
       user;
       port;
       private_key = load_file privkey;
-      private_key_file = privkey;
+      private_key_file =
+        Fpath.(
+          (Bos.OS.Dir.current () |> Result.get_ok) // (of_string privkey |> Result.get_ok)
+          |> to_string);
       public_key = load_file pubkey;
       folder;
       html_endpoint = endpoint;
