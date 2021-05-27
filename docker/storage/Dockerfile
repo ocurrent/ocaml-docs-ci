@@ -15,7 +15,7 @@ RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so
 RUN echo "export VISIBLE=now" >> /etc/profile
 RUN git config --global user.email "docker@ci"
 RUN git config --global user.name "CI"
-COPY entrypoint.sh /entrypoint.sh
+COPY ./docker/storage/entrypoint.sh /entrypoint.sh
 RUN chmod 744 /entrypoint.sh
 
 EXPOSE 22

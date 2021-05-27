@@ -12,8 +12,9 @@ RUN set -x && \
   ln -sf /dev/stdout /var/log/nginx/access.log          &&  \
   ln -sf /dev/stderr /var/log/nginx/error.log
 
-ADD ./etc /etc
-ADD ./entrypoint.sh /usr/local/bin/entrypoint
+
+ADD ./docker/git-http/etc /etc
+ADD ./docker/git-http/entrypoint.sh /usr/local/bin/entrypoint
 
 ENTRYPOINT [ "entrypoint" ]
 CMD [ "-start" ]
