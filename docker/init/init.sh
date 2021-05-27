@@ -8,3 +8,5 @@ if [ ! -f $KEYFILE ]; then
     ssh-keygen -q -t $KEYTYPE -f $KEYFILE -N '' <<<y
     cp $KEYFILE.pub /ssh/authorized_keys
 fi
+
+sleep infinity
