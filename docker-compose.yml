@@ -37,8 +37,8 @@ services:
 
   init:
     build:
-      dockerfile: Dockerfile
-      context: ./docker/init/
+      dockerfile: docker/init/Dockerfile
+      context: .
     environment:
       - KEYFILE=/ssh/id_ed25519
       - KEYTYPE=ed25519
@@ -47,8 +47,8 @@ services:
 
   storage-server:
     build:
-      dockerfile: Dockerfile
-      context: ./docker/storage/
+      dockerfile: docker/storage/Dockerfile
+      context: .
     depends_on:
       - "init"
     ports:
@@ -59,8 +59,8 @@ services:
 
   git-http:
     build:
-      dockerfile: Dockerfile
-      context: ./docker/git-http
+      dockerfile: docker/git-http/Dockerfile
+      context: .
     ports:
       - "8001:80"
     volumes:

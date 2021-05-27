@@ -1,3 +1,7 @@
+# Helper dockerfiles
+
+They must be built using the root of the project as context: `docker build -f docker/storage/Dockerfile .`.
+
 ## storage
 
 The server in charge of storing the data:
