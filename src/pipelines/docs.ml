@@ -1,5 +1,15 @@
 open Docs_ci_lib
 
+module CurrentMap (Map : OpamStd.MAP) = struct
+  let map_seq (input : 'a Current.t Map.t) : 'a Map.t Current.t =
+    Map.bindings input
+    |> List.rev_map (fun (k, v) -> Current.map (fun x -> (k, x)) v)
+    |> Current.list_seq |> Current.map Map.of_list
+end
+
+module OpamPackageNameCurrentMap = CurrentMap (OpamPackage.Name.Map)
+module OpamPackageVersionCurrentMap = CurrentMap (OpamPackage.Version.Map)
+
 module PrepStatus = struct
   type t = Jobs.t * Prep.t list Current_term.Output.t
 
@@ -71,9 +81,15 @@ let collapse_by ~key ~input (criteria : 'k -> string) (list : ('k * 'v Current.t
   |> StringMap.mapi (fun k v ->
          let curr = List.map snd v in
          let keys = List.map fst v in
-         let current = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
+         let current, _ = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
          List.combine keys current)
   |> StringMap.bindings |> List.rev_map snd |> List.flatten
+
+let collapse_single ~key ~input list =
+  let curr = List.map snd list in
+  let keys = List.map fst list in
+  let current, node = Current.collapse_list ~key ~value:"" ~input curr in
+  (List.combine keys current, node)
 
 let prep_hierarchical_collapse ~input lst =
   let key = "prep" in
@@ -82,7 +98,7 @@ let prep_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input (fun x ->
          let name = x.Jobs.install |> Package.opam |> OpamPackage.name_to_string in
          String.sub name 0 1 |> String.uppercase_ascii)
-  |> collapse_by ~key ~input (fun _ -> "")
+  |> collapse_single ~key ~input
 
 let compile_hierarchical_collapse ~input lst =
   let key = "compile" in
@@ -93,7 +109,7 @@ let compile_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input (fun x ->
          let name = x |> Package.opam |> OpamPackage.name_to_string in
          String.sub name 0 1 |> String.uppercase_ascii)
-  |> collapse_by ~key ~input (fun _ -> "")
+  |> collapse_single ~key ~input
 
 let v ~config ~api ~opam () =
   let open Current.Syntax in
@@ -119,23 +135,19 @@ let v ~config ~api ~opam () =
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
   (* 5) Run the preparation step *)
-  let prepped =
+  let prepped, prepped_input_node =
     jobs
     |> List.map (fun job -> (job, Prep.v ~config ~cache ~voodoo:v_prep job))
     |> prep_hierarchical_collapse ~input:(Current.pair solver_result cache)
+  in
+  let prepped =
+    prepped
     |> List.map (fun (job, result) ->
            job.Jobs.prep |> List.to_seq
            |> Seq.map (fun p -> (p, [ Current.map (Package.Map.find p) result ]))
            |> Package.Map.of_seq)
     |> List.fold_left (Package.Map.union (fun _ a b -> Some (a @ b))) Package.Map.empty
     |> Package.Map.map take_any_success
-  in
-  let prep_list =
-    Package.Map.bindings prepped
-    |> List.rev_map (fun (package, prep) ->
-           let+ prep = Current.state ~hidden:true prep in
-           (package, prep))
-    |> Current.list_seq
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
@@ -163,10 +175,13 @@ let v ~config ~api ~opam () =
   in
 
   (* 7) Odoc compile and html-generate artifacts *)
-  let compiled =
-    compile ~config ~cache ~voodoo:v_do ~blessed prepped
-    |> compile_hierarchical_collapse ~input:prep_list
-    |> List.to_seq |> Package.Map.of_seq
+  let compiled, compiled_input_node =
+    let c, cn = 
+      compile ~config ~cache ~voodoo:v_do ~blessed prepped
+      |> compile_hierarchical_collapse ~input:prepped_input_node
+    in
+    c |> List.to_seq |> Package.Map.of_seq, cn
+
   in
   (* 8) Report status *)
   let package_registry =
@@ -201,28 +216,29 @@ let v ~config ~api ~opam () =
     package_status
     |> Package.Map.mapi (fun package status ->
            Web.set_package_status ~package:(Current.return package) ~status api)
-    |> Package.Map.bindings |> List.map snd |> Current.all
+    |> Package.Map.bindings |> List.map snd |> Current.all |> Current.collapse ~input:compiled_input_node ~key:"Set status (graphql)" ~value:""
   in
   let status2 =
-    let package_versions = Hashtbl.create 1000 in
-    Package.Map.iter
-      (fun package status ->
-        let name = Package.opam package |> OpamPackage.name_to_string in
-        let version = Package.opam package |> OpamPackage.version_to_string in
-        let version_status =
-          let+ status = status in
-          (version, status)
-        in
-        match Hashtbl.find_opt package_versions name with
-        | Some vs -> Hashtbl.replace package_versions name (version_status :: vs)
-        | None -> Hashtbl.add package_versions name [ version_status ])
-      package_status;
-    let ssh = Config.ssh config in
-    let vs =
-      Hashtbl.fold
-        (fun k v acc -> Indexes.v ~ssh ~package_name:k ~statuses:(Current.list_seq v) :: acc)
-        package_versions []
+    let package_versions =
+      Package.Map.fold
+        (fun package status opam_map ->
+          let name = Package.opam package |> OpamPackage.name in
+          let version = Package.opam package |> OpamPackage.version in
+          OpamPackage.Name.Map.update name
+            (fun versions -> OpamPackage.Version.Map.add version status versions)
+            OpamPackage.Version.Map.empty opam_map)
+        package_status OpamPackage.Name.Map.empty
     in
-    Current.collapse_list ~key:"status json" ~value:"" ~input:status vs |> Current.all
+    let statuses =
+      package_versions
+      |> OpamPackage.Name.Map.map OpamPackageVersionCurrentMap.map_seq
+      |> OpamPackageNameCurrentMap.map_seq
+    in
+    let ssh = Config.ssh config in
+    Indexes.v ~ssh ~statuses
+    |> Current.collapse ~input:compiled_input_node ~key:"Set status (git)" ~value:""
   in
-  Current.all [ package_registry; status; status2 ]
+  Current.all
+    [
+      package_registry; status; status2;
+    ]

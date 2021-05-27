@@ -56,7 +56,6 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
           let solution =
             List.map
               (fun (a, b) ->
-                Current.Job.log job "%s: %s" a (String.concat "; " b);
                 (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               x.packages
           in
