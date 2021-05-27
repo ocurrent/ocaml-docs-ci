@@ -3,7 +3,7 @@ RUN cd ~/opam-repository && git pull origin master && git reset --hard a147c4ece
 WORKDIR /src
 COPY --chown=opam docs-ci-web.opam /src/
 RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
-RUN opam install -y --deps-only .
+RUN opam install --deps-only .
 ADD --chown=opam . .
 RUN sudo chown opam:opam .
 RUN --mount=type=cache,target=./_build/,uid=1000,gid=1000 opam config exec -- dune build ./_build/install/default/bin/docs-ci-web && cp ./_build/install/default/bin/docs-ci-web /src/

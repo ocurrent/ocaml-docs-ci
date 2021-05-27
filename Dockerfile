@@ -24,7 +24,7 @@ RUN opam pin add -yn current_ansi.dev "./vendor/ocurrent" && \
     opam pin add -yn current_slack.dev "./vendor/ocurrent" && \
     opam pin add -yn current_web.dev "./vendor/ocurrent"
 COPY --chown=opam docs-ci.opam /src/
-RUN opam install -y --deps-only .
+RUN opam install --deps-only .
 ADD --chown=opam . .
 RUN --mount=type=cache,target=./_build/,uid=1000,gid=1000 opam config exec -- dune build ./_build/install/default/bin/docs-ci ./_build/install/default/bin/docs-ci-solver && cp ./_build/install/default/bin/docs-ci ./_build/install/default/bin/docs-ci-solver .
 FROM debian:10
