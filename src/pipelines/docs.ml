@@ -118,6 +118,7 @@ let v ~config ~api ~opam () =
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   (* 1) Track the list of packages in the opam repository *)
+  let metadata = Opam_metadata.v ~ssh:(Config.ssh config) ~repo:opam in
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
   in
@@ -176,13 +177,13 @@ let v ~config ~api ~opam () =
 
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled, compiled_input_node =
-    let c, cn = 
+    let c, cn =
       compile ~config ~cache ~voodoo:v_do ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
-    c |> List.to_seq |> Package.Map.of_seq, cn
-
+    (c |> List.to_seq |> Package.Map.of_seq, cn)
   in
+
   (* 8) Report status *)
   let package_registry =
     let+ tracked = tracked in
@@ -216,29 +217,7 @@ let v ~config ~api ~opam () =
     package_status
     |> Package.Map.mapi (fun package status ->
            Web.set_package_status ~package:(Current.return package) ~status api)
-    |> Package.Map.bindings |> List.map snd |> Current.all |> Current.collapse ~input:compiled_input_node ~key:"Set status (graphql)" ~value:""
+    |> Package.Map.bindings |> List.map snd |> Current.all
+    |> Current.collapse ~input:compiled_input_node ~key:"Set status (graphql)" ~value:""
   in
-  let status2 =
-    let package_versions =
-      Package.Map.fold
-        (fun package status opam_map ->
-          let name = Package.opam package |> OpamPackage.name in
-          let version = Package.opam package |> OpamPackage.version in
-          OpamPackage.Name.Map.update name
-            (fun versions -> OpamPackage.Version.Map.add version status versions)
-            OpamPackage.Version.Map.empty opam_map)
-        package_status OpamPackage.Name.Map.empty
-    in
-    let statuses =
-      package_versions
-      |> OpamPackage.Name.Map.map OpamPackageVersionCurrentMap.map_seq
-      |> OpamPackageNameCurrentMap.map_seq
-    in
-    let ssh = Config.ssh config in
-    Indexes.v ~ssh ~statuses
-    |> Current.collapse ~input:compiled_input_node ~key:"Set status (git)" ~value:""
-  in
-  Current.all
-    [
-      package_registry; status; status2;
-    ]
+  Current.all [ package_registry; status; metadata ]
