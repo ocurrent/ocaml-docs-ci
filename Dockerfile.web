@@ -3,6 +3,7 @@ RUN cd ~/opam-repository && git pull origin master && git reset --hard a147c4ece
 WORKDIR /src
 COPY --chown=opam docs-ci-web.opam /src/
 RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
+RUN sudo apt-get install -y "libev-dev" "libgmp-dev" "libssl-dev" "pkg-config"
 RUN opam install --deps-only .
 ADD --chown=opam . .
 RUN sudo chown opam:opam .
