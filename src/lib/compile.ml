@@ -181,38 +181,8 @@ module Compile = struct
             Lwt.catch
               (fun () ->
                 let** () =
-                  (* this piece of magic invocations create a merge commit in the 'live' branch *)
-                  let live_ref = "refs/heads/live" in
-                  let update_ref = "refs/heads/" ^ branch in
-                  (* find nearest common ancestor of the two trees *)
-                  let git_merge_base = Fmt.str "git merge-base %s %s" live_ref update_ref in
-                  (* perform an aggressive merge *)
-                  let git_merge_trees =
-                    Fmt.str
-                      "git read-tree --empty && git read-tree -mi --aggressive $(%s) %s %s && git \
-                       merge-index ~/git-take-theirs.sh -a"
-                      git_merge_base live_ref update_ref
-                  in
-                  (* create a commit object using the newly created tree *)
-                  let git_commit_tree =
-                    Fmt.str "git commit-tree $(git write-tree) -p %s -p %s -m 'update %a'" live_ref
-                      update_ref Package.pp package
-                  in
-                  (* update the live branch *)
-                  let git_update_ref = Fmt.str "git update-ref %s $(%s)" live_ref git_commit_tree in
-
-                  Current.Process.exec ~cancellable:false ~job
-                    ( "",
-                      [|
-                        "ssh";
-                        "-i";
-                        Fpath.to_string (Config.Ssh.priv_key_file ssh);
-                        "-p";
-                        Config.Ssh.port ssh |> string_of_int;
-                        Fmt.str "%s@%s" (Config.Ssh.user ssh) (Config.Ssh.host ssh);
-                        Fmt.str "cd %s/git && %s && %s" (Config.Ssh.storage_folder ssh)
-                          git_merge_trees git_update_ref;
-                      |] )
+                  Git_store.Local.merge_to_live ~job ~ssh ~branch
+                    ~msg:(Fmt.to_to_string Package.pp package)
                 in
                 let* () = Current.Switch.turn_off switch in
                 let+ () = Remote_cache.sync ~job digests in
@@ -223,7 +193,7 @@ module Compile = struct
                 Ok artifacts_digest)
               (fun exn ->
                 let* () = Current.Switch.turn_off switch in
-                raise exn) )
+                raise exn))
 end
 
 module CompileCache = Current_cache.Make (Compile)

@@ -103,7 +103,6 @@ module Index = struct
     else Lwt.return ()
 
   let initialize_state ~job ~ssh () =
-    let open Lwt.Syntax in
     if Bos.OS.Path.exists Fpath.(state_dir / ".git") |> Result.get_ok then Lwt.return_ok ()
     else
       Current.Process.exec ~cancellable:false ~job
