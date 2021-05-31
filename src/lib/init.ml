@@ -53,6 +53,7 @@ let setup ssh =
   let* () = ensure_dir "git" |> run in
   let* () = ensure_dir "cache" |> run in
   let* () = ensure_dir "compile" |> run in
+  let* () = ensure_dir "linked" |> run in
   let* () = ensure_dir "prep" |> run in
   let* () = ensure_program "git" |> run in
   let* () = ensure_program "rsync" |> run in
