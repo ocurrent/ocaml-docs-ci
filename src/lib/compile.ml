@@ -13,7 +13,7 @@ let package t = t.package
 
 let network = Misc.network
 
-let folder ~blessed package =
+let compile_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
@@ -21,15 +21,27 @@ let folder ~blessed package =
   if blessed then Fpath.(v "compile" / "packages" / name / version)
   else Fpath.(v "compile" / "universes" / universe / name / version)
 
+let linked_folder ~blessed package =
+  let universe = Package.universe package |> Package.Universe.hash in
+  let opam = Package.opam package in
+  let name = OpamPackage.name_to_string opam in
+  let version = OpamPackage.version_to_string opam in
+  if blessed then Fpath.(v "linked" / "packages" / name / version)
+  else Fpath.(v "linked" / "universes" / universe / name / version)
+
 let import_deps t =
-  let folders = List.map (fun { package; blessed; _ } -> folder ~blessed package) t in
-  Misc.rsync_pull folders
+  let compile_folders =
+    List.map (fun { package; blessed; _ } -> compile_folder ~blessed package) t
+  in
+  let linked_folders = List.map (fun { package; blessed; _ } -> linked_folder ~blessed package) t in
+  Misc.rsync_pull (linked_folders @ compile_folders)
 
 let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let prep_folder = Prep.folder prep in
   let package = Prep.package prep in
-  let compile_folder = folder ~blessed package in
+  let compile_folder = compile_folder ~blessed package in
+  let linked_folder = linked_folder ~blessed package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
@@ -45,7 +57,8 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          Misc.rsync_pull ~ssh ~digest:(Prep.artifacts_digest prep) [ prep_folder ];
          run "find . -type d";
          (* prepare the compilation folder *)
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
+         run "%s"
+         @@ Fmt.str "mkdir -p %a && mkdir -p %a" Fpath.pp compile_folder Fpath.pp linked_folder;
          (* remove eventual leftovers (should not be needed)*)
          run
            "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
@@ -61,10 +74,12 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
          run "mkdir -p html";
-         (* Extract compile output *)
+         (* Cache invalidation *)
+         run "echo '%s'" (artifacts_digest ^ cache_key);
+         (* Extract compile and linked folders *)
          run ~secrets:Config.Ssh.secrets ~network
-           "rsync -avzR /home/opam/docs/./compile/ %s:%s/ && echo '%s'" (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh) (artifacts_digest ^ cache_key);
+           "rsync -avzR /home/opam/docs/./compile/ /home/opam/docs/./linked/ %s:%s/" (Config.Ssh.host ssh)
+           (Config.Ssh.storage_folder ssh) ;
          (* Extract html/tailwind output *)
          Git_store.Cluster.clone ~branch ~directory:"git-store" ssh;
          run "rm -rf git-store/html && mv html/tailwind git-store/html";
@@ -78,9 +93,12 @@ let spec ~ssh ~branch ~remote_cache ~cache_key ~artifacts_digest ~base ~voodoo ~
          (* extract html output*)
          run ~secrets:Config.Ssh.secrets ~network "rsync -avzR /home/opam/docs/./html/ %s:%s/"
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
-         (* Compute compile folder digest *)
-         run "%s" (Remote_cache.cmd_compute_sha256 [ compile_folder ]);
-         run "%s" (Remote_cache.cmd_write_key cache_key [ compile_folder ]);
+         (* Compute compile and linked folder digest *)
+         run "%s && %s && %s && %s"
+           (Remote_cache.cmd_compute_sha256 [ compile_folder ])
+           (Remote_cache.cmd_write_key cache_key [ compile_folder ])
+           (Remote_cache.cmd_compute_sha256 [ linked_folder ])
+           (Remote_cache.cmd_write_key cache_key [ linked_folder ]);
          (* Extract the digest info *)
          run ~secrets:Config.Ssh.secrets ~network:Misc.network "%s"
            (Remote_cache.cmd_sync_folder remote_cache);
@@ -108,7 +126,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo; compile_cache } =
-      Fmt.str "v1-%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v2-%s-%s-%s-%a-%s-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.artifacts_digest prep)
         Fmt.(list (fun f { artifacts_digest; _ } -> Fmt.pf f "%s" artifacts_digest))
@@ -131,7 +149,7 @@ module Compile = struct
         deps
       |> Digest.string |> Digest.to_hex
     in
-    Fmt.str "voodoo-compile-v1-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
+    Fmt.str "voodoo-compile-v2-%s-%s-%s-%s" (Prep.artifacts_digest prep) deps_digest
       (Voodoo.Do.digest voodoo)
       (Config.odoc config |> Digest.string |> Digest.to_hex)
 
@@ -139,7 +157,7 @@ module Compile = struct
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
-    let folder = folder ~blessed package in
+    let folder = compile_folder ~blessed package in
     let cache_key = remote_cache_key key in
     Current.Job.log job "Cache digest: %s" (Key.key key);
     match compile_cache with
@@ -210,7 +228,7 @@ let v ~config ~name ~voodoo ~cache ~blessed ~deps prep =
      let package = Prep.package prep in
      let opam = package |> Package.opam in
      let version = opam |> OpamPackage.version_to_string in
-     let compile_folder = folder ~blessed package in
+     let compile_folder = compile_folder ~blessed package in
      let odoc =
        Mld.
          {
@@ -234,4 +252,4 @@ let v ~config ~voodoo ~cache ~blessed ~deps prep =
   let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
   v ~config ~name ~voodoo ~cache ~blessed ~deps prep
 
-let folder { package; blessed; _ } = folder ~blessed package
+let folder { package; blessed; _ } = compile_folder ~blessed package
