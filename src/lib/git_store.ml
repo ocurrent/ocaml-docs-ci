@@ -7,6 +7,8 @@ let git_checkout_or_create b =
      origin/%s) || (git checkout -b %s && git push --set-upstream origin %s)"
     b b b b b
 
+let branch_of_package p = Package.digest p
+
 module Cluster = struct
   let clone ~branch ~directory t =
     Obuilder_spec.run ~network:[ "host" ] ~secrets:Config.Ssh.secrets

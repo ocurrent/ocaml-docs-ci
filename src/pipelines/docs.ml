@@ -24,7 +24,7 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
+let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -42,7 +42,7 @@ let compile ~config ~voodoo ~cache ~(blessed : Package.Blessed.t Current.t OpamP
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessed.is_blessed b package)
            in
-           Compile.v ~config ~cache ~voodoo ~blessed ~deps:compile_dependencies prep
+           Compile.v ~config ~voodoo ~blessed ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
@@ -113,7 +113,6 @@ let compile_hierarchical_collapse ~input lst =
 
 let v ~config ~api ~opam () =
   let open Current.Syntax in
-  let cache = Remote_cache.v (Config.ssh config) in
   let voodoo = Voodoo.v config in
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
@@ -138,8 +137,8 @@ let v ~config ~api ~opam () =
   (* 5) Run the preparation step *)
   let prepped, prepped_input_node =
     jobs
-    |> List.map (fun job -> (job, Prep.v ~config ~cache ~voodoo:v_prep job))
-    |> prep_hierarchical_collapse ~input:(Current.pair solver_result cache)
+    |> List.map (fun job -> (job, Prep.v ~config ~voodoo:v_prep job))
+    |> prep_hierarchical_collapse ~input:solver_result
   in
   let prepped =
     prepped
@@ -177,8 +176,8 @@ let v ~config ~api ~opam () =
 
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled, compiled_input_node =
-    let c, cn =
-      compile ~config ~cache ~voodoo:v_do ~blessed prepped
+    let c, cn = 
+      compile ~config ~voodoo:v_do ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
     (c |> List.to_seq |> Package.Map.of_seq, cn)
