@@ -162,8 +162,8 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
   let vat = Capnp_rpc_unix.client_only_vat () in
   let cap = Capnp_rpc_unix.Cap_file.load vat cap_file |> Result.get_ok in
 
-  let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:10 cap in
-  let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:10 cap in
+  let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:100 cap in
+  let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:100 cap in
 
   {
     jobs;
