@@ -18,3 +18,5 @@ module Local : sig
 end
 
 val remote : Config.Ssh.t -> string
+
+val branch_of_package : Package.t -> string
