@@ -114,9 +114,9 @@ module Index = struct
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let switch = Current.Switch.create ~label:"sync" () in
-    let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
     Lwt.finalize
       (fun () ->
+        let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
         let** () = initialize_state ~job ~ssh () in
         let* () =
           OpamPackage.Name.Map.bindings v

@@ -10,9 +10,10 @@ let sync ~job t =
     Fmt.str "%s@@%s:%s/" (Config.Ssh.user t) (Config.Ssh.host t) (Config.Ssh.storage_folder t)
   in
   let switch = Current.Switch.create ~label:"ssh" () in
-  let* () = Current.Job.use_pool ~switch job sync_pool in
   Lwt.finalize
     (fun () ->
+      Current.Job.log job "Synchronizing remote cache.";
+      let* () = Current.Job.use_pool ~switch job sync_pool in
       let+ _ =
         Current.Process.exec ~cancellable:true ~job
           ( "",
