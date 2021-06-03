@@ -81,8 +81,10 @@ let collapse_by ~key ~input (criteria : 'k -> string) (list : ('k * 'v Current.t
   |> StringMap.mapi (fun k v ->
          let curr = List.map snd v in
          let keys = List.map fst v in
-         let current, _ = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
-         List.combine keys current)
+         if List.length curr <= 1 then List.combine keys curr
+         else
+           let current, _ = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
+           List.combine keys current)
   |> StringMap.bindings |> List.rev_map snd |> List.flatten
 
 let collapse_single ~key ~input list =
@@ -176,7 +178,7 @@ let v ~config ~api ~opam () =
 
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled, compiled_input_node =
-    let c, cn = 
+    let c, cn =
       compile ~config ~voodoo:v_do ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
