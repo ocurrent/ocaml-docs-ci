@@ -25,8 +25,8 @@ let compile_folder ~blessed package =
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "packages" / name / version)
-  else Fpath.(v "universes" / universe / name / version)
+  if blessed then Fpath.(v "compile" / "packages" / name / version)
+  else Fpath.(v "compile" / "universes" / universe / name / version)
 
 let linked_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
@@ -60,10 +60,14 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          (* obtain the prep folder *)
          Git_store.Cluster.pull_to_directory ~repository:Prep ~ssh ~directory:"prep"
            ~branches:[ branch ];
-         run "find . -type d";
+         run "find .";
          (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+         run
+           "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
+            compile/packages/*.odoc";
+         run "rm -f compile/packages/%s/*.odoc" name;
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
@@ -222,9 +226,7 @@ let v ~config ~name ~voodoo ~blessed ~deps prep =
   |> let> prep = prep and> voodoo = voodoo and> blessed = blessed and> deps = deps in
      let package = Prep.package prep in
      let output = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps; config } in
-     Current.Primitive.map_result
-       (Result.map (fun hashes -> { package; blessed; hashes }))
-       output
+     Current.Primitive.map_result (Result.map (fun hashes -> { package; blessed; hashes })) output
 
 let v ~config ~voodoo ~blessed ~deps prep =
   let open Current.Syntax in
