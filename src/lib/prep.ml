@@ -1,26 +1,32 @@
 (** this module stores which packages have already been successfully prepped *)
 module PrepState = struct
-  type state = Success | Pending | Failed
+  type state = Success of (string * string) | Pending | Failed
 
-  type t = state Package.Map.t ref
+  let get_success = function Success v -> v | _ -> failwith "get_success"
 
-  let state = ref Package.Map.empty
+  type t = state Package.Map.t Package.Map.t ref
 
-  let get package = try Package.Map.find package !state with Not_found -> Pending
+  let state : t = ref Package.Map.empty
 
-  let update job status =
-    List.iter
-      (fun v ->
-        state :=
-          Package.Map.update v
-            (function
-              | None -> Some status
-              | Some Failed -> Some status
-              | Some Success -> Some Success
-              | Some Pending when status = Success -> Some Success
-              | Some Pending -> Some Pending)
-            !state)
-      job.Jobs.prep
+  let max v =
+    Package.Map.fold
+      (fun _ status acc ->
+        match (status, acc) with
+        | _, Failed -> status
+        | _, Success v -> Success v
+        | Success v, Pending -> Success v
+        | _, Pending -> Pending)
+      v Failed
+
+  let get package = try Package.Map.find package !state |> max with Not_found -> Pending
+
+  let update ~install package status =
+    state :=
+      Package.Map.update package
+        (function
+          | None -> Some (Package.Map.singleton install status)
+          | Some map -> Some (Package.Map.add install status map))
+        !state
 end
 
 let prep_version = "v0"
@@ -104,10 +110,10 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
         in
         run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
   in
-  let branches = List.map Git_store.Branch.v all_deps in
+  let branches = List.map Git_store.Branch.v prep in
 
   let folders ?(prefix = "") () =
-    all_deps
+    prep
     |> List.map (fun package ->
            (Git_store.Branch.v package, prefix ^ (folder package |> Fpath.to_string)))
   in
@@ -180,9 +186,10 @@ module Prep = struct
        For now we rebuild only if voodoo-prep changes.
     *)
     (* Only prep what's not been successful. *)
+    List.iter (fun p -> PrepState.update ~install p Pending) prep;
     let to_prep =
       List.filter_map
-        (function prep when PrepState.get prep <> PrepState.Success -> Some prep | _ -> None)
+        (fun prep -> match PrepState.get prep with PrepState.Success _ -> None | _ -> Some prep)
         prep
     in
     let base = Misc.get_base_image install in
@@ -254,16 +261,37 @@ let combine ~(job : Jobs.t) artifacts_branches_output =
   in
   packages |> List.to_seq
   |> Seq.map (fun package ->
-         ( package,
-           let package_branch = Git_store.branch_of_package package in
-           let commit_hash, tree_hash = StringMap.find package_branch artifacts_branches_output in
-           { package; commit_hash; tree_hash } ))
+         let package_branch = Git_store.branch_of_package package in
+         let commit_hash, tree_hash =
+           match StringMap.find_opt package_branch artifacts_branches_output with
+           | Some v -> v
+           | None -> PrepState.get package |> PrepState.get_success
+         in
+         (package, { package; commit_hash; tree_hash }))
   |> Package.Map.of_seq
 
-(** Assumption: packages are co-installable *)
 let v ~config ~voodoo (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
   |> let> voodoo = voodoo in
      PrepCache.get No_context { job; voodoo; config }
      |> Current.Primitive.map_result (Result.map (combine ~job))
+
+let v ~config ~voodoo job =
+  let open Current.Syntax in
+  let prep_job = v ~config ~voodoo job in
+  let status_update =
+    let+ status = Current.state ~hidden:true prep_job in
+    match status with
+    | Ok v ->
+        Package.Map.iter
+          (fun package v ->
+            PrepState.update ~install:job.install package (Success (v.commit_hash, v.tree_hash)))
+          v
+    | Error (`Active _) ->
+        List.iter (fun package -> PrepState.update ~install:job.install package Pending) job.prep
+    | Error (`Msg _) ->
+        List.iter (fun package -> PrepState.update ~install:job.install package Pending) job.prep
+  in
+  let+ prep_job = prep_job and+ () = status_update in
+  prep_job

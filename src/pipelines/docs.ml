@@ -65,9 +65,9 @@ let take_any_success jobs =
   List.fold_left max (List.hd statuses) (List.tl statuses) |> Current.of_output
 
 module StringMap = Map.Make (String)
+module StringSet = Set.Make (String)
 
-let collapse_by ~key ~input (criteria : 'k -> string) (list : ('k * 'v Current.t) list) :
-    ('k * 'v Current.t) list =
+let group_by criteria list =
   let groups = ref StringMap.empty in
   List.iter
     (fun (pkg, value) ->
@@ -76,12 +76,20 @@ let collapse_by ~key ~input (criteria : 'k -> string) (list : ('k * 'v Current.t
           (function None -> Some [ (pkg, value) ] | Some v -> Some ((pkg, value) :: v))
           !groups)
     list;
-
   !groups
+
+let collapse_by ~key ~input ?(force_collapse = false) (criteria : 'k -> string)
+    (parent : ('k -> string) option) (list : ('k * 'v Current.t) list) : ('k * 'v Current.t) list =
+  group_by criteria list
   |> StringMap.mapi (fun k v ->
          let curr = List.map snd v in
          let keys = List.map fst v in
-         if List.length curr <= 1 then List.combine keys curr
+         let number_of_groups =
+           match parent with
+           | None -> List.length v
+           | Some parent -> List.rev_map parent keys |> List.sort_uniq String.compare |> List.length
+         in
+         if number_of_groups <= 1 && not force_collapse then List.combine keys curr
          else
            let current, _ = Current.collapse_list ~key:(key ^ " " ^ k) ~value:"" ~input curr in
            List.combine keys current)
@@ -94,23 +102,31 @@ let collapse_single ~key ~input list =
   (List.combine keys current, node)
 
 let prep_hierarchical_collapse ~input lst =
+  let package_name x = x.Jobs.install |> Package.opam |> OpamPackage.name_to_string in
+  let first_char x =
+    let name = x.Jobs.install |> Package.opam |> OpamPackage.name_to_string in
+    String.sub name 0 1 |> String.uppercase_ascii
+  in
   let key = "prep" in
   lst
-  |> collapse_by ~key ~input (fun x -> x.Jobs.install |> Package.opam |> OpamPackage.name_to_string)
-  |> collapse_by ~key ~input (fun x ->
-         let name = x.Jobs.install |> Package.opam |> OpamPackage.name_to_string in
-         String.sub name 0 1 |> String.uppercase_ascii)
+  |> collapse_by ~key ~input ~force_collapse:true package_name None
+  |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
 let compile_hierarchical_collapse ~input lst =
+  let package_universe = Fmt.to_to_string Package.pp in
+  let package_name_version x = x |> Package.opam |> OpamPackage.to_string in
+  let package_name x = x |> Package.opam |> OpamPackage.name_to_string in
+  let first_char x =
+    let name = x |> Package.opam |> OpamPackage.name_to_string in
+    String.sub name 0 1 |> String.uppercase_ascii
+  in
   let key = "compile" in
   lst
-  |> collapse_by ~key ~input (Fmt.to_to_string Package.pp)
-  |> collapse_by ~key ~input (fun x -> x |> Package.opam |> OpamPackage.to_string)
-  |> collapse_by ~key ~input (fun x -> x |> Package.opam |> OpamPackage.name_to_string)
-  |> collapse_by ~key ~input (fun x ->
-         let name = x |> Package.opam |> OpamPackage.name_to_string in
-         String.sub name 0 1 |> String.uppercase_ascii)
+  |> collapse_by ~key ~input ~force_collapse:true package_universe None
+  |> collapse_by ~key ~input package_name_version (Some package_universe)
+  |> collapse_by ~key ~input package_name (Some package_name_version)
+  |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
 let v ~config ~api ~opam () =
