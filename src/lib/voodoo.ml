@@ -57,7 +57,8 @@ module Op = struct
 
   let voodoo_prep_paths = Fpath.[ v "voodoo-prep.opam"; v "bin/prep/" ]
 
-  let voodoo_do_paths = Fpath.[ v "voodoo-do.opam"; v "voodoo-lib.opam"; v "bin/do/"; v "lib/"; v "gen/"; v "vendor/" ]
+  let voodoo_do_paths =
+    Fpath.[ v "voodoo-do.opam"; v "voodoo-lib.opam"; v "bin/do/"; v "lib/"; v "gen/"; v "vendor/" ]
 
   let get_oldest_commit_for ~job ~dir ~from paths =
     let paths = List.map Fpath.to_string paths in
@@ -124,6 +125,8 @@ module Prep = struct
          ]
 
   let digest = Git.Commit_id.hash
+
+  let commit = Fun.id
 end
 
 module Do = struct
@@ -143,8 +146,12 @@ module Do = struct
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t.commit);
-           run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do $(opam config var bin)/voodoo-gen /home/opam";
+           run
+             "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do $(opam config var \
+              bin)/voodoo-gen /home/opam";
          ]
 
   let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
+
+  let commit t = t.commit
 end

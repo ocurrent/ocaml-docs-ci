@@ -23,6 +23,8 @@ and Blessed : sig
   (** The structure containing which packages are blessed or not. A blessed package is a package
   aimed to be built for the main documentation pages. *)
 
+  val empty : OpamPackage.t -> t
+
   val v : Package.t list -> t
   (** Compute which packages are blessed. *)
 

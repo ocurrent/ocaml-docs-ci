@@ -2,8 +2,6 @@
 module PrepState = struct
   type state = Success of (string * string) | Pending | Failed
 
-  let get_success = function Success v -> v | _ -> failwith "get_success"
-
   type t = state Package.Map.t Package.Map.t ref
 
   let state : t = ref Package.Map.empty
@@ -260,14 +258,11 @@ let combine ~(job : Jobs.t) artifacts_branches_output =
     |> StringMap.of_seq
   in
   packages |> List.to_seq
-  |> Seq.map (fun package ->
+  |> Seq.filter_map (fun package ->
          let package_branch = Git_store.branch_of_package package in
-         let commit_hash, tree_hash =
-           match StringMap.find_opt package_branch artifacts_branches_output with
-           | Some v -> v
-           | None -> PrepState.get package |> PrepState.get_success
-         in
-         (package, { package; commit_hash; tree_hash }))
+         match StringMap.find_opt package_branch artifacts_branches_output with
+         | Some (commit_hash, tree_hash) -> Some (package, { package; commit_hash; tree_hash })
+         | None -> None)
   |> Package.Map.of_seq
 
 let v ~config ~voodoo (job : Jobs.t) =
@@ -295,3 +290,15 @@ let v ~config ~voodoo job =
   in
   let+ prep_job = prep_job and+ () = status_update in
   prep_job
+
+type prep = t Package.Map.t
+
+let extract ~(job : Jobs.t) prep =
+  let open Current.Syntax in
+  List.map
+    (fun package ->
+      ( package,
+        let+ prep = prep in
+        Package.Map.find_opt package prep ))
+    job.prep
+  |> List.to_seq |> Package.Map.of_seq

@@ -107,6 +107,8 @@ and Blessed : sig
 
   val v : Package.t list -> t
 
+  val empty: OpamPackage.t -> t
+
   val is_blessed : t -> Package.t -> bool
 end = struct
   module StringSet = Set.Make (String)
@@ -115,7 +117,10 @@ end = struct
 
   let universe_size u = Universe.deps u |> List.length
 
+  let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
+
   let v (packages : Package.t list) : t =
+    assert (packages <> []);
     let first_package = List.hd packages in
     let opam = first_package |> Package.opam in
     let first_universe = first_package |> Package.universe in

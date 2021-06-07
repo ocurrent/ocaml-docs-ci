@@ -56,13 +56,15 @@ let take_any_success jobs =
   let open Current.Syntax in
   let* statuses = jobs |> List.map (Current.state ~hidden:true) |> Current.list_seq in
   let to_int = function
-    | Ok _ -> 4
-    | Error (`Active `Running) -> 3
-    | Error (`Active `Ready) -> 2
+    | Ok (Some _) -> 5
+    | Error (`Active `Running) -> 4
+    | Error (`Active `Ready) -> 3
+    | Ok None -> 2
     | Error (`Msg _) -> 1
   in
   let max a b = if to_int a >= to_int b then a else b in
-  List.fold_left max (List.hd statuses) (List.tl statuses) |> Current.of_output
+  List.fold_left max (List.hd statuses) (List.tl statuses)
+  |> Current.of_output |> Current.map Option.get
 
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
@@ -132,6 +134,7 @@ let compile_hierarchical_collapse ~input lst =
 let v ~config ~api ~opam () =
   let open Current.Syntax in
   let voodoo = Voodoo.v config in
+  let ssh = Config.ssh config in
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   (* 1) Track the list of packages in the opam repository *)
@@ -160,10 +163,7 @@ let v ~config ~api ~opam () =
   in
   let prepped =
     prepped
-    |> List.map (fun (job, result) ->
-           job.Jobs.prep |> List.to_seq
-           |> Seq.map (fun p -> (p, [ Current.map (Package.Map.find p) result ]))
-           |> Package.Map.of_seq)
+    |> List.map (fun (job, result) -> Prep.extract ~job result |> Package.Map.map (fun x -> [ x ]))
     |> List.fold_left (Package.Map.union (fun _ a b -> Some (a @ b))) Package.Map.empty
     |> Package.Map.map take_any_success
   in
@@ -181,7 +181,7 @@ let v ~config ~api ~opam () =
         prepped OpamPackage.Map.empty
     in
     by_opam_package
-    |> OpamPackage.Map.map (fun preps ->
+    |> OpamPackage.Map.mapi (fun opam preps ->
            preps |> Current.list_seq
            |> Current.map (fun preps ->
                   (* We don't know yet about all preps status so we're optimistic here *)
@@ -189,19 +189,51 @@ let v ~config ~api ~opam () =
                   |> List.filter_map (function
                        | _, Error (`Msg _) -> None
                        | pkg, (Error (`Active _) | Ok _) -> Some pkg)
-                  |> Package.Blessed.v))
+                  |> function
+                  | [] -> Package.Blessed.empty opam
+                  | list -> Package.Blessed.v list))
   in
 
   (* 7) Odoc compile and html-generate artifacts *)
   let compiled, compiled_input_node =
-    let c, cn =
+    let c, compile_node =
       compile ~config ~voodoo:v_do ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
-    (c |> List.to_seq |> Package.Map.of_seq, cn)
+    (c |> List.to_seq |> Package.Map.of_seq, compile_node)
   in
 
-  (* 8) Report status *)
+  (* 8) Update live branches *)
+  let live_branch =
+    let epoch = Current.map (Epoch.v config) voodoo in
+    let branch =
+      let+ epoch = epoch in
+      "live-" ^ Epoch.digest epoch
+    in
+    let message = Current.map (Fmt.to_to_string Epoch.pp) epoch in
+
+    let commits =
+      let+ pages_commits =
+        Package.Map.bindings compiled
+        |> List.map (fun (_, compile_current) ->
+               compile_current
+               |> Current.map (fun t ->
+                      ( `Branch (Compile.package t |> Git_store.branch_of_package),
+                        `Commit (Compile.hashes t).html_tailwind_commit_hash ))
+               |> Current.state ~hidden:true)
+        |> Current.list_seq
+        |> Current.map (List.filter_map Result.to_option)
+      and+ metadata = metadata in
+      metadata :: pages_commits
+    in
+    Current.all
+      [
+        Live.publish ~ssh ~repository:Git_store.HtmlTailwind ~branch ~commits;
+        Live.set_live_to ~ssh ~repository:Git_store.HtmlTailwind ~branch ~message;
+      ]
+  in
+
+  (* 9) Report status *)
   let package_registry =
     let+ tracked = tracked in
     List.iter
@@ -237,4 +269,4 @@ let v ~config ~api ~opam () =
     |> Package.Map.bindings |> List.map snd |> Current.all
     |> Current.collapse ~input:compiled_input_node ~key:"Set status (graphql)" ~value:""
   in
-  Current.all [ package_registry; status; metadata ]
+  Current.all [ package_registry; status; live_branch ]

@@ -27,7 +27,13 @@ module Metadata = struct
     let digest = Fmt.to_to_string Current_git.Commit.pp
   end
 
-  module Outcome = Current.Unit
+  module Outcome = struct
+    type t = [ `Branch of string ] * [ `Commit of string ] [@@deriving yojson]
+
+    let marshal t = t |> to_yojson |> Yojson.Safe.to_string
+
+    let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
+  end
 
   let pp fmt (_k, v) = Format.fprintf fmt "metadata-%a" Current_git.Commit.pp v
 
@@ -97,7 +103,7 @@ module Metadata = struct
       (fun () ->
         let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
         let** () = initialize_state ~job ~ssh () in
-        let* _ = write_state ~job ~repo:v in
+        let** () = write_state ~job ~repo:v in
         let** () =
           Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
             ( "",
@@ -109,17 +115,21 @@ module Metadata = struct
                    status')";
               |] )
         in
-        let* _ =
+        let** () =
           Current.Process.exec ~cancellable:true ~job
             ("", Git_store.Local.push ~directory:state_dir ssh |> Bos.Cmd.to_list |> Array.of_list)
-        in (* return commit id *)
-        Lwt.return_ok ())
+        in
+        let** commit =
+          Current.Process.check_output ~cancellable:true ~cwd:state_dir ~job
+            ("", [| "git"; "rev-parse"; "HEAD" |])
+        in
+        Lwt.return_ok (`Branch "status", `Commit (commit |> String.trim)))
       (fun () -> Current.Switch.turn_off switch)
 end
 
 module MetadataCache = Current_cache.Output (Metadata)
 
-let v ~ssh ~(repo : Current_git.Commit.t Current.t) : unit Current.t =
+let v ~ssh ~(repo : Current_git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "set-status"
   |> let> repo = repo in

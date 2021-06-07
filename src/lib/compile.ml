@@ -44,7 +44,6 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let compile_folder = compile_folder ~blessed package in
-  let linked_folder = linked_folder ~blessed package in
   let branch = Git_store.Branch.v package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
@@ -63,7 +62,6 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "find .";
          (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
          run
            "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
             compile/packages/*.odoc";
@@ -77,7 +75,8 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
-         (* Extract compile output *)
+         (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
+         run "echo '%f'" (Random.float 1.);
          Git_store.Cluster.write_folder_to_git ~repository:Compile ~ssh ~branch ~folder:"compile"
            ~message ~git_path:"/tmp/git-compile";
          Git_store.Cluster.write_folder_to_git ~repository:Linked ~ssh ~branch ~folder:"linked"
@@ -97,8 +96,6 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "cd /tmp/git-html-classic && %s"
            (Git_store.print_branches_info ~prefix:"HTML" ~branches:[ branch ]);
        ]
-
-let git_update_pool = Current.Pool.create ~label:"git merge into live" 1
 
 let or_default a = function None -> a | b -> b
 
@@ -205,7 +202,6 @@ module Compile = struct
     let html_tailwind = Option.get html_tailwind in
     let html_classic = Option.get html_classic in
     Lwt.return_ok
-      Value.
         {
           compile_commit_hash = compile.commit_hash;
           compile_tree_hash = compile.tree_hash;
