@@ -1,4 +1,8 @@
-type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep | Cache
+type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep
+
+val string_of_repository : repository -> string
+
+val all_repositories : repository list
 
 module Branch : sig
   type t
@@ -39,6 +43,8 @@ module Local : sig
   val clone : branch:string -> directory:Fpath.t -> repository -> Config.Ssh.t -> Bos.Cmd.t
 
   val push : directory:Fpath.t -> Config.Ssh.t -> Bos.Cmd.t
+
+  val checkout_or_create : branch:string -> Config.Ssh.t -> Bos.Cmd.t
 end
 
 val branch_of_package : Package.t -> string

@@ -7,7 +7,11 @@ val tree_hash : t -> string
 
 val package : t -> Package.t
 
-val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> Jobs.t -> t Package.Map.t Current.t
+type prep 
+
+val extract : job:Jobs.t -> prep Current.t -> t option Current.t Package.Map.t
+
+val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> Jobs.t -> prep Current.t
 (** Install a package universe, extract useful files and push obtained universes on git. *)
 
 val folder : Package.t -> Fpath.t

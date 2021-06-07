@@ -14,6 +14,8 @@ module Prep : sig
   val v : voodoo -> t
 
   val digest : t -> string
+
+  val commit : t -> Current_git.Commit_id.t
 end
 
 module Do : sig
@@ -26,4 +28,6 @@ module Do : sig
   val v : voodoo -> t
 
   val digest : t -> string
+  
+  val commit : t -> Current_git.Commit_id.t
 end
