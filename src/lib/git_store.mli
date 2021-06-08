@@ -47,8 +47,6 @@ module Local : sig
   val checkout_or_create : branch:string -> Config.Ssh.t -> Bos.Cmd.t
 end
 
-val branch_of_package : Package.t -> string
-
 val remote : repository -> Config.Ssh.t -> string
 
 val print_branches_info : prefix:string -> branches:Branch.t list -> string

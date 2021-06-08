@@ -1,6 +1,6 @@
 (** this module stores which packages have already been successfully prepped *)
 module PrepState = struct
-  type state = Success of (string * string) | Pending | Failed
+  type state = [ `Success of string * string | `Pending | `Failed of string * string ]
 
   type t = state Package.Map.t Package.Map.t ref
 
@@ -10,13 +10,15 @@ module PrepState = struct
     Package.Map.fold
       (fun _ status acc ->
         match (status, acc) with
-        | _, Failed -> status
-        | _, Success v -> Success v
-        | Success v, Pending -> Success v
-        | _, Pending -> Pending)
-      v Failed
+        | _, Some (`Failed _) -> Some status
+        | _, Some (`Success v) -> Some (`Success v)
+        | `Success v, Some `Pending -> Some (`Success v)
+        | _, Some `Pending -> Some `Pending
+        | v, None -> Some v)
+      v None
+    |> Option.get
 
-  let get package = try Package.Map.find package !state |> max with Not_found -> Pending
+  let get package = try Package.Map.find package !state |> max with Not_found -> `Pending
 
   let update ~install package status =
     state :=
@@ -108,6 +110,16 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
         in
         run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
   in
+
+  let create_dir_and_copy_logs_if_not_exist =
+    prep
+    |> List.map (fun package ->
+           let dir = Fpath.(v "prep/" // folder package |> to_string) in
+           let branch = Git_store.Branch.(v package |> to_string) in
+           Fmt.str "([ -d '%s' ] || (echo 'FAILED:%s' && mkdir -p %s && cp ~/opam.err.log %s))" dir
+             branch dir dir)
+    |> String.concat " && "
+  in
   let branches = List.map Git_store.Branch.v prep in
 
   let folders ?(prefix = "") () =
@@ -133,15 +145,17 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
          env "DUNE_CACHE_DUPLICATION" "copy";
          (* Intall packages: this might fail.
             TODO: we could still do the prep step for the installed packages. *)
-         run ~network ~cache "sudo apt update && opam depext -viy %s" packages_str;
+         run ~network ~cache
+           "sudo apt update && ((opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to \
+            install all packages')"
+           packages_str;
          run ~cache "du -sh /home/opam/.cache/dune";
-         (* empty preps should yield an empty folder *)
-         run "mkdir -p %s" (base_folders prep);
          copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
+         run "%s" create_dir_and_copy_logs_if_not_exist;
          Git_store.Cluster.write_folders_to_git ~repository:Prep ~ssh ~branches:(folders ())
            ~folder:"prep" ~message ~git_path:"/tmp/git-store";
          (* Compute hashes *)
@@ -168,7 +182,7 @@ module Prep = struct
   module Value = struct
     type item = Git_store.branch_info [@@deriving yojson]
 
-    type t = item list [@@deriving yojson]
+    type t = item list * string list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -184,10 +198,10 @@ module Prep = struct
        For now we rebuild only if voodoo-prep changes.
     *)
     (* Only prep what's not been successful. *)
-    List.iter (fun p -> PrepState.update ~install p Pending) prep;
+    List.iter (fun p -> PrepState.update ~install p `Pending) prep;
     let to_prep =
       List.filter_map
-        (fun prep -> match PrepState.get prep with PrepState.Success _ -> None | _ -> Some prep)
+        (fun prep -> match PrepState.get prep with `Success _ -> None | _ -> Some prep)
         prep
     in
     let base = Misc.get_base_image install in
@@ -207,27 +221,35 @@ module Prep = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
     (* extract result from logs *)
-    let rec aux start next_lines accumulator =
+    let rec aux start next_lines git_hashes failed =
       match next_lines with
       | [] -> (
           let* logs = Cluster_api.Job.log build_job start in
           match logs with
           | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
-          | Ok ("", _) -> Lwt_result.return accumulator
+          | Ok ("", _) -> Lwt_result.return (git_hashes, failed)
           | Ok (data, next) ->
               let lines = String.split_on_char '\n' data in
-              aux next lines accumulator )
-      | line :: next ->
-          aux start next (Git_store.parse_branch_info ~prefix:"HASHES" line :: accumulator)
+              aux next lines git_hashes failed )
+      | line :: next -> (
+          match Git_store.parse_branch_info ~prefix:"HASHES" line with
+          | Some value -> aux start next (value :: git_hashes) failed
+          | None -> (
+              match String.split_on_char ':' line with
+              | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
+                  Current.Job.log job "Failed: %s" branch;
+                  aux start next git_hashes (branch :: failed)
+              | _ -> aux start next git_hashes failed ) )
     in
-    aux 0L [] []
-    |> Lwt_result.map
-         (List.filter_map (fun line ->
-              Option.iter
-                (fun (r : Git_store.branch_info) ->
-                  Current.Job.log job "%s -> commit %s / tree %s" r.branch r.commit_hash r.tree_hash)
-                line;
-              line))
+
+    let** git_hashes, failed = aux 0L [] [] [] in
+    Lwt.return_ok
+      ( List.map
+          (fun (r : Git_store.branch_info) ->
+            Current.Job.log job "%s -> commit %s / tree %s" r.branch r.commit_hash r.tree_hash;
+            r)
+          git_hashes,
+        failed )
 end
 
 module PrepCache = Current_cache.Make (Prep)
@@ -240,6 +262,10 @@ let tree_hash t = t.tree_hash
 
 let package t = t.package
 
+type prep_result = [ `Cached | `Success of t | `Failed of t ]
+
+type prep = [ `Success of t | `Failed of t ] Package.Map.t
+
 let pp f t = Fmt.pf f "%s:%s" t.commit_hash t.tree_hash
 
 let compare a b =
@@ -248,8 +274,9 @@ let compare a b =
   | v -> v
 
 module StringMap = Map.Make (String)
+module StringSet = Set.Make (String)
 
-let combine ~(job : Jobs.t) artifacts_branches_output =
+let combine ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
   let packages = job.prep in
   let artifacts_branches_output =
     artifacts_branches_output |> List.to_seq
@@ -257,11 +284,15 @@ let combine ~(job : Jobs.t) artifacts_branches_output =
            (branch, (commit_hash, tree_hash)))
     |> StringMap.of_seq
   in
+  let failed_branches = StringSet.of_list failed_branches in
   packages |> List.to_seq
   |> Seq.filter_map (fun package ->
-         let package_branch = Git_store.branch_of_package package in
+         let package_branch = Git_store.Branch.(to_string (v package)) in
          match StringMap.find_opt package_branch artifacts_branches_output with
-         | Some (commit_hash, tree_hash) -> Some (package, { package; commit_hash; tree_hash })
+         | Some (commit_hash, tree_hash) when StringSet.mem package_branch failed_branches ->
+             Some (package, `Failed { package; commit_hash; tree_hash })
+         | Some (commit_hash, tree_hash) ->
+             Some (package, `Success { package; commit_hash; tree_hash })
          | None -> None)
   |> Package.Map.of_seq
 
@@ -272,7 +303,7 @@ let v ~config ~voodoo (job : Jobs.t) =
      PrepCache.get No_context { job; voodoo; config }
      |> Current.Primitive.map_result (Result.map (combine ~job))
 
-let v ~config ~voodoo job =
+let v ~config ~voodoo job : prep Current.t =
   let open Current.Syntax in
   let prep_job = v ~config ~voodoo job in
   let status_update =
@@ -281,24 +312,26 @@ let v ~config ~voodoo job =
     | Ok v ->
         Package.Map.iter
           (fun package v ->
-            PrepState.update ~install:job.install package (Success (v.commit_hash, v.tree_hash)))
+            match v with
+            | `Success v | `Failed v ->
+                PrepState.update ~install:job.install package
+                  (`Success (v.commit_hash, v.tree_hash)))
           v
     | Error (`Active _) ->
-        List.iter (fun package -> PrepState.update ~install:job.install package Pending) job.prep
+        List.iter (fun package -> PrepState.update ~install:job.install package `Pending) job.prep
     | Error (`Msg _) ->
-        List.iter (fun package -> PrepState.update ~install:job.install package Pending) job.prep
+        List.iter (fun package -> PrepState.update ~install:job.install package `Pending) job.prep
   in
   let+ prep_job = prep_job and+ () = status_update in
   prep_job
 
-type prep = t Package.Map.t
-
-let extract ~(job : Jobs.t) prep =
+let extract ~(job : Jobs.t) (prep : prep Current.t) =
   let open Current.Syntax in
   List.map
     (fun package ->
       ( package,
         let+ prep = prep in
-        Package.Map.find_opt package prep ))
+        (Package.Map.find_opt package prep :> prep_result option) |> Option.value ~default:`Cached
+      ))
     job.prep
   |> List.to_seq |> Package.Map.of_seq

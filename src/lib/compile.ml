@@ -224,10 +224,4 @@ let v ~config ~name ~voodoo ~blessed ~deps prep =
      let output = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps; config } in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessed; hashes })) output
 
-let v ~config ~voodoo ~blessed ~deps prep =
-  let open Current.Syntax in
-  let* b_prep = prep in
-  let name = b_prep |> Prep.package |> Package.opam |> OpamPackage.to_string in
-  v ~config ~name ~voodoo ~blessed ~deps prep
-
 let folder { package; blessed; _ } = compile_folder ~blessed package

@@ -3,7 +3,9 @@ type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep
 module Branch = struct
   type t = string
 
-  let v = Package.digest
+  let v p =
+    Package.digest p
+    |> String.map (function '~' | '^' | ':' | '\\' | '?' | '*' | '[' -> '-' | c -> c)
 
   let to_string = Fun.id
 end
@@ -14,6 +16,7 @@ let string_of_repository = function
   | Linked -> "linked"
   | Compile -> "compile"
   | Prep -> "prep"
+
 let all_repositories = [ HtmlTailwind; HtmlClassic; Compile; Linked; Prep ]
 
 let remote repository t =
@@ -26,8 +29,6 @@ let git_checkout_or_create b =
     "(git checkout %s) || (git remote set-branches --add origin %s && git fetch origin %s && git \
      checkout --track origin/%s) || (git checkout -b %s main && git push --set-upstream origin %s)"
     b b b b b b
-
-let branch_of_package p = Package.digest p
 
 let print_branches_info ~prefix ~branches =
   let pp_print_branch_info f b =
@@ -66,9 +67,11 @@ module Cluster = struct
 
   let write_folders_to_git ~repository ~ssh ~branches ~folder ~message ~git_path =
     Obuilder_spec.run ~network:[ "host" ] ~secrets:Config.Ssh.secrets
-      "git clone --single-branch %s %s && %s && (cd %s && git push --all -f)"
+      "git clone --single-branch %s %s && (for DATA in %s; do IFS=\",\"; set -- $DATA; %s done) && \
+       (cd %s && git push --all -f)"
       (remote repository ssh) git_path
-      (List.map (write_folder_command ~base:folder ~message) branches |> String.concat " && ")
+      (List.map (fun (branch, folder) -> branch ^ "," ^ folder) branches |> String.concat " ")
+      (write_folder_command ~base:folder ~message ("$1", "$2"))
       git_path
 
   let pull_to_directory ~repository ~ssh ~branches ~directory =

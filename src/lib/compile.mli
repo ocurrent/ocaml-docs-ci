@@ -37,6 +37,7 @@ The location where the package is compiled:
 
 val v :
   config:Config.t ->
+  name:string ->
   voodoo:Voodoo.Do.t Current.t ->
   blessed:bool Current.t ->
   deps:t list Current.t ->
