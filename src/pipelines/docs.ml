@@ -58,7 +58,7 @@ let rec with_context_fold lst fn =
   | [] -> fn ()
   | v :: next -> Current.with_context v (fun () -> with_context_fold next fn)
 
-let max_success ~name statuses =
+let max_success statuses =
   let to_int = function
     | Ok (`Success _) -> 5
     | Error (`Active `Running) -> 4
@@ -70,9 +70,7 @@ let max_success ~name statuses =
   let open Current.Syntax in
   let+ statuses = statuses in
   List.fold_left max (List.hd statuses) (List.tl statuses) |> function
-  | Ok (`Success v) ->
-      Fmt.pr "%s??%a\n" name Prep.pp v;
-      Ok v
+  | Ok (`Success v) -> Ok v
   | Ok `Cached -> Error (`Msg "take_any_success: this is a bug")
   | Ok (`Failed _) -> Error (`Msg (Fmt.str "%d jobs failed to build " (List.length statuses)))
   | Error status -> Error status
@@ -80,7 +78,7 @@ let max_success ~name statuses =
 let take_any_success ~name (jobs : Prep.prep_result Current.t list) =
   jobs
   |> List.map (Current.state ~hidden:true)
-  |> Current.list_seq |> max_success ~name |> Current.of_state ~info:name
+  |> Current.list_seq |> max_success |> Current.of_state ~info:name
 
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
