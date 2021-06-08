@@ -32,6 +32,10 @@ let compile_folder ~blessed package = Fpath.(v "compile" // base_folder ~blessed
 
 let linked_folder ~blessed package = Fpath.(v "linked" // base_folder ~blessed package)
 
+let tailwind_folder ~blessed package = Fpath.(v "html" / "tailwind" // base_folder ~blessed package)
+
+let classic_folder ~blessed package = Fpath.(v "html" // base_folder ~blessed package)
+
 let import_compile_deps ~ssh t =
   let branches = List.map (fun { package; _ } -> Git_store.Branch.v package) t in
   Git_store.Cluster.pull_to_directory ~repository:Compile ~ssh ~directory:"compile" ~branches
@@ -40,6 +44,9 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let compile_folder = compile_folder ~blessed package in
+  let linked_folder = linked_folder ~blessed package in
+  let tailwind_folder = tailwind_folder ~blessed package in
+  let classic_folder = classic_folder ~blessed package in
   let branch = Git_store.Branch.v package in
   let branches = [ (branch, Fpath.to_string (base_folder ~blessed package)) ] in
   let opam = package |> Package.opam in
@@ -72,6 +79,9 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
+           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp tailwind_folder;
+           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp classic_folder;
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
