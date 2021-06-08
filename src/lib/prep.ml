@@ -221,28 +221,18 @@ module Prep = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
     (* extract result from logs *)
-    let rec aux start next_lines git_hashes failed =
-      match next_lines with
-      | [] -> (
-          let* logs = Cluster_api.Job.log build_job start in
-          match logs with
-          | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
-          | Ok ("", _) -> Lwt_result.return (git_hashes, failed)
-          | Ok (data, next) ->
-              let lines = String.split_on_char '\n' data in
-              aux next lines git_hashes failed )
-      | line :: next -> (
+    let extract_hashes (git_hashes, failed) line =
           match Git_store.parse_branch_info ~prefix:"HASHES" line with
-          | Some value -> aux start next (value :: git_hashes) failed
+          | Some value -> (value :: git_hashes, failed)
           | None -> (
               match String.split_on_char ':' line with
               | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
                   Current.Job.log job "Failed: %s" branch;
-                  aux start next git_hashes (branch :: failed)
-              | _ -> aux start next git_hashes failed ) )
-    in
+                  (git_hashes, branch :: failed)
+              | _ -> (git_hashes, failed) )
+    in 
 
-    let** git_hashes, failed = aux 0L [] [] [] in
+    let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
     Lwt.return_ok
       ( List.map
           (fun (r : Git_store.branch_info) ->

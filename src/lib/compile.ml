@@ -171,37 +171,28 @@ module Compile = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
-    let rec aux start next_lines
-        ((v_compile, v_linked, v_html_tailwind, v_html_classic) as accumulator) =
-      match next_lines with
-      | [] -> (
-          let* logs = Cluster_api.Job.log build_job start in
-          match logs with
-          | Error (`Capnp e) -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
-          | Ok ("", _) -> Lwt_result.return accumulator
-          | Ok (data, next) ->
-              let lines = String.split_on_char '\n' data in
-              aux next lines accumulator )
-      | line :: next ->
-          let compile =
-            Git_store.parse_branch_info ~prefix:"COMPILE" line |> or_default v_compile
-          in
-          let linked = Git_store.parse_branch_info ~prefix:"LINKED" line |> or_default v_linked in
-          let html_tailwind =
-            Git_store.parse_branch_info ~prefix:"TAILWIND" line |> or_default v_html_tailwind
-          in
-          let html_classic =
-            Git_store.parse_branch_info ~prefix:"HTML" line |> or_default v_html_classic
-          in
-
-          aux start next (compile, linked, html_tailwind, html_classic)
+    let extract_hashes (v_compile, v_linked, v_html_tailwind, v_html_classic) line =
+      (* some early stopping could be done here *)
+      let compile = Git_store.parse_branch_info ~prefix:"COMPILE" line |> or_default v_compile in
+      let linked = Git_store.parse_branch_info ~prefix:"LINKED" line |> or_default v_linked in
+      let html_tailwind =
+        Git_store.parse_branch_info ~prefix:"TAILWIND" line |> or_default v_html_tailwind
+      in
+      let html_classic =
+        Git_store.parse_branch_info ~prefix:"HTML" line |> or_default v_html_classic
+      in
+      (compile, linked, html_tailwind, html_classic)
     in
-    let** compile, linked, html_tailwind, html_classic = aux 0L [] (None, None, None, None) in
-    let compile = Option.get compile in
-    let linked = Option.get linked in
-    let html_tailwind = Option.get html_tailwind in
-    let html_classic = Option.get html_classic in
-    Lwt.return_ok
+    let** compile, linked, html_tailwind, html_classic =
+      Misc.fold_logs build_job extract_hashes (None, None, None, None)
+    in
+    try 
+      let compile = Option.get compile in
+      let linked = Option.get linked in
+      let html_tailwind = Option.get html_tailwind in
+      let html_classic = Option.get html_classic in
+
+      Lwt.return_ok
         {
           compile_commit_hash = compile.commit_hash;
           compile_tree_hash = compile.tree_hash;
@@ -212,6 +203,7 @@ module Compile = struct
           html_classic_commit_hash = html_classic.commit_hash;
           html_classic_tree_hash = html_classic.tree_hash;
         }
+    with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
 end
 
 module CompileCache = Current_cache.Make (Compile)
