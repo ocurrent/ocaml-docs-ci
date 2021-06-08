@@ -20,21 +20,17 @@ let package t = t.package
 
 let network = Misc.network
 
-let compile_folder ~blessed package =
+let base_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "compile" / "packages" / name / version)
-  else Fpath.(v "compile" / "universes" / universe / name / version)
+  if blessed then Fpath.(v "packages" / name / version)
+  else Fpath.(v "universes" / universe / name / version)
 
-let linked_folder ~blessed package =
-  let universe = Package.universe package |> Package.Universe.hash in
-  let opam = Package.opam package in
-  let name = OpamPackage.name_to_string opam in
-  let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "linked" / "packages" / name / version)
-  else Fpath.(v "linked" / "universes" / universe / name / version)
+let compile_folder ~blessed package = Fpath.(v "compile" // base_folder ~blessed package)
+
+let linked_folder ~blessed package = Fpath.(v "linked" // base_folder ~blessed package)
 
 let import_compile_deps ~ssh t =
   let branches = List.map (fun { package; _ } -> Git_store.Branch.v package) t in
@@ -45,6 +41,7 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let package = Prep.package prep in
   let compile_folder = compile_folder ~blessed package in
   let branch = Git_store.Branch.v package in
+  let branches = [ (branch, Fpath.to_string (base_folder ~blessed package)) ] in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let message = Fmt.str "docs ci update %s\n\n%s" (Fmt.to_to_string Package.pp package) cache_key in
@@ -77,16 +74,16 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
            (if blessed then "-b" else "");
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
-         Git_store.Cluster.write_folder_to_git ~repository:Compile ~ssh ~branch ~folder:"compile"
+         Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
            ~message ~git_path:"/tmp/git-compile";
-         Git_store.Cluster.write_folder_to_git ~repository:Linked ~ssh ~branch ~folder:"linked"
+         Git_store.Cluster.write_folders_to_git ~repository:Linked ~ssh ~branches ~folder:"linked"
            ~message ~git_path:"/tmp/git-linked";
          (* Extract html/tailwind output *)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlTailwind ~ssh ~branch
+         Git_store.Cluster.write_folders_to_git ~repository:HtmlTailwind ~ssh ~branches
            ~folder:"html/tailwind" ~message ~git_path:"/tmp/git-html-tailwind";
          (* Extract html output*)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlClassic ~ssh ~branch ~folder:"html"
-           ~message ~git_path:"/tmp/git-html-classic";
+         Git_store.Cluster.write_folders_to_git ~repository:HtmlClassic ~ssh ~branches
+           ~folder:"html" ~message ~git_path:"/tmp/git-html-classic";
          run "cd /tmp/git-compile && %s"
            (Git_store.print_branches_info ~prefix:"COMPILE" ~branches:[ branch ]);
          run "cd /tmp/git-linked && %s"
@@ -186,7 +183,7 @@ module Compile = struct
     let** compile, linked, html_tailwind, html_classic =
       Misc.fold_logs build_job extract_hashes (None, None, None, None)
     in
-    try 
+    try
       let compile = Option.get compile in
       let linked = Option.get linked in
       let html_tailwind = Option.get html_tailwind in
