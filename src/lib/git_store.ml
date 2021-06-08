@@ -58,12 +58,12 @@ module Cluster = struct
       (git_clone_command ~repository ~ssh ~branch git_path)
       git_path folder git_path git_path message
 
-  let write_folder_command ~base ~message (branch, folder) =
+  let write_folder_command ~base ~message ~git_path (branch, folder) =
     Fmt.str
-      "(cd /tmp/git-store && (%s) && rm -rf content) && rsync -avzR %s/./%s \
-       /tmp/git-store/content/ && (cd /tmp/git-store && git add --all && (git diff --quiet \
+      "(cd %s && (%s) && rm -rf content) && rsync -avzR %s/./%s \
+       %s/content/ && (cd %s && git add --all && (git diff --quiet \
        --exit-code --cached || git commit -m '%s'))"
-      (git_checkout_or_create branch) base folder message
+       git_path (git_checkout_or_create branch) base folder git_path git_path message
 
   let write_folders_to_git ~repository ~ssh ~branches ~folder ~message ~git_path =
     Obuilder_spec.run ~network:[ "host" ] ~secrets:Config.Ssh.secrets
@@ -71,7 +71,7 @@ module Cluster = struct
        (cd %s && git push --all -f)"
       (remote repository ssh) git_path
       (List.map (fun (branch, folder) -> branch ^ "," ^ folder) branches |> String.concat " ")
-      (write_folder_command ~base:folder ~message ("$1", "$2"))
+      (write_folder_command ~base:folder ~message ~git_path ("$1", "$2"))
       git_path
 
   let pull_to_directory ~repository ~ssh ~branches ~directory =
