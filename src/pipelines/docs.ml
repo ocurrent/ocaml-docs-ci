@@ -29,6 +29,7 @@ let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.
   let compilation_jobs = ref Package.Map.empty in
 
   let rec get_compilation_job package =
+    let name = package |> Package.opam |> OpamPackage.to_string in
     try Package.Map.find package !compilation_jobs
     with Not_found ->
       let job =
@@ -42,7 +43,7 @@ let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessed.is_blessed b package)
            in
-           Compile.v ~config ~voodoo ~blessed ~deps:compile_dependencies prep
+           Compile.v ~config ~name ~voodoo ~blessed ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
@@ -52,19 +53,34 @@ let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
 
-let take_any_success jobs =
-  let open Current.Syntax in
-  let* statuses = jobs |> List.map (Current.state ~hidden:true) |> Current.list_seq in
+let rec with_context_fold lst fn =
+  match lst with
+  | [] -> fn ()
+  | v :: next -> Current.with_context v (fun () -> with_context_fold next fn)
+
+let max_success ~name statuses =
   let to_int = function
-    | Ok (Some _) -> 5
+    | Ok (`Success _) -> 5
     | Error (`Active `Running) -> 4
     | Error (`Active `Ready) -> 3
-    | Ok None -> 2
+    | Ok _ -> 2
     | Error (`Msg _) -> 1
   in
   let max a b = if to_int a >= to_int b then a else b in
-  List.fold_left max (List.hd statuses) (List.tl statuses)
-  |> Current.of_output |> Current.map Option.get
+  let open Current.Syntax in
+  let+ statuses = statuses in
+  List.fold_left max (List.hd statuses) (List.tl statuses) |> function
+  | Ok (`Success v) ->
+      Fmt.pr "%s??%a\n" name Prep.pp v;
+      Ok v
+  | Ok `Cached -> Error (`Msg "take_any_success: this is a bug")
+  | Ok (`Failed _) -> Error (`Msg (Fmt.str "%d jobs failed to build " (List.length statuses)))
+  | Error status -> Error status
+
+let take_any_success ~name (jobs : Prep.prep_result Current.t list) =
+  jobs
+  |> List.map (Current.state ~hidden:true)
+  |> Current.list_seq |> max_success ~name |> Current.of_state ~info:name
 
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
@@ -165,7 +181,7 @@ let v ~config ~api ~opam () =
     prepped
     |> List.map (fun (job, result) -> Prep.extract ~job result |> Package.Map.map (fun x -> [ x ]))
     |> List.fold_left (Package.Map.union (fun _ a b -> Some (a @ b))) Package.Map.empty
-    |> Package.Map.map take_any_success
+    |> Package.Map.mapi (fun pkg -> take_any_success ~name:(Fmt.to_to_string Package.pp pkg))
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
@@ -218,7 +234,8 @@ let v ~config ~api ~opam () =
         |> List.map (fun (_, compile_current) ->
                compile_current
                |> Current.map (fun t ->
-                      ( `Branch (Compile.package t |> Git_store.branch_of_package),
+                      ( `Branch
+                          (Compile.package t |> Git_store.Branch.v |> Git_store.Branch.to_string),
                         `Commit (Compile.hashes t).html_tailwind_commit_hash ))
                |> Current.state ~hidden:true)
         |> Current.list_seq
