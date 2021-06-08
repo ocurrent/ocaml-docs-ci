@@ -25,7 +25,8 @@ is used to invalidate the operation if the expected value changes. *)
 let rsync_pull ~ssh ?(digest = "") folders =
   let sources =
     List.map
-      (fun folder -> Fmt.str "%s:%s/./%a" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) Fpath.pp folder)
+      (fun folder ->
+        Fmt.str "%s:%s/./%a" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) Fpath.pp folder)
       folders
     |> String.concat " "
   in
@@ -39,8 +40,7 @@ let rsync_pull ~ssh ?(digest = "") folders =
         "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
         docs_cache_folder cache_sources digest
 
-
-module LatchedBuilder(B: Current_cache.S.BUILDER) = struct
+module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
   module Adaptor = struct
     type t = B.t
 
@@ -50,8 +50,7 @@ module LatchedBuilder(B: Current_cache.S.BUILDER) = struct
     module Value = Current.Unit
     module Outcome = B.Value
 
-    let run op job key () =
-      B.build op job key
+    let run op job key () = B.build op job key
 
     let pp f (key, ()) = B.pp f key
 
@@ -60,10 +59,9 @@ module LatchedBuilder(B: Current_cache.S.BUILDER) = struct
     let latched = true
   end
 
-  include Current_cache.Generic(Adaptor)
+  include Current_cache.Generic (Adaptor)
 
-  let get ?schedule ctx key =
-    run ?schedule ctx key ()
+  let get ?schedule ctx key = run ?schedule ctx key ()
 end
 
 let profile =
@@ -73,8 +71,7 @@ let profile =
   | Some "docker" -> `Docker
   | Some x -> Fmt.failwith "Unknown $PROFILE setting %S" x
 
-let to_obuilder_job build_spec =
-  Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish)
+let to_obuilder_job build_spec = Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish)
 
 let to_docker_job build_spec =
   let spec_str =
@@ -84,9 +81,26 @@ let to_docker_job build_spec =
 
 let to_ocluster_submission spec =
   match profile with
-  | `Production | `Dev ->
-      to_obuilder_job spec |> 
-      Cluster_api.Submission.obuilder_build
-  | `Docker ->
-      to_docker_job spec |> 
-      Cluster_api.Submission.docker_build
+  | `Production | `Dev -> to_obuilder_job spec |> Cluster_api.Submission.obuilder_build
+  | `Docker -> to_docker_job spec |> Cluster_api.Submission.docker_build
+
+let fold_logs build_job fn =
+  (* TODO: what if we encounter an infinitely long line ? *)
+  let open Lwt.Syntax in
+  let rec aux start next_lines acc =
+    match next_lines with
+    | ([] | [ _ ]) as e -> (
+        let prev_line = match e with [] -> "" | e :: _ -> e in
+        let* logs = Cluster_api.Job.log build_job start in
+        match (logs, prev_line) with
+        | Error (`Capnp e), _ -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
+        | Ok ("", _), "" -> Lwt_result.return acc
+        | Ok ("", _), last_line -> aux start [ last_line; "" ] acc
+        | Ok (data, next), prev_line ->
+            let lines = String.split_on_char '\n' data in
+            let fst = List.hd lines in
+            let rest = List.tl lines in
+            aux next ((prev_line ^ fst) :: rest) acc )
+    | line :: next -> aux start next (fn acc line)
+  in
+  aux 0L []
