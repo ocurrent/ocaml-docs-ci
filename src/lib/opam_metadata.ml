@@ -18,7 +18,7 @@ module Metadata = struct
   module Key = struct
     type t = string
 
-    let digest v = Format.asprintf "metadata3-%s" v
+    let digest v = Format.asprintf "metadata4-%s" v
   end
 
   module Value = struct
@@ -84,7 +84,7 @@ module Metadata = struct
     let* () =
       Lwt_stream.iter_s
         (fun (name, versions) ->
-          let dir = Fpath.(state_dir / "html" / "packages" / OpamPackage.Name.to_string name) in
+          let dir = Fpath.(state_dir / "content" / "packages" / OpamPackage.Name.to_string name) in
           let file = Fpath.(dir / "package.json") in
           Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
           let* file = Lwt_io.open_file ~mode:Output (Fpath.to_string file) in
