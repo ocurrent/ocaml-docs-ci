@@ -12,6 +12,7 @@ module Branch : sig
   val to_string : t -> string
 end
 
+val status_branch : Branch.t
 module Cluster : sig
   val write_folder_to_git :
     repository:repository ->
