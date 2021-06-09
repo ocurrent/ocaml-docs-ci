@@ -10,6 +10,8 @@ module Branch = struct
   let to_string = Fun.id
 end
 
+let status_branch : Branch.t = "status"
+
 let string_of_repository = function
   | HtmlTailwind -> "html-tailwind"
   | HtmlClassic -> "html-classic"
