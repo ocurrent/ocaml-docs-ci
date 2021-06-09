@@ -19,10 +19,6 @@ package.version.universe -> 1 2 3 4 5
                         3 [ o o o x x x x x ]
                         4 [ o x x x o x x x ]
 
-
-Note: this solution is not ideal. Prep steps may fail (and are more prone to failure as the 
-number of installed packages increases), so the algorithm might select "big" prep jobs
-that actually fail to build, and thus removes a large set of good candidates. 
 *)
 let schedule ~(targets : Package.t list) jobs : t list =
   Printf.printf "Schedule %d\n" (List.length jobs);
@@ -33,12 +29,18 @@ let schedule ~(targets : Package.t list) jobs : t list =
   in
   let remaining_targets = ref targets_digests in
   let check_and_add_target pkg =
-    let set = pkg |> Package.all_deps |> List.map Package.digest |> StringSet.of_list in
+    let set = pkg |> Package.all_deps |> List.rev_map Package.digest |> StringSet.of_list in
     let useful_packages = StringSet.inter !remaining_targets set in
     match StringSet.cardinal useful_packages with
     | 0 -> None
     | _ ->
-        remaining_targets := StringSet.diff !remaining_targets set;
-        Some { install = pkg; prep = Package.all_deps pkg }
+        remaining_targets := StringSet.diff !remaining_targets useful_packages;
+        Some
+          {
+            install = pkg;
+            prep =
+              Package.all_deps pkg
+              |> List.filter (fun elt -> StringSet.mem (Package.digest elt) useful_packages);
+          }
   in
   List.filter_map check_and_add_target jobs
