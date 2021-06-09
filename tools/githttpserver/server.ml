@@ -20,8 +20,6 @@ module Packages = struct
       | _ -> Fpath.(v "")
   end
 
-  type t = Store.hash Git.Tree.t
-
   let search_unwrap commit result =
     result
     |> Lwt.map (Option.map Result.ok)
@@ -75,13 +73,6 @@ module Packages = struct
       | None -> Some (fn StringMap.empty)
       | Some value -> Some (fn value))
 
-  let merge_tree ~store lst =
-    let tree =
-      List.rev_map (fun (name, tree) -> Git.Tree.entry ~name `Dir tree) lst |> Git.Tree.v
-    in
-    let++ hash, _ = Store.write store (Git.Value.Tree tree) in
-    hash
-
   let rec merge_trees ~store trees =
     let data = ref StringMap.empty in
     List.iter
@@ -123,16 +114,36 @@ module Packages = struct
     in
     List.filter_map Result.to_option trees |> merge_trees ~store
 
-  let analyse store =
-    let open Lwt.Syntax in
-    let ( let** ) = Lwt_result.bind in
+  type t = { root : Store.hash; commits : string list; live_branch : string }
+
+  let analyse store : (t, _) Lwt_result.t =
     let** current_live_branch = get_current_live_branch store in
     Fmt.pr "Live: %s\n%!" current_live_branch;
     let** commits = get_commits_of_live_branch store current_live_branch in
     Fmt.pr "Commits: %d\n%!" (List.length commits);
-    let++ merged = merge_commits ~store commits in
+    let++ root = merge_commits ~store commits in
     Fmt.pr "Ready!\n%!";
-    merged
+    { root; commits; live_branch = current_live_branch }
+
+  module StringSet = Set.Make (String)
+
+  let update ~old store =
+    let** current_live_branch = get_current_live_branch store in
+    if current_live_branch = old.live_branch then (
+      let** commits = get_commits_of_live_branch store current_live_branch in
+      Fmt.pr "Live: %s\n%!" current_live_branch;
+      let cur_commits = StringSet.of_list commits in
+      let old_commits = StringSet.of_list old.commits in
+      let new_commits = StringSet.diff cur_commits old_commits in
+      Fmt.pr "New commits: %d\n%!" (StringSet.cardinal new_commits);
+      let** new_root = merge_commits ~store (StringSet.elements new_commits) in
+      let** new_root_tree = get_tree store new_root in
+      let** old_root_tree = get_tree store old.root in
+      let++ root = merge_trees ~store [ new_root_tree; old_root_tree ] in
+      Fmt.pr "Ready!\n%!";
+      { root; commits; live_branch = current_live_branch } )
+    else (* full rebuild *)
+      analyse store
 end
 
 module Server = struct
@@ -167,7 +178,9 @@ module Server = struct
         match String.split_on_char '/' target with
         | "" :: req -> (
             Lwt.async @@ fun () ->
-            let+ result = serve_tree store root (List.filter (fun t -> String.length t > 0) req) in
+            let+ result =
+              serve_tree store !root.Packages.root (List.filter (fun t -> String.length t > 0) req)
+            in
             match result with
             | Ok content ->
                 (* Specify the length of the response. *)
@@ -204,11 +217,37 @@ module Server = struct
       (Server.create_connection_handler ~request_handler ~error_handler)
 end
 
+let watch_git_repo r callback =
+  let* inotify = Lwt_inotify.create () in
+  let* _ =
+    Lwt_inotify.add_watch inotify Fpath.(to_string (r / "refs" / "heads")) [ Inotify.S_Close_write ]
+  in
+  let rec loop () =
+    let* _, _, _, p = Lwt_inotify.read inotify in
+    let* _ =
+      match p with
+      | Some s when Astring.String.is_prefix ~affix:"live" s ->
+          Option.iter (Fmt.pr "path:%s\n") p;
+          callback () |> Lwt.map ignore
+      | _ -> Lwt.return_unit
+    in
+
+    loop ()
+  in
+  loop ()
+
 let main port repo =
   let forever, _ = Lwt.wait () in
   let repo = Fpath.of_string repo |> Result.get_ok in
   let** store = Store.v ~dotgit:repo repo in
   let** root = Packages.analyse store in
+  let root = ref root in
+  Lwt.async (fun () ->
+      watch_git_repo repo @@ fun () ->
+      Fmt.pr "Git repository has been updated. Reloading..\n%!";
+      let** store = Store.v ~dotgit:repo repo in
+      let++ new_root = Packages.update ~old:!root store in
+      root := new_root);
   Lwt.async (fun () ->
       let+ _ = Server.serve ~store ~root port in
       Fmt.pr "Listening on port %d.\n" port);
@@ -226,10 +265,10 @@ let port = Arg.value @@ Arg.opt Arg.int 8000 @@ Arg.info ~doc:"HTTP port" ~docv:
 let repo =
   Arg.required
   @@ Arg.opt Arg.(some string) None
-  @@ Arg.info ~doc:"Local git repository containing docs ci output" ~docv:"REPO" [ "repo" ]
+  @@ Arg.info ~doc:"Local git repository containing docs ci output (bare)" ~docv:"REPO" [ "repo" ]
 
 let cmd =
-  let doc = "an OCurrent pipeline" in
+  let doc = "Docs CI git http server" in
   (Term.(const main $ port $ repo), Term.info "githttpserver" ~doc)
 
 let () = Term.(exit @@ eval cmd)
