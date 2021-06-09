@@ -245,6 +245,8 @@ let v ~config ~api ~opam () =
       [
         Live.publish ~ssh ~repository:Git_store.HtmlTailwind ~branch ~commits;
         Live.set_live_to ~ssh ~repository:Git_store.HtmlTailwind ~branch ~message;
+        Live.publish ~ssh ~repository:Git_store.HtmlClassic ~branch ~commits;
+        Live.set_live_to ~ssh ~repository:Git_store.HtmlClassic ~branch ~message;
       ]
   in
 
