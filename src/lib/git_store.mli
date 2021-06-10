@@ -6,13 +6,18 @@ val all_repositories : repository list
 
 module Branch : sig
   type t
+  [@@deriving yojson]
 
   val v : Package.t -> t
 
   val to_string : t -> string
+
+  val metadata : t
+
+  val status : t
 end
 
-val status_branch : Branch.t
+
 module Cluster : sig
   val write_folder_to_git :
     repository:repository ->

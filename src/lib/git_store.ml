@@ -2,15 +2,18 @@ type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep
 
 module Branch = struct
   type t = string
+  [@@deriving yojson]
 
   let v p =
     Package.digest p
     |> String.map (function '~' | '^' | ':' | '\\' | '?' | '*' | '[' -> '-' | c -> c)
 
   let to_string = Fun.id
-end
 
-let status_branch : Branch.t = "status"
+  let metadata = "metadata"
+
+  let status = "status"
+end
 
 let string_of_repository = function
   | HtmlTailwind -> "html-tailwind"

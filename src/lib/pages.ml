@@ -2,10 +2,10 @@
 
 let id = "pages"
 
-let spec ~ssh ~base ~voodoo () =
+let spec ~ssh ~base ~voodoo ~metadata_branch () =
   let open Obuilder_spec in
+  let metadata_branch, commit = metadata_branch in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
-  let branches = [Git_store.status_branch] in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
@@ -14,13 +14,14 @@ let spec ~ssh ~base ~voodoo () =
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
            ~dst:"/home/opam/";
-        Git_store.Cluster.pull_to_directory ~repository:HtmlTailwind ~ssh
-          ~directory:"html" ~branches;
+         Git_store.Cluster.pull_to_directory ~repository:HtmlTailwind ~ssh ~directory:"html"
+           ~branches:[ (metadata_branch, commit) ];
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen packages -o html";
          Git_store.Cluster.write_folders_to_git ~repository:HtmlTailwind ~ssh
-           ~branches:[Git_store.status_branch, "."] ~folder:"html" ~message:"Update pages"
-           ~git_path:"/tmp/git-store";
-        run "cd /tmp/git-store && %s" (Git_store.print_branches_info ~prefix:"HASHES" ~branches);
+           ~branches:[ (Git_store.Branch.status, ".") ]
+           ~folder:"html" ~message:"Update pages" ~git_path:"/tmp/git-store";
+         run "cd /tmp/git-store && %s"
+           (Git_store.print_branches_info ~prefix:"HASHES" ~branches:[ Git_store.Branch.status ]);
        ]
 
 module Pages = struct
@@ -37,27 +38,27 @@ module Pages = struct
   end
 
   module Value = struct
-    type t = Current_git.Commit.t
+    type t = Git_store.Branch.t * [ `Commit of string ] [@@deriving yojson]
 
-    let digest = Fmt.to_to_string Current_git.Commit.pp
+    let digest (v, `Commit c) = Git_store.Branch.to_string v ^ "@" ^ c
   end
 
   module Outcome = struct
-    type t = [ `Branch of string ] * [ `Commit of string ] [@@deriving yojson]
+    type t = Git_store.Branch.t * [ `Commit of string ] [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let pp fmt (_k, v) = Format.fprintf fmt "metadata-%a" Current_git.Commit.pp v
+  let pp fmt (_k, (_, `Commit v)) = Format.fprintf fmt "metadata: %s"  v
 
-  let publish { voodoo; config } job _ _v : Outcome.t Current.or_error Lwt.t =
+  let publish { voodoo; config } job _ metadata_branch : Outcome.t Current.or_error Lwt.t =
     Current.Job.log job "Publish pages";
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let base = Spec.make "ocaml/opam:ubuntu-ocaml-4.12" in
-    let spec = spec ~ssh:(Config.ssh config) ~base ~voodoo () in
+    let spec = spec ~ssh:(Config.ssh config) ~base ~voodoo ~metadata_branch () in
     let action = Misc.to_ocluster_submission spec in
     let version = "4.12" in
     let cache_hint = "docs-universe-compile-" ^ version in
@@ -79,20 +80,18 @@ module Pages = struct
               Current.Job.log job "Failed: %s" branch;
               (git_hashes, branch :: failed)
           | _ -> (git_hashes, failed) )
-    in 
+    in
 
     let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
-    match git_hashes, failed with
-    | [info], [] ->
-        Lwt.return_ok (`Branch "status", `Commit info.Git_store.commit_hash)
-    | _ ->
-      Lwt.return_error (`Msg "Odd hash return")
+    match (git_hashes, failed) with
+    | [ info ], [] -> Lwt.return_ok (Git_store.Branch.status, `Commit info.Git_store.commit_hash)
+    | _ -> Lwt.return_error (`Msg "Odd hash return")
 end
 
 module PagesCache = Current_cache.Output (Pages)
 
-let v ~config ~voodoo ~commit =
+let v ~config ~voodoo ~metadata_branch =
   let open Current.Syntax in
   Current.component "publish-pages"
-  |> let> voodoo = voodoo and> commit = commit in
-     PagesCache.set { config; voodoo } "pages" commit
+  |> let> voodoo = voodoo and> metadata_branch = metadata_branch in
+     PagesCache.set { config; voodoo } "pages" metadata_branch
