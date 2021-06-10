@@ -14,8 +14,6 @@ let is_blessed t = t.blessed
 
 let package t = t.package
 
-let network = Misc.network
-
 let base_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
   let opam = Package.opam package in
@@ -68,10 +66,9 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "rm -f compile/packages/%s/*.odoc" name;
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
+           [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
-         run "cp ~/voodoo-gen $(opam config var bin)/voodoo-gen";
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
