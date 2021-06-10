@@ -146,24 +146,71 @@ module Packages = struct
       analyse store
 end
 
+module State = struct
+  type t = { mutable store : Store.t; mutable root : Packages.t }
+
+  let watch_git_repo r callback =
+    let* inotify = Lwt_inotify.create () in
+    let* _ =
+      Lwt_inotify.add_watch inotify
+        Fpath.(to_string (r / "refs" / "heads"))
+        [ Inotify.S_Close_write ]
+    in
+    let rec loop () =
+      let* _, _, _, p = Lwt_inotify.read inotify in
+      let* _ =
+        match p with
+        | Some s when Astring.String.is_prefix ~affix:"live" s ->
+            Option.iter (Fmt.pr "path:%s\n") p;
+            callback () |> Lwt.map ignore
+        | _ -> Lwt.return_unit
+      in
+
+      loop ()
+    in
+    loop ()
+
+  let make repo =
+    let repo = Fpath.of_string repo |> Result.get_ok in
+    let** store = Store.v ~dotgit:repo repo in
+    let++ root = Packages.analyse store in
+    let v = { store; root } in
+    Lwt.async (fun () ->
+        watch_git_repo repo @@ fun () ->
+        Fmt.pr "Git repository has been updated. Reloading..\n%!";
+        let** store = Store.v ~dotgit:repo repo in
+        let++ new_root = Packages.update ~old:v.root store in
+        v.root <- new_root;
+        v.store <- store);
+    v
+end
+
 module Server = struct
   open Httpaf
   open Httpaf_lwt_unix
 
-  let rec serve_tree store root request =
+  let rec serve_tree ?etag { State.store; root = { root; _ } } request =
     let** object_hash =
       Search.find store root (`Path request) |> Lwt.map (Option.to_result ~none:`Not_found)
     in
-    let** target = Store.read store object_hash |> Lwt_result.map_err (fun e -> `Git e) in
-    match target with
-    | Git.Value.Blob v -> Lwt.return_ok (Git.Blob.to_string v)
-    | Git.Value.Tree t ->
-        List.map
-          (fun { Git.Tree.name; _ } ->
-            Fmt.str "<a href='/%s'>%s</a><br/>" (String.concat "/" (request @ [ name ])) name)
-          (Git.Tree.to_list t)
-        |> String.concat "" |> Lwt.return_ok
-    | _ -> Lwt.return_error `Not_a_valid_object
+    match etag with
+    | Some etag when Digestif.SHA1.to_hex object_hash = etag -> Lwt.return_error `Not_modified
+    | _ -> (
+        let** target = Store.read store object_hash |> Lwt_result.map_err (fun e -> `Git e) in
+        match target with
+        | Git.Value.Blob v ->
+            let value = Git.Blob.to_string v in
+            Lwt.return_ok (Digestif.SHA1.to_hex object_hash, value)
+        | Git.Value.Tree t ->
+            let value =
+              List.map
+                (fun { Git.Tree.name; _ } ->
+                  Fmt.str "<a href='/%s'>%s</a><br/>" (String.concat "/" (request @ [ name ])) name)
+                (Git.Tree.to_list t)
+              |> String.concat ""
+            in
+            Lwt.return_ok (Digestif.SHA1.to_hex object_hash, value)
+        | _ -> Lwt.return_error `Not_a_valid_object )
 
   let invalid_request reqd status body =
     (* Responses without an explicit length or transfer-encoding are
@@ -171,23 +218,26 @@ module Server = struct
     let headers = Headers.of_list [ ("Connection", "close") ] in
     Reqd.respond_with_string reqd (Response.create ~headers status) body
 
-  let request_handler ~store ~root _ reqd =
-    let { Request.meth; target; _ } = Reqd.request reqd in
+  let request_handler ~state _ reqd =
+    let { Request.meth; target; headers; _ } = Reqd.request reqd in
     match meth with
     | `GET -> (
         match String.split_on_char '/' target with
         | "" :: req -> (
             Lwt.async @@ fun () ->
+            let if_none_match = Headers.get headers "If-None-Match" in
             let+ result =
-              serve_tree store !root.Packages.root (List.filter (fun t -> String.length t > 0) req)
+              serve_tree ?etag:if_none_match state (List.filter (fun t -> String.length t > 0) req)
             in
             match result with
-            | Ok content ->
+            | Ok (etag, content) ->
                 (* Specify the length of the response. *)
                 let headers =
-                  Headers.of_list [ ("Content-length", string_of_int (String.length content)) ]
+                  Headers.of_list
+                    [ ("Content-length", string_of_int (String.length content)); ("ETag", etag) ]
                 in
                 Reqd.respond_with_string reqd (Response.create ~headers `OK) content
+            | Error `Not_modified -> invalid_request reqd `Not_modified ""
             | Error `Not_found -> invalid_request reqd `Not_found "Path not found"
             | Error (`Git e) ->
                 invalid_request reqd `Not_found (Fmt.str "Git error: %a" Store.pp_error e)
@@ -209,47 +259,19 @@ module Server = struct
     in
     Format.eprintf "Error handling response: %s\n%!" error
 
-  let serve ~store ~root listen_ip port =
+  let serve ~state listen_ip port =
     let listen_address = Unix.(ADDR_INET (inet_addr_of_string listen_ip, port)) in
-    let request_handler = request_handler ~store ~root in
+    let request_handler = request_handler ~state in
 
     Lwt_io.establish_server_with_client_socket listen_address
       (Server.create_connection_handler ~request_handler ~error_handler)
 end
 
-let watch_git_repo r callback =
-  let* inotify = Lwt_inotify.create () in
-  let* _ =
-    Lwt_inotify.add_watch inotify Fpath.(to_string (r / "refs" / "heads")) [ Inotify.S_Close_write ]
-  in
-  let rec loop () =
-    let* _, _, _, p = Lwt_inotify.read inotify in
-    let* _ =
-      match p with
-      | Some s when Astring.String.is_prefix ~affix:"live" s ->
-          Option.iter (Fmt.pr "path:%s\n") p;
-          callback () |> Lwt.map ignore
-      | _ -> Lwt.return_unit
-    in
-
-    loop ()
-  in
-  loop ()
-
 let main listen_ip port repo =
   let forever, _ = Lwt.wait () in
-  let repo = Fpath.of_string repo |> Result.get_ok in
-  let** store = Store.v ~dotgit:repo repo in
-  let** root = Packages.analyse store in
-  let root = ref root in
+  let** state = State.make repo in
   Lwt.async (fun () ->
-      watch_git_repo repo @@ fun () ->
-      Fmt.pr "Git repository has been updated. Reloading..\n%!";
-      let** store = Store.v ~dotgit:repo repo in
-      let++ new_root = Packages.update ~old:!root store in
-      root := new_root);
-  Lwt.async (fun () ->
-      let+ _ = Server.serve ~store ~root listen_ip port in
+      let+ _ = Server.serve ~state listen_ip port in
       Fmt.pr "Listening on %s:%d.\n" listen_ip port);
   forever
 
