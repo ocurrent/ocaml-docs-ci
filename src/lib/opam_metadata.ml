@@ -1,6 +1,6 @@
 (* Opam info *)
 
-let id = "metadata"
+let id = "metadata-v2"
 
 let sync_pool = Current.Pool.create ~label:"ssh" 1
 

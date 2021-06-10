@@ -131,7 +131,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo } =
-      Fmt.str "v2-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v3-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.tree_hash prep)
         Fmt.(
