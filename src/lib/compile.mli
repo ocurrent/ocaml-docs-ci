@@ -10,10 +10,6 @@ type hashes = {
   compile_tree_hash : string;
   linked_commit_hash : string;
   linked_tree_hash : string;
-  html_tailwind_commit_hash : string;
-  html_tailwind_tree_hash : string;
-  html_classic_commit_hash : string;
-  html_classic_tree_hash : string;
 }
 
 type t
@@ -32,8 +28,8 @@ val package : t -> Package.t
 val folder : t -> Fpath.t
 (** 
 The location where the package is compiled: 
- - If blessed, it's compile/packages/<name>/<version>/
- - If not, it's compile/universes/<universe id>/<name>/<version>/ *)
+ - If blessed, it's packages/<name>/<version>/
+ - If not, it's universes/<universe id>/<name>/<version>/ *)
 
 val v :
   config:Config.t ->
