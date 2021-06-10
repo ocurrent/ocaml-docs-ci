@@ -5,14 +5,14 @@ let id = "pages"
 let spec ~ssh ~base ~voodoo ~metadata_branch () =
   let open Obuilder_spec in
   let metadata_branch, commit = metadata_branch in
-  let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
+  let tools = Voodoo.Gen.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
          copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-do"; "/home/opam/voodoo-gen" ]
+           [ "/home/opam/voodoo-gen" ]
            ~dst:"/home/opam/";
          Git_store.Cluster.pull_to_directory ~repository:HtmlTailwind ~ssh ~directory:"html"
            ~branches:[ (metadata_branch, commit) ];
@@ -25,7 +25,7 @@ let spec ~ssh ~base ~voodoo ~metadata_branch () =
        ]
 
 module Pages = struct
-  type t = { voodoo : Voodoo.Do.t; config : Config.t }
+  type t = { voodoo : Voodoo.Gen.t; config : Config.t }
 
   let id = "update-pages"
 

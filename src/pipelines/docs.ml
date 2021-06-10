@@ -163,7 +163,7 @@ let v ~config ~api ~opam () =
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   (* 0) Generate everything that's statically known just from the repository *)
   let metadata = Opam_metadata.v ~ssh:(Config.ssh config) ~repo:opam in
-  let pages = Pages.v ~config ~voodoo:v_do ~metadata_branch:metadata in
+  let pages = Pages.v ~config ~voodoo:v_gen ~metadata_branch:metadata in
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
