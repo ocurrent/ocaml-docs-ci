@@ -55,8 +55,7 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
       | Ok [ x ] ->
           let solution =
             List.map
-              (fun (a, b) ->
-                (OpamPackage.of_string a, List.map OpamPackage.of_string b))
+              (fun (a, b) -> (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               x.packages
           in
           let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
@@ -77,8 +76,10 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
       let* () = Current.Switch.turn_off switch in
       raise exn)
 
+let solver_version = "v1"
+
 module Cache = struct
-  let id = "solver-cache"
+  let id = "solver-cache-" ^ solver_version
 
   type cache_value = Package.t option
 
@@ -123,9 +124,9 @@ let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
 module Solver = struct
   type t = Solver_api.Solver.t * unit Current.Pool.t
 
-  let id = "incremental-solver"
+  let id = "incremental-solver-" ^ solver_version
 
-  let pp f _ = Fmt.pf f "incremental solver"
+  let pp f _ = Fmt.pf f "incremental solver %s" solver_version
 
   let auto_cancel = false
 
