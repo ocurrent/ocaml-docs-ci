@@ -29,7 +29,7 @@ module PrepState = struct
         !state
 end
 
-let prep_version = "v0"
+let prep_version = "v1"
 
 let network = Misc.network
 

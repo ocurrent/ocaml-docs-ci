@@ -79,9 +79,9 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          (* Run voodoo-do *)
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
-           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
-           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp tailwind_folder;
-           run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp classic_folder;
+         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp tailwind_folder;
+         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp classic_folder;
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
@@ -89,11 +89,11 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          Git_store.Cluster.write_folders_to_git ~repository:Linked ~ssh ~branches ~folder:"linked"
            ~message ~git_path:"/tmp/git-linked";
          (* Extract html/tailwind output *)
-         Git_store.Cluster.write_folders_to_git ~repository:HtmlTailwind ~ssh ~branches
+         Git_store.Cluster.write_folder_to_git ~repository:HtmlTailwind ~ssh ~branch
            ~folder:"html/tailwind" ~message ~git_path:"/tmp/git-html-tailwind";
          (* Extract html output*)
-         Git_store.Cluster.write_folders_to_git ~repository:HtmlClassic ~ssh ~branches
-           ~folder:"html" ~message ~git_path:"/tmp/git-html-classic";
+         Git_store.Cluster.write_folder_to_git ~repository:HtmlClassic ~ssh ~branch ~folder:"html"
+           ~message ~git_path:"/tmp/git-html-classic";
          run "cd /tmp/git-compile && %s"
            (Git_store.print_branches_info ~prefix:"COMPILE" ~branches:[ branch ]);
          run "cd /tmp/git-linked && %s"
@@ -131,7 +131,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo } =
-      Fmt.str "v2-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v3-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.tree_hash prep)
         Fmt.(

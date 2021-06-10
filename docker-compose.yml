@@ -66,15 +66,29 @@ services:
     volumes:
       - "docs-data:/var/lib/git/repos/"
 
-  http-server:
-    image: nginx
-    command: >
-      bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/html /usr/share/nginx/html
-      && ls -lah /usr/share/nginx/html/
-      && nginx -g 'daemon off;'"
+  git-http-classic-website:
+    restart: on-failure    
+    build:
+      dockerfile: docker/git-http-website/Dockerfile
+      context: .
+    command:
+      - --repo=/data/git/html-classic
+      - --addr=0.0.0.0
     ports:
-        - 8000:80
+        - "8000:8000"
+    volumes:
+      - 'docs-data:/data/'
+
+  git-http-tailwind-website:
+    restart: on-failure    
+    build:
+      dockerfile: docker/git-http-website/Dockerfile
+      context: .
+    command:
+      - --repo=/data/git/html-tailwind
+      - --addr=0.0.0.0
+    ports:
+        - "8002:8000"
     volumes:
       - 'docs-data:/data/'
 
@@ -97,7 +111,7 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://http-server/ # docs-ci-web access the documentation files using this endpoint
+      - --ssh-endpoint=http://git-http-classic-website:8000/ # docs-ci-web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri

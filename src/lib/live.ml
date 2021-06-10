@@ -1,6 +1,6 @@
 let pool = Current.Pool.create ~label:"git-live" 1
 
-let folder repo = Fpath.(Current.state_dir "live" / Git_store.string_of_repository repo)
+let folder repo = Fpath.(Current.state_dir "live" / "repos" / Git_store.string_of_repository repo)
 
 let to_cmd t = Bos.Cmd.to_list t |> Array.of_list
 
@@ -55,6 +55,8 @@ module Op = struct
     in
     (* checkout the correct branch *)
     let** () = exec ~cwd:folder (Git_store.Local.checkout_or_create ~branch ssh) in
+    (* empty folder *)
+    let** () = exec ~cwd:folder (Bos.Cmd.(v "bash" % "-c" % "rm * || echo 'nothing to remove'")) in
     (* write commit info *)
     let* () = Lwt_list.iter_p (write_info ~folder) commits in
     (* sync changes *)

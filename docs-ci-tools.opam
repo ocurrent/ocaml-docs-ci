@@ -11,6 +11,7 @@ depends: [
   "cmdliner"
   "git-unix"
   "httpaf-lwt-unix"
+  "inotify"
   "odoc" {with-doc}
 ]
 build: [
