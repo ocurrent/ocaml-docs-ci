@@ -29,7 +29,7 @@ let linked_folder ~blessed package = Fpath.(v "linked" // base_folder ~blessed p
 let import_compile_deps ~ssh t =
   let branches =
     List.map
-      (fun { package; hashes = { compile_commit_hash }; _ } ->
+      (fun { package; hashes = { compile_commit_hash; _ }; _ } ->
         (Git_store.Branch.v package, `Commit compile_commit_hash))
       t
   in
