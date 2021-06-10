@@ -117,15 +117,12 @@ module Gen = struct
   let build No_context job (Key.{ compile; voodoo; config } as key) =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
-    let package = Compile.package compile in
     let blessed = Compile.is_blessed compile in
     let cache_key = remote_cache_key key in
     Current.Job.log job "Cache digest: %s" (Key.key key);
-    let base = Misc.get_base_image package in
-    let spec = spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base ~blessed compile in
+    let spec = spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base:Misc.default_base_image ~blessed compile in
     let action = Misc.to_ocluster_submission spec in
-    let version = Misc.base_image_version package in
-    let cache_hint = "docs-universe-compile-" ^ version in
+    let cache_hint = "docs-universe-gen" in
     let build_pool =
       Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint
         ~secrets:(Config.Ssh.secrets_values (Config.ssh config))

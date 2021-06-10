@@ -14,6 +14,8 @@ let base_image_version package =
 (** Select base image to use *)
 let get_base_image package = Spec.make ("ocaml/opam:ubuntu-ocaml-" ^ base_image_version package)
 
+let default_base_image = Spec.make "ocaml/opam:ubuntu-ocaml-4.12"
+
 let network = [ "host" ]
 
 let docs_cache_folder = "/home/opam/docs-cache/"
