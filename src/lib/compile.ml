@@ -3,10 +3,6 @@ type hashes = {
   compile_tree_hash : string;
   linked_commit_hash : string;
   linked_tree_hash : string;
-  html_tailwind_commit_hash : string;
-  html_tailwind_tree_hash : string;
-  html_classic_commit_hash : string;
-  html_classic_tree_hash : string;
 }
 [@@deriving yojson]
 
@@ -32,10 +28,6 @@ let compile_folder ~blessed package = Fpath.(v "compile" // base_folder ~blessed
 
 let linked_folder ~blessed package = Fpath.(v "linked" // base_folder ~blessed package)
 
-let tailwind_folder ~blessed package = Fpath.(v "html" / "tailwind" // base_folder ~blessed package)
-
-let classic_folder ~blessed package = Fpath.(v "html" // base_folder ~blessed package)
-
 let import_compile_deps ~ssh t =
   let branches =
     List.map
@@ -50,8 +42,6 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let package = Prep.package prep in
   let compile_folder = compile_folder ~blessed package in
   let linked_folder = linked_folder ~blessed package in
-  let tailwind_folder = tailwind_folder ~blessed package in
-  let classic_folder = classic_folder ~blessed package in
   let branch = Git_store.Branch.v package in
   let branches = [ (branch, Fpath.to_string (base_folder ~blessed package)) ] in
   let commit = Prep.commit_hash prep in
@@ -86,28 +76,16 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp tailwind_folder;
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp classic_folder;
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
            ~message ~git_path:"/tmp/git-compile";
-         Git_store.Cluster.write_folders_to_git ~repository:Linked ~ssh ~branches ~folder:"linked"
+         Git_store.Cluster.write_folder_to_git ~repository:Linked ~ssh ~branch ~folder:"linked"
            ~message ~git_path:"/tmp/git-linked";
-         (* Extract html/tailwind output *)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlTailwind ~ssh ~branch
-           ~folder:"html/tailwind" ~message ~git_path:"/tmp/git-html-tailwind";
-         (* Extract html output*)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlClassic ~ssh ~branch ~folder:"html"
-           ~message ~git_path:"/tmp/git-html-classic";
          run "cd /tmp/git-compile && %s"
            (Git_store.print_branches_info ~prefix:"COMPILE" ~branches:[ branch ]);
          run "cd /tmp/git-linked && %s"
            (Git_store.print_branches_info ~prefix:"LINKED" ~branches:[ branch ]);
-         run "cd /tmp/git-html-tailwind && %s"
-           (Git_store.print_branches_info ~prefix:"TAILWIND" ~branches:[ branch ]);
-         run "cd /tmp/git-html-classic && %s"
-           (Git_store.print_branches_info ~prefix:"HTML" ~branches:[ branch ]);
        ]
 
 let or_default a = function None -> a | b -> b
@@ -137,7 +115,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo } =
-      Fmt.str "v3-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v4-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.tree_hash prep)
         Fmt.(
@@ -184,26 +162,16 @@ module Compile = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
-    let extract_hashes (v_compile, v_linked, v_html_tailwind, v_html_classic) line =
+    let extract_hashes (v_compile, v_linked) line =
       (* some early stopping could be done here *)
       let compile = Git_store.parse_branch_info ~prefix:"COMPILE" line |> or_default v_compile in
       let linked = Git_store.parse_branch_info ~prefix:"LINKED" line |> or_default v_linked in
-      let html_tailwind =
-        Git_store.parse_branch_info ~prefix:"TAILWIND" line |> or_default v_html_tailwind
-      in
-      let html_classic =
-        Git_store.parse_branch_info ~prefix:"HTML" line |> or_default v_html_classic
-      in
-      (compile, linked, html_tailwind, html_classic)
+      (compile, linked)
     in
-    let** compile, linked, html_tailwind, html_classic =
-      Misc.fold_logs build_job extract_hashes (None, None, None, None)
-    in
+    let** compile, linked = Misc.fold_logs build_job extract_hashes (None, None) in
     try
       let compile = Option.get compile in
       let linked = Option.get linked in
-      let html_tailwind = Option.get html_tailwind in
-      let html_classic = Option.get html_classic in
 
       Lwt.return_ok
         {
@@ -211,10 +179,6 @@ module Compile = struct
           compile_tree_hash = compile.tree_hash;
           linked_commit_hash = linked.commit_hash;
           linked_tree_hash = linked.tree_hash;
-          html_tailwind_commit_hash = html_tailwind.commit_hash;
-          html_tailwind_tree_hash = html_tailwind.tree_hash;
-          html_classic_commit_hash = html_classic.commit_hash;
-          html_classic_tree_hash = html_classic.tree_hash;
         }
     with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
 end

@@ -24,7 +24,8 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
+let compile ~config ~voodoo_gen ~voodoo_do
+    ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -43,12 +44,20 @@ let compile ~config ~voodoo ~(blessed : Package.Blessed.t Current.t OpamPackage.
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessed.is_blessed b package)
            in
-           Compile.v ~config ~name ~voodoo ~blessed ~deps:compile_dependencies prep
+           Compile.v ~config ~name ~voodoo:voodoo_do ~blessed ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
   in
-  let get_compilation_node package _ = get_compilation_job package in
+  let get_compilation_node package _ =
+    match get_compilation_job package with
+    | None -> None
+    | Some compile ->
+        Some
+          (Html.v ~config
+             ~name:(package |> Package.opam |> OpamPackage.name_to_string)
+             ~voodoo:voodoo_gen compile)
+  in
   Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
 let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
@@ -150,6 +159,7 @@ let v ~config ~api ~opam () =
   let voodoo = Voodoo.v config in
   let ssh = Config.ssh config in
   let v_do = Current.map Voodoo.Do.v voodoo in
+  let v_gen = Current.map Voodoo.Gen.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
   (* 0) Generate everything that's statically known just from the repository *)
   let metadata = Opam_metadata.v ~ssh:(Config.ssh config) ~repo:opam in
@@ -211,9 +221,9 @@ let v ~config ~api ~opam () =
   in
 
   (* 7) Odoc compile and html-generate artifacts *)
-  let compiled, compiled_input_node =
+  let html, html_input_node =
     let c, compile_node =
-      compile ~config ~voodoo:v_do ~blessed prepped
+      compile ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
     (c |> List.to_seq |> Package.Map.of_seq, compile_node)
@@ -230,12 +240,12 @@ let v ~config ~api ~opam () =
 
     let commits_tailwind =
       let+ pages_commits =
-        Package.Map.bindings compiled
-        |> List.map (fun (_, compile_current) ->
-               compile_current
+        Package.Map.bindings html
+        |> List.map (fun (_, html_current) ->
+               html_current
                |> Current.map (fun t ->
-                      ( Compile.package t |> Git_store.Branch.v,
-                        `Commit (Compile.hashes t).html_tailwind_commit_hash ))
+                      ( Html.package t |> Git_store.Branch.v,
+                        `Commit (Html.hashes t).html_tailwind_commit_hash ))
                |> Current.state ~hidden:true)
         |> Current.list_seq
         |> Current.map (List.filter_map Result.to_option)
@@ -243,12 +253,12 @@ let v ~config ~api ~opam () =
       metadata :: pages_commits
     in
     let commits_classic =
-      Package.Map.bindings compiled
-      |> List.map (fun (_, compile_current) ->
-             compile_current
+      Package.Map.bindings html
+      |> List.map (fun (_, html_current) ->
+             html_current
              |> Current.map (fun t ->
-                    ( Compile.package t |> Git_store.Branch.v,
-                      `Commit (Compile.hashes t).html_classic_commit_hash ))
+                    ( Html.package t |> Git_store.Branch.v,
+                      `Commit (Html.hashes t).html_classic_commit_hash ))
              |> Current.state ~hidden:true)
       |> Current.list_seq
       |> Current.map (List.filter_map Result.to_option)
@@ -274,7 +284,7 @@ let v ~config ~api ~opam () =
   let package_status =
     Package.Map.merge
       (fun _ a b -> match (a, b) with Some a, Some b -> Some (a, b) | _ -> None)
-      prepped compiled
+      prepped html
     |> Package.Map.mapi (fun package (prep_job, compile_job) ->
            let blessed = OpamPackage.Map.find (Package.opam package) blessed in
            let+ prep = prep_job |> Current.state ~hidden:true
@@ -296,6 +306,6 @@ let v ~config ~api ~opam () =
     |> Package.Map.mapi (fun package status ->
            Web.set_package_status ~package:(Current.return package) ~status api)
     |> Package.Map.bindings |> List.map snd |> Current.all
-    |> Current.collapse ~input:compiled_input_node ~key:"Set status (graphql)" ~value:""
+    |> Current.collapse ~input:html_input_node ~key:"Set status (graphql)" ~value:""
   in
   Current.all [ package_registry; status; live_branch ]
