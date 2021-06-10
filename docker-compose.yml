@@ -66,7 +66,7 @@ services:
     volumes:
       - "docs-data:/var/lib/git/repos/"
 
-  http-classic-server:
+  git-http-classic-website:
     restart: on-failure    
     build:
       dockerfile: docker/git-http-website/Dockerfile
@@ -79,7 +79,7 @@ services:
     volumes:
       - 'docs-data:/data/'
 
-  http-tailwind-server:
+  git-http-tailwind-website:
     restart: on-failure    
     build:
       dockerfile: docker/git-http-website/Dockerfile
@@ -111,7 +111,7 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://http-classic-server:8000/ # docs-ci-web access the documentation files using this endpoint
+      - --ssh-endpoint=http://git-http-classic-website:8000/ # docs-ci-web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri
