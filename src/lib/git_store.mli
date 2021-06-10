@@ -6,11 +6,17 @@ val all_repositories : repository list
 
 module Branch : sig
   type t
+  [@@deriving yojson]
 
   val v : Package.t -> t
 
   val to_string : t -> string
+
+  val metadata : t
+
+  val status : t
 end
+
 
 module Cluster : sig
   val write_folder_to_git :
@@ -34,7 +40,7 @@ module Cluster : sig
   val pull_to_directory :
     repository:repository ->
     ssh:Config.Ssh.t ->
-    branches:Branch.t list ->
+    branches:(Branch.t * [ `Commit of string ]) list ->
     directory:string ->
     Obuilder_spec.op
 end
@@ -51,11 +57,6 @@ val remote : repository -> Config.Ssh.t -> string
 
 val print_branches_info : prefix:string -> branches:Branch.t list -> string
 
-type branch_info = {
-  branch: string;
-  tree_hash: string;
-  commit_hash: string;
-}
-[@@deriving yojson]
+type branch_info = { branch : string; tree_hash : string; commit_hash : string } [@@deriving yojson]
 
 val parse_branch_info : prefix:string -> string -> branch_info option

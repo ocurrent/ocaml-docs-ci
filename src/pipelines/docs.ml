@@ -151,8 +151,10 @@ let v ~config ~api ~opam () =
   let ssh = Config.ssh config in
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
-  (* 1) Track the list of packages in the opam repository *)
+  (* 0) Generate everything that's statically known just from the repository *)
   let metadata = Opam_metadata.v ~ssh:(Config.ssh config) ~repo:opam in
+  let pages = Pages.v ~config ~voodoo:v_do ~metadata_branch:metadata in
+  (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
   in
@@ -232,13 +234,12 @@ let v ~config ~api ~opam () =
         |> List.map (fun (_, compile_current) ->
                compile_current
                |> Current.map (fun t ->
-                      ( `Branch
-                          (Compile.package t |> Git_store.Branch.v |> Git_store.Branch.to_string),
+                      ( Compile.package t |> Git_store.Branch.v,
                         `Commit (Compile.hashes t).html_tailwind_commit_hash ))
                |> Current.state ~hidden:true)
         |> Current.list_seq
         |> Current.map (List.filter_map Result.to_option)
-      and+ metadata = metadata in
+      and+ metadata = pages in
       metadata :: pages_commits
     in
     let commits_classic =
@@ -246,7 +247,7 @@ let v ~config ~api ~opam () =
       |> List.map (fun (_, compile_current) ->
              compile_current
              |> Current.map (fun t ->
-                    ( `Branch (Compile.package t |> Git_store.Branch.v |> Git_store.Branch.to_string),
+                    ( Compile.package t |> Git_store.Branch.v,
                       `Commit (Compile.hashes t).html_classic_commit_hash ))
              |> Current.state ~hidden:true)
       |> Current.list_seq

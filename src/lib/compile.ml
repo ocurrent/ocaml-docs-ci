@@ -37,7 +37,12 @@ let tailwind_folder ~blessed package = Fpath.(v "html" / "tailwind" // base_fold
 let classic_folder ~blessed package = Fpath.(v "html" // base_folder ~blessed package)
 
 let import_compile_deps ~ssh t =
-  let branches = List.map (fun { package; _ } -> Git_store.Branch.v package) t in
+  let branches =
+    List.map
+      (fun { package; hashes = { compile_commit_hash }; _ } ->
+        (Git_store.Branch.v package, `Commit compile_commit_hash))
+      t
+  in
   Git_store.Cluster.pull_to_directory ~repository:Compile ~ssh ~directory:"compile" ~branches
 
 let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
@@ -49,6 +54,7 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
   let classic_folder = classic_folder ~blessed package in
   let branch = Git_store.Branch.v package in
   let branches = [ (branch, Fpath.to_string (base_folder ~blessed package)) ] in
+  let commit = Prep.commit_hash prep in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let message = Fmt.str "docs ci update %s\n\n%s" (Fmt.to_to_string Package.pp package) cache_key in
@@ -62,7 +68,7 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          import_compile_deps ~ssh deps;
          (* obtain the prep folder *)
          Git_store.Cluster.pull_to_directory ~repository:Prep ~ssh ~directory:"prep"
-           ~branches:[ branch ];
+           ~branches:[ (branch, `Commit commit) ];
          run "find .";
          (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;

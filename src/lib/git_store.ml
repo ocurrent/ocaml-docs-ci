@@ -2,12 +2,17 @@ type repository = HtmlTailwind | HtmlClassic | Linked | Compile | Prep
 
 module Branch = struct
   type t = string
+  [@@deriving yojson]
 
   let v p =
     Package.digest p
     |> String.map (function '~' | '^' | ':' | '\\' | '?' | '*' | '[' -> '-' | c -> c)
 
   let to_string = Fun.id
+
+  let metadata = "metadata"
+
+  let status = "status"
 end
 
 let string_of_repository = function
@@ -60,10 +65,9 @@ module Cluster = struct
 
   let write_folder_command ~base ~message ~git_path (branch, folder) =
     Fmt.str
-      "(cd %s && (%s) && rm -rf content) && rsync -avzR %s/./%s \
-       %s/content/ && (cd %s && git add --all && (git diff --quiet \
-       --exit-code --cached || git commit -m '%s'))"
-       git_path (git_checkout_or_create branch) base folder git_path git_path message
+      "(cd %s && (%s) && rm -rf content) && rsync -avzR %s/./%s %s/content/ && (cd %s && git add \
+       --all && (git diff --quiet --exit-code --cached || git commit -m '%s'))"
+      git_path (git_checkout_or_create branch) base folder git_path git_path message
 
   let write_folders_to_git ~repository ~ssh ~branches ~folder ~message ~git_path =
     Obuilder_spec.run ~network:[ "host" ] ~secrets:Config.Ssh.secrets
@@ -75,13 +79,15 @@ module Cluster = struct
       git_path
 
   let pull_to_directory ~repository ~ssh ~branches ~directory =
+    let commits = List.rev_map (fun (_, `Commit c) -> c) branches in
+    let branches = List.rev_map fst branches in
     Obuilder_spec.run ~network:[ "host" ] ~secrets:Config.Ssh.secrets
       "git clone --single-branch %s /tmp/git-store/ && (cd /tmp/git-store/ && git fetch origin %s \
        && git merge -m '.' %s && mkdir -p /tmp/git-store/content) && mv /tmp/git-store/content %s \
        && rm -rf /tmp/git-store"
       (remote repository ssh)
       (List.map (fun x -> x ^ ":" ^ x) branches |> String.concat " ")
-      (branches |> String.concat " ")
+      (commits |> String.concat " ")
       directory
 end
 

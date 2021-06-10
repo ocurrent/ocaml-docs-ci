@@ -28,7 +28,7 @@ module Metadata = struct
   end
 
   module Outcome = struct
-    type t = [ `Branch of string ] * [ `Commit of string ] [@@deriving yojson]
+    type t = Git_store.Branch.t * [ `Commit of string ] [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -123,7 +123,7 @@ module Metadata = struct
           Current.Process.check_output ~cancellable:true ~cwd:state_dir ~job
             ("", [| "git"; "rev-parse"; "HEAD" |])
         in
-        Lwt.return_ok (`Branch "status", `Commit (commit |> String.trim)))
+        Lwt.return_ok (Git_store.Branch.status, `Commit (commit |> String.trim)))
       (fun () -> Current.Switch.turn_off switch)
 end
 

@@ -27,19 +27,19 @@ module Op = struct
   end
 
   module Value = struct
-    type t = ([ `Branch of string ] * [ `Commit of string ]) list
+    type t = (Git_store.Branch.t * [ `Commit of string ]) list
 
     let digest t =
       t
-      |> List.rev_map (fun (`Branch b, `Commit c) -> b ^ ":" ^ c)
+      |> List.rev_map (fun (b, `Commit c) -> Git_store.Branch.to_string b ^ ":" ^ c)
       |> String.concat "\n" |> Digest.string |> Digest.to_hex
   end
 
   module Outcome = Current.Unit
 
-  let write_info ~folder (`Branch b, `Commit c) =
+  let write_info ~folder (b, `Commit c) =
     let open Lwt.Syntax in
-    let file = Fpath.(folder / b) in
+    let file = Fpath.(folder / Git_store.Branch.to_string b) in
     write_file file c
 
   let publish ssh job (repo, branch) commits =
