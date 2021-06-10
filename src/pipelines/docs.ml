@@ -226,7 +226,7 @@ let v ~config ~api ~opam () =
     in
     let message = Current.map (Fmt.to_to_string Epoch.pp) epoch in
 
-    let commits =
+    let commits_tailwind =
       let+ pages_commits =
         Package.Map.bindings compiled
         |> List.map (fun (_, compile_current) ->
@@ -241,11 +241,22 @@ let v ~config ~api ~opam () =
       and+ metadata = metadata in
       metadata :: pages_commits
     in
+    let commits_classic =
+      Package.Map.bindings compiled
+      |> List.map (fun (_, compile_current) ->
+             compile_current
+             |> Current.map (fun t ->
+                    ( `Branch (Compile.package t |> Git_store.Branch.v |> Git_store.Branch.to_string),
+                      `Commit (Compile.hashes t).html_classic_commit_hash ))
+             |> Current.state ~hidden:true)
+      |> Current.list_seq
+      |> Current.map (List.filter_map Result.to_option)
+    in
     Current.all
       [
-        Live.publish ~ssh ~repository:Git_store.HtmlTailwind ~branch ~commits;
+        Live.publish ~ssh ~repository:Git_store.HtmlTailwind ~branch ~commits:commits_tailwind;
         Live.set_live_to ~ssh ~repository:Git_store.HtmlTailwind ~branch ~message;
-        Live.publish ~ssh ~repository:Git_store.HtmlClassic ~branch ~commits;
+        Live.publish ~ssh ~repository:Git_store.HtmlClassic ~branch ~commits:commits_classic;
         Live.set_live_to ~ssh ~repository:Git_store.HtmlClassic ~branch ~message;
       ]
   in
