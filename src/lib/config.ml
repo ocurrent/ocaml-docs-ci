@@ -134,6 +134,7 @@ type t = {
   take_n_last_versions : int option;
   ocluster_connection_prep : Current_ocluster.Connection.t;
   ocluster_connection_do : Current_ocluster.Connection.t;
+  ocluster_connection_gen : Current_ocluster.Connection.t;
   ssh : Ssh.t;
 }
 
@@ -164,6 +165,7 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
 
   let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:100 cap in
   let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:100 cap in
+  let ocluster_connection_gen = Current_ocluster.Connection.create ~max_pipeline:100 cap in
 
   {
     jobs;
@@ -171,6 +173,7 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
     take_n_last_versions;
     ocluster_connection_prep;
     ocluster_connection_do;
+    ocluster_connection_gen;
     ssh;
   }
 
@@ -190,5 +193,7 @@ let take_n_last_versions t = t.take_n_last_versions
 let ocluster_connection_do t = t.ocluster_connection_do
 
 let ocluster_connection_prep t = t.ocluster_connection_prep
+
+let ocluster_connection_gen t = t.ocluster_connection_gen
 
 let ssh t = t.ssh

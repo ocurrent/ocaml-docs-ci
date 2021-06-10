@@ -42,6 +42,9 @@ val ocluster_connection_prep : t -> Current_ocluster.Connection.t
 val ocluster_connection_do : t -> Current_ocluster.Connection.t
 (** Connection to the cluster for Do *)
 
+val ocluster_connection_gen : t -> Current_ocluster.Connection.t
+(** Connection to the cluster for Gen *)
+
 val jobs : t -> int
 (** Number of jobs that can be spawned for the steps that are locally executed. *)
 
