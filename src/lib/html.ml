@@ -129,7 +129,7 @@ module Gen = struct
     let build_pool =
       Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint
         ~secrets:(Config.Ssh.secrets_values (Config.ssh config))
-        (Config.ocluster_connection_do config)
+        (Config.ocluster_connection_gen config)
     in
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
