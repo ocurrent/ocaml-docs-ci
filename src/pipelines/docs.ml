@@ -55,7 +55,7 @@ let compile ~config ~voodoo_gen ~voodoo_do
     | Some compile ->
         Some
           (Html.v ~config
-             ~name:(package |> Package.opam |> OpamPackage.name_to_string)
+             ~name:(package |> Package.opam |> OpamPackage.to_string)
              ~voodoo:voodoo_gen compile)
   in
   Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings

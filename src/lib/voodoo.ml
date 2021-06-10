@@ -91,6 +91,7 @@ module Op = struct
     let** voodoo_gen = get_oldest_commit_for ~job ~dir ~from voodoo_gen_paths in
     Current.Job.log job "Prep commit: %s" voodoo_prep;
     Current.Job.log job "Do commit: %s" voodoo_do;
+    Current.Job.log job "Gen commit: %s" voodoo_gen;
     let voodoo_prep = with_hash ~id voodoo_prep in
     let voodoo_do = with_hash ~id voodoo_do in
     let voodoo_gen = with_hash ~id voodoo_gen in
