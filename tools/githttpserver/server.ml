@@ -209,8 +209,8 @@ module Server = struct
     in
     Format.eprintf "Error handling response: %s\n%!" error
 
-  let serve ~store ~root port =
-    let listen_address = Unix.(ADDR_INET (inet_addr_loopback, port)) in
+  let serve ~store ~root listen_ip port =
+    let listen_address = Unix.(ADDR_INET (inet_addr_of_string listen_ip, port)) in
     let request_handler = request_handler ~store ~root in
 
     Lwt_io.establish_server_with_client_socket listen_address
@@ -236,7 +236,7 @@ let watch_git_repo r callback =
   in
   loop ()
 
-let main port repo =
+let main listen_ip port repo =
   let forever, _ = Lwt.wait () in
   let repo = Fpath.of_string repo |> Result.get_ok in
   let** store = Store.v ~dotgit:repo repo in
@@ -249,18 +249,23 @@ let main port repo =
       let++ new_root = Packages.update ~old:!root store in
       root := new_root);
   Lwt.async (fun () ->
-      let+ _ = Server.serve ~store ~root port in
-      Fmt.pr "Listening on port %d.\n" port);
+      let+ _ = Server.serve ~store ~root listen_ip port in
+      Fmt.pr "Listening on %s:%d.\n" listen_ip port);
   forever
 
-let main port repo =
+let main listen_ip port repo =
   Lwt_main.run
-    (let+ main = main port repo in
+    (let+ main = main listen_ip port repo in
      match main with Ok _ -> () | Error e -> Fmt.epr "%a\n" Store.pp_error e)
 
 open Cmdliner
 
 let port = Arg.value @@ Arg.opt Arg.int 8000 @@ Arg.info ~doc:"HTTP port" ~docv:"PORT" [ "port" ]
+
+let addr =
+  Arg.value
+  @@ Arg.opt Arg.(string) "127.0.0.1"
+  @@ Arg.info ~doc:"Listen address" ~docv:"ADDR" [ "addr" ]
 
 let repo =
   Arg.required
@@ -269,6 +274,6 @@ let repo =
 
 let cmd =
   let doc = "Docs CI git http server" in
-  (Term.(const main $ port $ repo), Term.info "githttpserver" ~doc)
+  (Term.(const main $ addr $ port $ repo), Term.info "githttpserver" ~doc)
 
 let () = Term.(exit @@ eval cmd)
