@@ -12,6 +12,7 @@ depends: [
   "git-unix"
   "httpaf-lwt-unix"
   "inotify"
+  "conf-libev"
   "odoc" {with-doc}
 ]
 build: [

@@ -39,7 +39,7 @@
  (name docs-ci-tools)
  (synopsis "Tools")
  (description "")
- (depends cmdliner git-unix httpaf-lwt-unix inotify))
+ (depends cmdliner git-unix httpaf-lwt-unix inotify conf-libev))
 
 (package
  (name docs-ci-web)
