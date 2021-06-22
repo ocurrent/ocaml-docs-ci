@@ -106,3 +106,10 @@ let fold_logs build_job fn =
     | line :: next -> aux start next (fn acc line)
   in
   aux 0L []
+
+let tar_cmd folder =
+  let f = Fpath.to_string folder in
+  Fmt.str
+    "shopt -s nullglob && ((tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar %s/content.tar) || \
+     (echo 'Empty directory'))"
+    f f f f f
