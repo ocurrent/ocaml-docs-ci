@@ -47,7 +47,7 @@ let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
          (* obtain the linked folder *)
          Git_store.Cluster.pull_to_directory ~repository:Linked ~ssh ~directory:"linked"
            ~branches:[ (branch, `Commit commit) ];
-         run "find .";
+         run "find . -name '*.tar' -exec tar -xvf {} \\;";
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-gen" ]

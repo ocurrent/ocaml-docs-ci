@@ -57,7 +57,7 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          (* obtain the prep folder *)
          Git_store.Cluster.pull_to_directory ~repository:Prep ~ssh ~directory:"prep"
            ~branches:[ (branch, `Commit commit) ];
-         run "find .";
+         run "find . -name '*.tar' -exec tar -xvf {} \\;";
          (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
          run
@@ -73,6 +73,8 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
            (if blessed then "-b" else "");
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+         (* tar compile/linked output *)
+         run "%s && %s" (Misc.tar_cmd compile_folder) (Misc.tar_cmd linked_folder);
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
@@ -112,7 +114,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo } =
-      Fmt.str "v4-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v5-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.tree_hash prep)
         Fmt.(

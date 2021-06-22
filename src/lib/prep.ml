@@ -29,7 +29,7 @@ module PrepState = struct
         !state
 end
 
-let prep_version = "v1"
+let prep_version = "v2"
 
 let network = Misc.network
 
@@ -114,10 +114,12 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
   let create_dir_and_copy_logs_if_not_exist =
     prep
     |> List.map (fun package ->
-           let dir = Fpath.(v "prep/" // folder package |> to_string) in
+           let dir = Fpath.(v "prep/" // folder package) in
+           let dir_s = Fpath.to_string dir in
            let branch = Git_store.Branch.(v package |> to_string) in
-           Fmt.str "([ -d '%s' ] || (echo 'FAILED:%s' && mkdir -p %s && cp ~/opam.err.log %s))" dir
-             branch dir dir)
+           Fmt.str
+             "(([ -d '%s' ] && %s) || (echo 'FAILED:%s' && mkdir -p %s && cp ~/opam.err.log %s))"
+             dir_s (Misc.tar_cmd dir) branch dir_s dir_s)
     |> String.concat " && "
   in
   let branches = List.map Git_store.Branch.v prep in
@@ -222,15 +224,15 @@ module Prep = struct
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
     (* extract result from logs *)
     let extract_hashes (git_hashes, failed) line =
-          match Git_store.parse_branch_info ~prefix:"HASHES" line with
-          | Some value -> (value :: git_hashes, failed)
-          | None -> (
-              match String.split_on_char ':' line with
-              | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
-                  Current.Job.log job "Failed: %s" branch;
-                  (git_hashes, branch :: failed)
-              | _ -> (git_hashes, failed) )
-    in 
+      match Git_store.parse_branch_info ~prefix:"HASHES" line with
+      | Some value -> (value :: git_hashes, failed)
+      | None -> (
+          match String.split_on_char ':' line with
+          | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
+              Current.Job.log job "Failed: %s" branch;
+              (git_hashes, branch :: failed)
+          | _ -> (git_hashes, failed) )
+    in
 
     let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
     Lwt.return_ok
