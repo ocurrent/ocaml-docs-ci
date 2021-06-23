@@ -2,7 +2,6 @@
 FROM ocaml/opam:debian-ocaml-4.12 AS build
 RUN cd ~/opam-repository && git pull origin master && git reset --hard a147c4ecea9e6eaa71a0f3bc152d502695c569c4 && opam update
 COPY --chown=opam \
-	vendor/ocurrent/current_ansi.opam \
 	vendor/ocurrent/current_docker.opam \
 	vendor/ocurrent/current_github.opam \
 	vendor/ocurrent/current_git.opam \
@@ -14,8 +13,7 @@ COPY --chown=opam \
 	/src/vendor/ocurrent/
 WORKDIR /src
 RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
-RUN opam pin add -yn current_ansi.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
+RUN opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
     opam pin add -yn current_github.dev "./vendor/ocurrent" && \
     opam pin add -yn current_git.dev "./vendor/ocurrent" && \
     opam pin add -yn current_incr.dev "./vendor/ocurrent" && \

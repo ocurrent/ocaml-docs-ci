@@ -19,28 +19,45 @@ package.version.universe -> 1 2 3 4 5
                         3 [ o o o x x x x x ]
                         4 [ o x x x o x x x ]
 
+1) Sort by decreasing universe size, and create a new job as long as there is some useful package. 
+2) For each job, sort by increasing universe size and set `prep` as the never previously encountered packages in the universe.
+
 *)
 let schedule ~(targets : Package.t list) jobs : t list =
   Printf.printf "Schedule %d\n" (List.length jobs);
   let targets_digests = targets |> List.rev_map Package.digest |> StringSet.of_list in
   let jobs =
-    jobs |> List.sort (fun (a : Package.t) b -> Int.compare (worthiness b) (worthiness a))
-    (* sort in decreasing order in the number of packages produced by job *)
+    jobs
+    |> List.rev_map (fun pkg ->
+           let install_set =
+             pkg |> Package.all_deps |> List.rev_map Package.digest |> StringSet.of_list
+           in
+           (pkg, install_set))
+    |> List.sort (fun (_, s1) (_, s2) -> StringSet.cardinal s2 - StringSet.cardinal s1)
+    (* Sort in decreasing order in universe size  *)
   in
   let remaining_targets = ref targets_digests in
-  let check_and_add_target pkg =
-    let set = pkg |> Package.all_deps |> List.rev_map Package.digest |> StringSet.of_list in
-    let useful_packages = StringSet.inter !remaining_targets set in
+  let check_and_add_target (pkg, install_set) =
+    let useful_packages = StringSet.inter !remaining_targets install_set in
     match StringSet.cardinal useful_packages with
     | 0 -> None
     | _ ->
         remaining_targets := StringSet.diff !remaining_targets useful_packages;
-        Some
-          {
-            install = pkg;
-            prep =
-              Package.all_deps pkg
-              |> List.filter (fun elt -> StringSet.mem (Package.digest elt) useful_packages);
-          }
+        Some (pkg, install_set)
   in
-  List.filter_map check_and_add_target jobs
+  let to_install = List.filter_map check_and_add_target jobs in
+  let remaining_targets = ref targets_digests in
+  let create_job (pkg, install_set) =
+    let useful_packages = StringSet.inter !remaining_targets install_set in
+    remaining_targets := StringSet.diff !remaining_targets useful_packages;
+    {
+      install = pkg;
+      prep =
+        Package.all_deps pkg
+        |> List.filter (fun elt -> StringSet.mem (Package.digest elt) useful_packages);
+    }
+  in
+  to_install
+  |> List.sort (fun (_, s1) (_, s2) -> StringSet.cardinal s1 - StringSet.cardinal s2)
+  (* Sort in increasing order in universe size *)
+  |> List.rev_map create_job
