@@ -146,8 +146,9 @@ module Prep = struct
   module Key = struct
     type t = { job : Jobs.t; voodoo : Voodoo.Prep.t; config : Config.t }
 
-    let digest { job = { install; _ }; voodoo; _ } =
-      Fmt.str "%s\n%s\n%s" prep_version (Package.digest install) (Voodoo.Prep.digest voodoo)
+    let digest { job = { install; prep }; voodoo; _ } =
+      Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install) (Voodoo.Prep.digest voodoo)
+        (String.concat "\n" (List.rev_map Package.digest prep |> List.sort String.compare))
       |> Digest.string |> Digest.to_hex
   end
 
