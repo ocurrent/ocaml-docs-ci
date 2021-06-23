@@ -112,15 +112,21 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
   in
 
   let create_dir_and_copy_logs_if_not_exist =
-    prep
-    |> List.map (fun package ->
-           let dir = Fpath.(v "prep/" // folder package) in
-           let dir_s = Fpath.to_string dir in
-           let branch = Git_store.Branch.(v package |> to_string) in
-           Fmt.str
-             "(([ -d '%s' ] && %s) || (echo 'FAILED:%s' && mkdir -p %s && cp ~/opam.err.log %s))"
-             dir_s (Misc.tar_cmd dir) branch dir_s dir_s)
-    |> String.concat " && "
+    let data =
+      List.rev_map
+        (fun package ->
+          let dir = Fpath.(v "prep/" // folder package |> to_string) in
+          let branch = Git_store.Branch.(v package |> to_string) in
+          dir ^ "," ^ branch)
+        prep
+      |> String.concat " "
+    in
+    let command =
+      Fmt.str "([ -d $1 ] && %s) || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1)"
+        (Misc.tar_cmd (Fpath.v "$1"))
+    in
+
+    Fmt.str "for DATA in %s; do IFS=\",\"; set -- $DATA; %s done" data command
   in
   let branches = List.map Git_store.Branch.v prep in
 
