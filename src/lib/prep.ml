@@ -1,34 +1,3 @@
-(** this module stores which packages have already been successfully prepped *)
-module PrepState = struct
-  type state = [ `Success of string * string | `Pending | `Failed of string * string ]
-
-  type t = state Package.Map.t Package.Map.t ref
-
-  let state : t = ref Package.Map.empty
-
-  let max v =
-    Package.Map.fold
-      (fun _ status acc ->
-        match (status, acc) with
-        | _, Some (`Failed _) -> Some status
-        | _, Some (`Success v) -> Some (`Success v)
-        | `Success v, Some `Pending -> Some (`Success v)
-        | _, Some `Pending -> Some `Pending
-        | v, None -> Some v)
-      v None
-    |> Option.get
-
-  let get package = try Package.Map.find package !state |> max with Not_found -> `Pending
-
-  let update ~install package status =
-    state :=
-      Package.Map.update package
-        (function
-          | None -> Some (Package.Map.singleton install status)
-          | Some map -> Some (Package.Map.add install status map))
-        !state
-end
-
 let prep_version = "v2"
 
 let network = Misc.network
@@ -53,9 +22,6 @@ let folder package =
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
   Fpath.(v "universes" / universe / name / version)
-
-let base_folders packages =
-  packages |> List.map (fun x -> folder x |> Fpath.to_string) |> String.concat " "
 
 let universes_assoc packages =
   packages
@@ -205,16 +171,9 @@ module Prep = struct
        requires changes in the solver.
        For now we rebuild only if voodoo-prep changes.
     *)
-    (* Only prep what's not been successful. *)
-    List.iter (fun p -> PrepState.update ~install p `Pending) prep;
-    let to_prep =
-      List.filter_map
-        (fun prep -> match PrepState.get prep with `Success _ -> None | _ -> Some prep)
-        prep
-    in
     let base = Misc.get_base_image install in
     let message = Fmt.str "Update\n\n%s" (Key.digest key) in
-    let spec = spec ~ssh:(Config.ssh config) ~message ~voodoo ~base ~install to_prep in
+    let spec = spec ~ssh:(Config.ssh config) ~message ~voodoo ~base ~install prep in
     let action = Misc.to_ocluster_submission spec in
     let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
     let version = Misc.base_image_version install in
@@ -260,9 +219,9 @@ let tree_hash t = t.tree_hash
 
 let package t = t.package
 
-type prep_result = [ `Cached | `Success of t | `Failed of t ]
+type prep_result = [ `Success of t | `Failed of t ]
 
-type prep = [ `Success of t | `Failed of t ] Package.Map.t
+type prep = prep_result Package.Map.t
 
 let pp f t = Fmt.pf f "%s:%s" t.commit_hash t.tree_hash
 
@@ -301,35 +260,12 @@ let v ~config ~voodoo (job : Jobs.t) =
      PrepCache.get No_context { job; voodoo; config }
      |> Current.Primitive.map_result (Result.map (combine ~job))
 
-let v ~config ~voodoo job : prep Current.t =
-  let open Current.Syntax in
-  let prep_job = v ~config ~voodoo job in
-  let status_update =
-    let+ status = Current.state ~hidden:true prep_job in
-    match status with
-    | Ok v ->
-        Package.Map.iter
-          (fun package v ->
-            match v with
-            | `Success v | `Failed v ->
-                PrepState.update ~install:job.install package
-                  (`Success (v.commit_hash, v.tree_hash)))
-          v
-    | Error (`Active _) ->
-        List.iter (fun package -> PrepState.update ~install:job.install package `Pending) job.prep
-    | Error (`Msg _) ->
-        List.iter (fun package -> PrepState.update ~install:job.install package `Pending) job.prep
-  in
-  let+ prep_job = prep_job and+ () = status_update in
-  prep_job
-
 let extract ~(job : Jobs.t) (prep : prep Current.t) =
   let open Current.Syntax in
   List.map
     (fun package ->
       ( package,
         let+ prep = prep in
-        (Package.Map.find_opt package prep :> prep_result option) |> Option.value ~default:`Cached
-      ))
+        Package.Map.find package prep ))
     job.prep
   |> List.to_seq |> Package.Map.of_seq

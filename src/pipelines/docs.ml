@@ -67,28 +67,6 @@ let rec with_context_fold lst fn =
   | [] -> fn ()
   | v :: next -> Current.with_context v (fun () -> with_context_fold next fn)
 
-let max_success statuses =
-  let to_int = function
-    | Ok (`Success _) -> 5
-    | Error (`Active `Running) -> 4
-    | Error (`Active `Ready) -> 3
-    | Ok _ -> 2
-    | Error (`Msg _) -> 1
-  in
-  let max a b = if to_int a >= to_int b then a else b in
-  let open Current.Syntax in
-  let+ statuses = statuses in
-  List.fold_left max (List.hd statuses) (List.tl statuses) |> function
-  | Ok (`Success v) -> Ok v
-  | Ok `Cached -> Error (`Msg "take_any_success: this is a bug")
-  | Ok (`Failed _) -> Error (`Msg (Fmt.str "%d jobs failed to build " (List.length statuses)))
-  | Error status -> Error status
-
-let take_any_success ~name (jobs : Prep.prep_result Current.t list) =
-  jobs
-  |> List.map (Current.state ~hidden:true)
-  |> Current.list_seq |> max_success |> Current.of_state ~info:name
-
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
@@ -189,9 +167,15 @@ let v ~config ~api ~opam () =
   in
   let prepped =
     prepped
-    |> List.map (fun (job, result) -> Prep.extract ~job result |> Package.Map.map (fun x -> [ x ]))
-    |> List.fold_left (Package.Map.union (fun _ a b -> Some (a @ b))) Package.Map.empty
-    |> Package.Map.mapi (fun pkg -> take_any_success ~name:(Fmt.to_to_string Package.pp pkg))
+    |> List.map (fun (job, result) -> Prep.extract ~job result)
+    |> List.fold_left
+         (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
+         Package.Map.empty
+    |> Package.Map.map (fun result ->
+           let* v = result in
+           match v with
+           | `Success t -> Current.return t
+           | `Failed _ -> Current.fail "Preparation failed")
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
@@ -231,7 +215,8 @@ let v ~config ~api ~opam () =
 
   (* 8) Update live branches *)
   let live_branch =
-    Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:"" @@
+    Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:""
+    @@
     let epoch = Current.map (Epoch.v config) voodoo in
     let branch =
       let+ epoch = epoch in

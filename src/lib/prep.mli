@@ -7,7 +7,7 @@ val tree_hash : t -> string
 
 val package : t -> Package.t
 
-type prep_result = [`Cached | `Success of t | `Failed of t]
+type prep_result = [`Success of t | `Failed of t]
 
 type prep
 
