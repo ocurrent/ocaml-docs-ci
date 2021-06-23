@@ -231,6 +231,7 @@ let v ~config ~api ~opam () =
 
   (* 8) Update live branches *)
   let live_branch =
+    Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:"" @@
     let epoch = Current.map (Epoch.v config) voodoo in
     let branch =
       let+ epoch = epoch in
