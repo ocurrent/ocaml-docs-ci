@@ -12,6 +12,10 @@ let ssh_run_prefix ssh =
 let setup ssh =
   Log.app (fun f -> f "Checking storage server status..");
   let ensure_program program = Fmt.str "%s --version" program in
+  let ensure_dir dir =
+    let path = Fpath.(v (Ssh.storage_folder ssh) / dir) in
+    Fmt.str "mkdir -p %a" Fpath.pp path
+  in
   let ensure_git_repo ?(extra_branches = []) dir =
     let dir = Fpath.of_string dir |> Result.get_ok in
     let pp_git_update_ref_branch f = Fmt.pf f "git update-ref refs/heads/%s $COMMIT" in
@@ -34,10 +38,10 @@ let setup ssh =
   let ( let* ) = Result.bind in
   let ( let+ ) a b = Result.map b a in
   let* () = ensure_program "git" |> run in
-  let* () = ensure_git_repo "git/prep" |> run in
-  let* () = ensure_git_repo "git/compile" |> run in
-  let* () = ensure_git_repo "git/linked" |> run in
+  let* () = ensure_program "rsync" |> run in
+  let* () = ensure_dir "prep" |> run in
+  let* () = ensure_dir "compile" |> run in
+  let* () = ensure_dir "linked" |> run in
   let* () = ensure_git_repo ~extra_branches:[ "live"; "status" ] "git/html-tailwind" |> run in
   let+ () = ensure_git_repo ~extra_branches:[ "live" ] "git/html-classic" |> run in
-  Log.app (fun f -> f "..OK!");
-
+  Log.app (fun f -> f "..OK!")

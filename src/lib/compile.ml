@@ -26,26 +26,16 @@ let compile_folder ~blessed package = Fpath.(v "compile" // base_folder ~blessed
 
 let linked_folder ~blessed package = Fpath.(v "linked" // base_folder ~blessed package)
 
-let import_compile_deps ~ssh t =
-  let branches =
-    List.map
-      (fun { package; hashes = { compile_commit_hash; _ }; _ } ->
-        (Git_store.Branch.v package, `Commit compile_commit_hash))
-      t
-  in
-  Git_store.Cluster.pull_to_directory ~repository:Compile ~ssh ~directory:"compile" ~branches
-
-let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
+let spec ~ssh ~base ~voodoo ~deps ~blessed prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
+  let folder = Prep.folder package in
   let compile_folder = compile_folder ~blessed package in
   let linked_folder = linked_folder ~blessed package in
   let branch = Git_store.Branch.v package in
-  let branches = [ (branch, Fpath.to_string (base_folder ~blessed package)) ] in
-  let commit = Prep.commit_hash prep in
+
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
-  let message = Fmt.str "docs ci update %s\n\n%s" (Fmt.to_to_string Package.pp package) cache_key in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
@@ -53,10 +43,15 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
          (* obtain the compiled dependencies *)
-         import_compile_deps ~ssh deps;
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets
+           "for FOLDER in %s; do rsync -aR %s:%s/./compile/$FOLDER .; done "
+           ( deps
+           |> List.rev_map (fun x -> base_folder ~blessed:x.blessed x.package |> Fpath.to_string)
+           |> String.concat " " )
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* obtain the prep folder *)
-         Git_store.Cluster.pull_to_directory ~repository:Prep ~ssh ~directory:"prep"
-           ~branches:[ (branch, `Commit commit) ];
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR %s:%s/./prep/%s ."
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string folder);
          run "find . -name '*.tar' -exec tar -xvf {} \\;";
          (* prepare the compilation folder *)
          run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
@@ -77,14 +72,20 @@ let spec ~ssh ~cache_key ~base ~voodoo ~deps ~blessed prep =
          run "%s && %s" (Misc.tar_cmd compile_folder) (Misc.tar_cmd linked_folder);
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
-         Git_store.Cluster.write_folders_to_git ~repository:Compile ~ssh ~branches ~folder:"compile"
-           ~message ~git_path:"/tmp/git-compile";
-         Git_store.Cluster.write_folder_to_git ~repository:Linked ~ssh ~branch ~folder:"linked"
-           ~message ~git_path:"/tmp/git-linked";
-         run "cd /tmp/git-compile && %s"
-           (Git_store.print_branches_info ~prefix:"COMPILE" ~branches:[ branch ]);
-         run "cd /tmp/git-linked && %s"
-           (Git_store.print_branches_info ~prefix:"LINKED" ~branches:[ branch ]);
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR ./%s ./%s %s:%s/."
+           (Fpath.to_string compile_folder)
+           Fpath.(to_string (parent linked_folder))
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+         run
+           "HASH=$((sha256sum %s/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
+            \"COMPILE:%s:$HASH:$HASH\\n\""
+           (Fpath.to_string compile_folder)
+           (Git_store.Branch.to_string branch);
+         run
+           "HASH=$((sha256sum %s/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
+            \"LINKED:%s:$HASH:$HASH\\n\""
+           (Fpath.to_string linked_folder)
+           (Git_store.Branch.to_string branch);
        ]
 
 let or_default a = function None -> a | b -> b
@@ -114,7 +115,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessed; voodoo } =
-      Fmt.str "v5-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
+      Fmt.str "v8-%s-%s-%s-%a-%s-%s" (Bool.to_string blessed)
         (Prep.package prep |> Package.digest)
         (Prep.tree_hash prep)
         Fmt.(
@@ -141,14 +142,12 @@ module Compile = struct
       (Voodoo.Do.digest voodoo)
       (Config.odoc config |> Digest.string |> Digest.to_hex)
 
-  let build No_context job (Key.{ deps; prep; blessed; voodoo; config } as key) =
+  let build No_context job Key.{ deps; prep; blessed; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
-    let cache_key = remote_cache_key key in
-    Current.Job.log job "Cache digest: %s" (Key.key key);
     let base = Misc.get_base_image package in
-    let spec = spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base ~deps ~blessed prep in
+    let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessed prep in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.base_image_version package in
     let cache_hint = "docs-universe-compile-" ^ version in
@@ -192,4 +191,4 @@ let v ~config ~name ~voodoo ~blessed ~deps prep =
      let output = CompileCache.get No_context Compile.Key.{ prep; blessed; voodoo; deps; config } in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessed; hashes })) output
 
-let folder { package; blessed; _ } = compile_folder ~blessed package
+let folder { package; blessed; _ } = base_folder ~blessed package

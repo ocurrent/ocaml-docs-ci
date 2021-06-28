@@ -1,4 +1,4 @@
-let prep_version = "v2"
+let prep_version = "v3"
 
 let network = Misc.network
 
@@ -94,13 +94,9 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
 
     Fmt.str "for DATA in %s; do IFS=\",\"; set -- $DATA; %s done" data command
   in
-  let branches = List.map Git_store.Branch.v prep in
+  let branches = List.rev_map (fun x -> Git_store.Branch.v x |> Git_store.Branch.to_string) prep in
 
-  let folders ?(prefix = "") () =
-    prep
-    |> List.map (fun package ->
-           (Git_store.Branch.v package, prefix ^ (folder package |> Fpath.to_string)))
-  in
+  let folders = List.rev_map (fun package -> folder package |> Fpath.to_string) prep in
 
   let tools = Voodoo.Prep.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
@@ -130,10 +126,17 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
          (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          run "%s" create_dir_and_copy_logs_if_not_exist;
-         Git_store.Cluster.write_folders_to_git ~repository:Prep ~ssh ~branches:(folders ())
-           ~folder:"prep" ~message ~git_path:"/tmp/git-store";
+         run ~network ~secrets:Config.Ssh.secrets
+           "for FOLDER in %s; do rsync -aR prep/./$FOLDER %s:%s/prep/.;  done"
+           (String.concat " " folders) (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* Compute hashes *)
-         run "cd /tmp/git-store && %s" (Git_store.print_branches_info ~prefix:"HASHES" ~branches);
+         run
+           "for FOLDER_BRANCH in %s; do IFS=\",\"; set -- $FOLDER_BRANCH; HASH=$(((((((sha256sum \
+            prep/$1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
+            \"HASHES:$2:$HASH:$HASH\\n\"; done"
+           ( List.combine folders branches
+           |> List.rev_map (fun (x, y) -> x ^ "," ^ y)
+           |> String.concat " " );
        ]
 
 module Prep = struct
