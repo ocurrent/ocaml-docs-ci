@@ -14,7 +14,6 @@ let is_blessed t = t.blessed
 
 let package t = t.package
 
-
 let base_folder ~blessed package =
   let universe = Package.universe package |> Package.Universe.hash in
   let opam = Package.opam package in
@@ -30,7 +29,7 @@ let classic_folder ~blessed package = Fpath.(v "html" // base_folder ~blessed pa
 let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
   let open Obuilder_spec in
   let package = Compile.package compiled in
-  let commit = (Compile.hashes compiled).linked_commit_hash in
+  let folder = Compile.folder compiled in
   let tailwind_folder = tailwind_folder ~blessed package in
   let classic_folder = classic_folder ~blessed package in
   let branch = Git_store.Branch.v package in
@@ -45,9 +44,14 @@ let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
          (* obtain the linked folder *)
-         Git_store.Cluster.pull_to_directory ~repository:Linked ~ssh ~directory:"linked"
-           ~branches:[ (branch, `Commit commit) ];
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets
+           "rsync -aR %s:%s/./linked/%s %s:%s/./linked/%s/page-%s.odocl ." (Config.Ssh.host ssh)
+           (Config.Ssh.storage_folder ssh) (Fpath.to_string folder) (Config.Ssh.host ssh)
+           (Config.Ssh.storage_folder ssh)
+           Fpath.(to_string (parent folder))
+           (Package.opam package |> OpamPackage.version_to_string);
          run "find . -name '*.tar' -exec tar -xvf {} \\;";
+         run "find . -type d -empty -delete";
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-gen" ]
@@ -97,7 +101,7 @@ module Gen = struct
     type t = { config : Config.t; compile : Compile.t; voodoo : Voodoo.Gen.t }
 
     let key { config; compile; voodoo } =
-      Fmt.str "v3-%s-%s-%s-%s"
+      Fmt.str "v4-%s-%s-%s-%s"
         (Compile.package compile |> Package.digest)
         (Compile.hashes compile).linked_tree_hash (Voodoo.Gen.digest voodoo) (Config.odoc config)
 
@@ -120,7 +124,10 @@ module Gen = struct
     let blessed = Compile.is_blessed compile in
     let cache_key = remote_cache_key key in
     Current.Job.log job "Cache digest: %s" (Key.key key);
-    let spec = spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base:Misc.default_base_image ~blessed compile in
+    let spec =
+      spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base:Misc.default_base_image ~blessed
+        compile
+    in
     let action = Misc.to_ocluster_submission spec in
     let cache_hint = "docs-universe-gen" in
     let build_pool =
