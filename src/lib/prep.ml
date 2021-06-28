@@ -131,7 +131,7 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
            (String.concat " " folders) (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* Compute hashes *)
          run
-           "for FOLDER_BRANCH in %s; do IFS=\",\"; set -- $FOLDER_BRANCH; HASH=$(((((((sha256sum \
+           "for FOLDER_BRANCH in %s; do IFS=\",\"; set -- $FOLDER_BRANCH; HASH=$((sha256sum \
             prep/$1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
             \"HASHES:$2:$HASH:$HASH\\n\"; done"
            ( List.combine folders branches
