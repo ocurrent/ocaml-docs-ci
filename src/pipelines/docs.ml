@@ -24,8 +24,8 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~config ~voodoo_gen ~voodoo_do
-    ~(blessed : Package.Blessed.t Current.t OpamPackage.Map.t)
+let compile ~generation ~config ~voodoo_gen ~voodoo_do
+    ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -40,11 +40,11 @@ let compile ~config ~voodoo_gen ~voodoo_do
            let compile_dependencies =
              List.filter_map get_compilation_job dependencies |> Current.list_seq
            in
-           let blessed =
+           let blessing =
              OpamPackage.Map.find (Package.opam package) blessed
-             |> Current.map (fun b -> Package.Blessed.is_blessed b package)
+             |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           Compile.v ~config ~name ~voodoo:voodoo_do ~blessed ~deps:compile_dependencies prep
+           Compile.v ~config ~name ~voodoo:voodoo_do ~blessing ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
@@ -54,7 +54,7 @@ let compile ~config ~voodoo_gen ~voodoo_do
     | None -> None
     | Some compile ->
         Some
-          (Html.v ~config
+          (Html.v ~generation ~config
              ~name:(package |> Package.opam |> OpamPackage.to_string)
              ~voodoo:voodoo_gen compile)
   in
@@ -139,9 +139,13 @@ let v ~config ~api ~opam () =
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_gen = Current.map Voodoo.Gen.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
+  let generation =
+    let+ voodoo = voodoo in
+    Epoch.v config voodoo
+  in
   (* 0) Generate everything that's statically known just from the repository *)
-  let metadata = Opam_metadata.v ~ssh:(Config.ssh config) ~repo:opam in
-  let pages = Pages.v ~config ~voodoo:v_gen ~metadata_branch:metadata in
+  let metadata = Opam_metadata.v ~generation ~ssh ~repo:opam in
+  let pages = Pages.v ~generation ~config ~voodoo:v_gen ~metadata_branch:metadata in
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
@@ -200,14 +204,14 @@ let v ~config ~api ~opam () =
                        | _, Error (`Msg _) -> None
                        | pkg, (Error (`Active _) | Ok _) -> Some pkg)
                   |> function
-                  | [] -> Package.Blessed.empty opam
-                  | list -> Package.Blessed.v list))
+                  | [] -> Package.Blessing.Set.empty opam
+                  | list -> Package.Blessing.Set.v list))
   in
 
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node =
     let c, compile_node =
-      compile ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
+      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
     (c |> List.to_seq |> Package.Map.of_seq, compile_node)
@@ -217,21 +221,12 @@ let v ~config ~api ~opam () =
   let live_branch =
     Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:""
     @@
-    let epoch = Current.map (Epoch.v config) voodoo in
-    let branch =
-      let+ epoch = epoch in
-      "live-" ^ Epoch.digest epoch
-    in
-    let message = Current.map (Fmt.to_to_string Epoch.pp) epoch in
-
     let commits_tailwind =
       let+ pages_commits =
         Package.Map.bindings html
         |> List.map (fun (_, html_current) ->
                html_current
-               |> Current.map (fun t ->
-                      ( Html.package t |> Git_store.Branch.v,
-                        `Commit (Html.hashes t).html_tailwind_commit_hash ))
+               |> Current.map (fun t -> (Html.hashes t).html_tailwind_hash)
                |> Current.state ~hidden:true)
         |> Current.list_seq
         |> Current.map (List.filter_map Result.to_option)
@@ -242,20 +237,13 @@ let v ~config ~api ~opam () =
       Package.Map.bindings html
       |> List.map (fun (_, html_current) ->
              html_current
-             |> Current.map (fun t ->
-                    ( Html.package t |> Git_store.Branch.v,
-                      `Commit (Html.hashes t).html_classic_commit_hash ))
+             |> Current.map (fun t -> (Html.hashes t).html_classic_hash)
              |> Current.state ~hidden:true)
       |> Current.list_seq
       |> Current.map (List.filter_map Result.to_option)
     in
     Current.all
-      [
-        Live.publish ~ssh ~repository:Git_store.HtmlTailwind ~branch ~commits:commits_tailwind;
-        Live.set_live_to ~ssh ~repository:Git_store.HtmlTailwind ~branch ~message;
-        Live.publish ~ssh ~repository:Git_store.HtmlClassic ~branch ~commits:commits_classic;
-        Live.set_live_to ~ssh ~repository:Git_store.HtmlClassic ~branch ~message;
-      ]
+      [ commits_tailwind |> Current.ignore_value; commits_classic |> Current.ignore_value ]
   in
 
   (* 9) Report status *)
@@ -277,7 +265,8 @@ let v ~config ~api ~opam () =
            and+ compile = compile_job |> Current.state ~hidden:true
            and+ blessed = blessed in
            let blessed =
-             if Package.Blessed.is_blessed blessed package then Docs_ci_lib.Web.Status.Blessed
+             if Package.Blessing.Set.get blessed package = Blessed then
+               Docs_ci_lib.Web.Status.Blessed
              else Universe
            in
            match (prep, compile) with

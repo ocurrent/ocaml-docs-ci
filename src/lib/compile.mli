@@ -5,12 +5,7 @@ compiled dependencies. It uses `voodoo-do` to perform the compilation, link and 
 steps, outputting the results in the compile/ and html/ folders.  
 *)
 
-type hashes = {
-  compile_commit_hash : string;
-  compile_tree_hash : string;
-  linked_commit_hash : string;
-  linked_tree_hash : string;
-}
+type hashes = { compile_hash : string; linked_hash : string }
 
 type t
 (** A compiled package *)
@@ -18,24 +13,18 @@ type t
 val hashes : t -> hashes
 (** Hash of the compiled artifacts  *)
 
-val is_blessed : t -> bool
+val blessing : t -> Package.Blessing.t
 (** A blessed package is compiled in the compile/packages/... hierarchy, whereas a non-blessed 
  package is compiled in the compile/universes/... hierarchy *)
 
 val package : t -> Package.t
 (** The compiled package *)
 
-val folder : t -> Fpath.t
-(** 
-The location where the package is compiled: 
- - If blessed, it's packages/<name>/<version>/
- - If not, it's universes/<universe id>/<name>/<version>/ *)
-
 val v :
   config:Config.t ->
   name:string ->
   voodoo:Voodoo.Do.t Current.t ->
-  blessed:bool Current.t ->
+  blessing:Package.Blessing.t Current.t ->
   deps:t list Current.t ->
   Prep.t Current.t ->
   t Current.t

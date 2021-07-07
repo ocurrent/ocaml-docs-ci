@@ -18,17 +18,27 @@ and Package : sig
   and its dependency universe. *)
 end
 
-and Blessed : sig
-  type t
-  (** The structure containing which packages are blessed or not. A blessed package is a package
-  aimed to be built for the main documentation pages. *)
+and Blessing : sig
+  type t = Blessed | Universe
 
-  val empty : OpamPackage.t -> t
+  val is_blessed : t -> bool
 
-  val v : Package.t list -> t
-  (** Compute which packages are blessed. *)
+  val to_string : t -> string
 
-  val is_blessed : t -> Package.t -> bool
+  module Set : sig
+    type b = t
+
+    type t
+    (** The structure containing which packages are blessed or not. A blessed package is a package
+    aimed to be built for the main documentation pages. *)
+
+    val empty : OpamPackage.t -> t
+
+    val v : Package.t list -> t
+    (** Compute which packages are blessed. *)
+
+    val get : t -> Package.t -> b
+  end
 end
 
 type t = Package.t
@@ -55,6 +65,8 @@ val universe : t -> Universe.t
 val digest : t -> string
 
 val commit : t -> string
+
+val id : t -> string
 
 module Map : Map.S with type key = t
 

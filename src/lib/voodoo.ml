@@ -125,6 +125,14 @@ let remote_uri commit =
   let commit = Git.Commit_id.hash commit in
   repo ^ "#" ^ commit
 
+let digest t =
+  let key =
+    Fmt.str "%s\n%s\n%s\n%s\n"
+      (Git.Commit_id.hash t.voodoo_prep)
+      (Git.Commit_id.hash t.voodoo_do) (Git.Commit_id.hash t.voodoo_gen) (Config.odoc t.config)
+  in
+  Digest.(string key |> to_hex)
+
 module Prep = struct
   type voodoo = t
 

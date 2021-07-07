@@ -16,9 +16,9 @@ module Metadata = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = string
+    type t = Epoch.t
 
-    let digest v = Format.asprintf "metadata4-%s" v
+    let digest v = Fmt.str "metadata4-%s" (Epoch.digest v)
   end
 
   module Value = struct
@@ -27,13 +27,7 @@ module Metadata = struct
     let digest = Fmt.to_to_string Current_git.Commit.pp
   end
 
-  module Outcome = struct
-    type t = Git_store.Branch.t * [ `Commit of string ] [@@deriving yojson]
-
-    let marshal t = t |> to_yojson |> Yojson.Safe.to_string
-
-    let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
-  end
+  module Outcome = Current.String
 
   let pp fmt (_k, v) = Format.fprintf fmt "metadata-%a" Current_git.Commit.pp v
 
@@ -46,13 +40,23 @@ module Metadata = struct
     let content = Bos.OS.File.read path |> Result.get_ok in
     Digestif.SHA256.(digest_string content |> to_hex)
 
-  let initialize_state ~job ~ssh () =
-    if Bos.OS.Path.exists Fpath.(state_dir / ".git") |> Result.get_ok then Lwt.return_ok ()
-    else
-      Current.Process.exec ~cancellable:false ~job
-        ( "",
-          Git_store.Local.clone ~branch:"status" ~directory:state_dir HtmlTailwind ssh
-          |> Bos.Cmd.to_list |> Array.of_list )
+  let initialize_state ~generation ~job ~ssh () =
+    let port = Config.Ssh.port ssh in
+    let user = Config.Ssh.user ssh in
+    let privkeyfile = Config.Ssh.priv_key_file ssh in
+    let host = Config.Ssh.host ssh in
+    let root_folder = Config.Ssh.storage_folder ssh in
+    Current.Process.exec ~cancellable:false ~job
+      ( "",
+        Bos.Cmd.(
+          v "rsync" % "-avzR" % "--delete" % "-e"
+          % Fmt.str "ssh -p %d -i %a" port Fpath.pp privkeyfile
+          % Fmt.str "--rsync-path=mkdir -p %s/%a && rsync" root_folder Fpath.pp
+              (Storage.Base.folder (HtmlTailwind generation))
+          % Fmt.str "%s@%s:%s/./%a" user host root_folder Fpath.pp
+              (Storage.Base.folder (HtmlTailwind generation))
+          % Fmt.str "%a/./" Fpath.pp state_dir)
+        |> Bos.Cmd.to_list |> Array.of_list )
 
   let get_versions path =
     let open Rresult in
@@ -65,7 +69,7 @@ module Metadata = struct
     |> List.sort (fun (a, _) (b, _) -> OpamPackage.compare a b)
     |> List.rev
 
-  let write_state ~job ~repo =
+  let write_state ~generation ~job ~repo =
     let open Rresult in
     let open Lwt.Syntax in
     let open OpamPackage in
@@ -84,7 +88,12 @@ module Metadata = struct
     let* () =
       Lwt_stream.iter_s
         (fun (name, versions) ->
-          let dir = Fpath.(state_dir / "content" / "packages" / OpamPackage.Name.to_string name) in
+          let dir =
+            Fpath.(
+              state_dir
+              // Storage.Base.folder (HtmlTailwind generation)
+              / "packages" / OpamPackage.Name.to_string name)
+          in
           let file = Fpath.(dir / "package.json") in
           Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
           let* file = Lwt_io.open_file ~mode:Output (Fpath.to_string file) in
@@ -95,42 +104,61 @@ module Metadata = struct
     in
     Lwt.return (Ok ())
 
-  let publish { ssh } job _ v =
+  let send_state ~generation ~job ~ssh () =
+    let port = Config.Ssh.port ssh in
+    let user = Config.Ssh.user ssh in
+    let privkeyfile = Config.Ssh.priv_key_file ssh in
+    let host = Config.Ssh.host ssh in
+    let root_folder = Config.Ssh.storage_folder ssh in
+    Current.Process.exec ~cancellable:false ~job
+      ( "",
+        Bos.Cmd.(
+          v "rsync" % "-avzR" % "-e"
+          % Fmt.str "ssh -p %d -i %a" port Fpath.pp privkeyfile
+          % (Fpath.to_string state_dir ^ "/./")
+          % Fmt.str "%s@%s:%s" user host root_folder)
+        |> Bos.Cmd.to_list |> Array.of_list )
+
+  let hash_state ~job () =
+    let ( let** ) = Lwt_result.bind in
+    let** () =
+      Current.Process.exec ~cancellable:false ~job
+        ( "",
+          [|
+            "bash";
+            "-c";
+            Fmt.str "find %a -type f -name '*.json' -maxdepth 5 -exec sha256sum {} \\;" Fpath.pp
+              state_dir;
+          |] )
+    in
+    Current.Process.check_output ~cancellable:false ~job
+      ( "",
+        [|
+          "bash";
+          "-c";
+          Fmt.str
+            "find %a -type f -name '*.json' -maxdepth 5 -exec sha256sum {} \\; | sort | sha256sum"
+            Fpath.pp state_dir;
+        |] )
+
+  let publish { ssh } job generation v =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let switch = Current.Switch.create ~label:"sync" () in
     Lwt.finalize
       (fun () ->
         let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
-        let** () = initialize_state ~job ~ssh () in
-        let** () = write_state ~job ~repo:v in
-        let** () =
-          Current.Process.exec ~cancellable:true ~cwd:state_dir ~job
-            ( "",
-              [|
-                "bash";
-                "-c";
-                Fmt.str
-                  "git add --all && (git diff HEAD --exit-code --quiet || git commit -m 'update \
-                   status')";
-              |] )
-        in
-        let** () =
-          Current.Process.exec ~cancellable:true ~job
-            ("", Git_store.Local.push ~directory:state_dir ssh |> Bos.Cmd.to_list |> Array.of_list)
-        in
-        let** commit =
-          Current.Process.check_output ~cancellable:true ~cwd:state_dir ~job
-            ("", [| "git"; "rev-parse"; "HEAD" |])
-        in
-        Lwt.return_ok (Git_store.Branch.status, `Commit (commit |> String.trim)))
+        let** () = initialize_state ~generation ~job ~ssh () in
+        let** () = write_state ~generation ~job ~repo:v in
+        let** () = send_state ~generation ~job ~ssh () in
+        hash_state ~job ())
       (fun () -> Current.Switch.turn_off switch)
 end
 
 module MetadataCache = Current_cache.Output (Metadata)
 
-let v ~ssh ~(repo : Current_git.Commit.t Current.t) =
+let v ~ssh ~generation ~(repo : Current_git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "set-status"
-  |> let> repo = repo in
-     MetadataCache.set { ssh } "metadata" repo
+  |> let> repo = repo and> generation = generation in
+     MetadataCache.set { ssh } generation repo

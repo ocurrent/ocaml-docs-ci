@@ -16,13 +16,8 @@ let not_base x =
          "ocaml-base-compiler";
        ])
 
-let folder package =
-  let universe = Package.universe package |> Package.Universe.hash in
-  let opam = Package.opam package in
-  let name = OpamPackage.name_to_string opam in
-  let version = OpamPackage.version_to_string opam in
-  Fpath.(v "universes" / universe / name / version)
-
+(* association list from package to universes encoded as "<PKG>:<UNIVERSE HASH>,..."
+to be consumed by voodoo-prep *)
 let universes_assoc packages =
   packages
   |> List.map (fun pkg ->
@@ -33,7 +28,7 @@ let universes_assoc packages =
 
 let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
-  (* the list of packages to install *)
+  (* the list of packages to install (which is a superset of the packages to prep) *)
   let all_deps = Package.all_deps install in
   let packages_str =
     all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
@@ -60,6 +55,7 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
            | "dune" -> OpamPackage.Version.compare (OpamPackage.version opam) min_dune_version >= 0
            | _ -> false)
   in
+  (* split install in two phases, the first installs the build system to favor cache sharing *)
   let build_preinstall =
     List.filter
       (fun pkg ->
@@ -77,26 +73,15 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
         run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
   in
 
+  let prep_storage_folders = List.rev_map (fun p -> (Storage.Prep, p)) prep in
+
   let create_dir_and_copy_logs_if_not_exist =
-    let data =
-      List.rev_map
-        (fun package ->
-          let dir = Fpath.(v "prep/" // folder package |> to_string) in
-          let branch = Git_store.Branch.(v package |> to_string) in
-          dir ^ "," ^ branch)
-        prep
-      |> String.concat " "
-    in
     let command =
       Fmt.str "([ -d $1 ] && %s) || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1)"
         (Misc.tar_cmd (Fpath.v "$1"))
     in
-
-    Fmt.str "for DATA in %s; do IFS=\",\"; set -- $DATA; %s done" data command
+    Storage.for_all prep_storage_folders command
   in
-  let branches = List.rev_map (fun x -> Git_store.Branch.v x |> Git_store.Branch.to_string) prep in
-
-  let folders = List.rev_map (fun package -> folder package |> Fpath.to_string) prep in
 
   let tools = Voodoo.Prep.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
@@ -113,8 +98,7 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
          env "DUNE_CACHE" (if dune_cache_enabled then "enabled" else "disabled");
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
-         (* Intall packages: this might fail.
-            TODO: we could still do the prep step for the installed packages. *)
+         (* Intall packages. Recover in case of failure. *)
          run ~network ~cache
            "sudo apt update && ((opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to \
             install all packages')"
@@ -126,17 +110,13 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
          (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
          run "%s" create_dir_and_copy_logs_if_not_exist;
-         run ~network ~secrets:Config.Ssh.secrets
-           "for FOLDER in %s; do rsync -aR prep/./$FOLDER %s:%s/prep/.;  done"
-           (String.concat " " folders) (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+         run ~network ~secrets:Config.Ssh.secrets "%s"
+           (Storage.for_all prep_storage_folders
+              (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
+                 (Config.Ssh.storage_folder ssh)));
          (* Compute hashes *)
-         run
-           "for FOLDER_BRANCH in %s; do IFS=\",\"; set -- $FOLDER_BRANCH; HASH=$((sha256sum \
-            prep/$1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
-            \"HASHES:$2:$HASH:$HASH\\n\"; done"
-           ( List.combine folders branches
-           |> List.rev_map (fun (x, y) -> x ^ "," ^ y)
-           |> String.concat " " );
+         run "%s"
+           (Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES"));
        ]
 
 module Prep = struct
@@ -158,7 +138,7 @@ module Prep = struct
   let pp f Key.{ job = { install; _ }; _ } = Fmt.pf f "Voodoo prep %a" Package.pp install
 
   module Value = struct
-    type item = Git_store.branch_info [@@deriving yojson]
+    type item = Storage.id_hash [@@deriving yojson]
 
     type t = item list * string list [@@deriving yojson]
 
@@ -193,7 +173,7 @@ module Prep = struct
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
     (* extract result from logs *)
     let extract_hashes (git_hashes, failed) line =
-      match Git_store.parse_branch_info ~prefix:"HASHES" line with
+      match Storage.parse_hash ~prefix:"HASHES" line with
       | Some value -> (value :: git_hashes, failed)
       | None -> (
           match String.split_on_char ':' line with
@@ -206,8 +186,8 @@ module Prep = struct
     let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
     Lwt.return_ok
       ( List.map
-          (fun (r : Git_store.branch_info) ->
-            Current.Job.log job "%s -> commit %s / tree %s" r.branch r.commit_hash r.tree_hash;
+          (fun (r : Storage.id_hash) ->
+            Current.Job.log job "%s -> %s" r.id r.hash;
             r)
           git_hashes,
         failed )
@@ -215,11 +195,9 @@ end
 
 module PrepCache = Current_cache.Make (Prep)
 
-type t = { commit_hash : string; tree_hash : string; package : Package.t }
+type t = { hash : string; package : Package.t }
 
-let commit_hash t = t.commit_hash
-
-let tree_hash t = t.tree_hash
+let hash t = t.hash
 
 let package t = t.package
 
@@ -227,12 +205,10 @@ type prep_result = [ `Success of t | `Failed of t ]
 
 type prep = prep_result Package.Map.t
 
-let pp f t = Fmt.pf f "%s:%s" t.commit_hash t.tree_hash
+let pp f t = Fmt.pf f "%s:%s" (Package.id t.package) t.hash
 
 let compare a b =
-  match String.compare a.commit_hash b.commit_hash with
-  | 0 -> String.compare a.tree_hash b.tree_hash
-  | v -> v
+  match String.compare a.hash b.hash with 0 -> Package.compare a.package b.package | v -> v
 
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
@@ -241,19 +217,17 @@ let combine ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
   let packages = job.prep in
   let artifacts_branches_output =
     artifacts_branches_output |> List.to_seq
-    |> Seq.map (fun Git_store.{ branch; commit_hash; tree_hash } ->
-           (branch, (commit_hash, tree_hash)))
+    |> Seq.map (fun Storage.{ id; hash } -> (id, hash))
     |> StringMap.of_seq
   in
   let failed_branches = StringSet.of_list failed_branches in
   packages |> List.to_seq
   |> Seq.filter_map (fun package ->
-         let package_branch = Git_store.Branch.(to_string (v package)) in
-         match StringMap.find_opt package_branch artifacts_branches_output with
-         | Some (commit_hash, tree_hash) when StringSet.mem package_branch failed_branches ->
-             Some (package, `Failed { package; commit_hash; tree_hash })
-         | Some (commit_hash, tree_hash) ->
-             Some (package, `Success { package; commit_hash; tree_hash })
+         let package_id = Package.id package in
+         match StringMap.find_opt package_id artifacts_branches_output with
+         | Some hash when StringSet.mem package_id failed_branches ->
+             Some (package, `Failed { package; hash })
+         | Some hash -> Some (package, `Success { package; hash })
          | None -> None)
   |> Package.Map.of_seq
 

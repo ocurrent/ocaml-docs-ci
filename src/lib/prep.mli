@@ -1,9 +1,7 @@
 type t
 (** The type for a prepped package (build objects in a universe/package folder) *)
 
-val commit_hash : t -> string
-
-val tree_hash : t -> string
+val hash : t -> string
 
 val package : t -> Package.t
 
@@ -15,8 +13,6 @@ val extract : job:Jobs.t -> prep Current.t -> prep_result Current.t Package.Map.
 
 val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> Jobs.t -> prep Current.t
 (** Install a package universe, extract useful files and push obtained universes on git. *)
-
-val folder : Package.t -> Fpath.t
 
 val pp : t Fmt.t
 

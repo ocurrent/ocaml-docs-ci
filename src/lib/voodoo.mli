@@ -4,6 +4,8 @@ val v : Config.t -> t Current.t
 
 val cache : Obuilder_spec.Cache.t list
 
+val digest : t -> string
+
 module Prep : sig
   type voodoo = t
 
