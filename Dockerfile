@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:experimental
 FROM ocaml/opam:debian-ocaml-4.12 AS build
-RUN cd ~/opam-repository && git pull origin master && git reset --hard a147c4ecea9e6eaa71a0f3bc152d502695c569c4 && opam update
+RUN opam repo set-url default https://opam.ocaml.org && opam update
 COPY --chown=opam \
 	vendor/ocurrent/current_docker.opam \
 	vendor/ocurrent/current_github.opam \

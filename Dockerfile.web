@@ -1,5 +1,5 @@
 FROM ocaml/opam:debian-ocaml-4.11 AS build
-RUN cd ~/opam-repository && git pull origin master && git reset --hard 1ce065bc0cbef7bc06effcd3865af0d430c6273b && opam update
+RUN opam repo set-url default https://opam.ocaml.org && opam update
 WORKDIR /src
 COPY --chown=opam docs-ci-web.opam /src/
 RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam

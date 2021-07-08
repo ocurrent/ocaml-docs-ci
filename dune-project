@@ -55,5 +55,4 @@
    (>= 3.7.0))
   (omd
    (>= 2.0.0~alpha))
-  (graphql_ppx
-   (>= 1.0.1))))
+  opam-format))
