@@ -36,12 +36,6 @@
    (>= 4.08.0))))
 
 (package
- (name docs-ci-tools)
- (synopsis "Tools")
- (description "")
- (depends cmdliner git-unix httpaf-lwt-unix inotify conf-libev))
-
-(package
  (name docs-ci-web)
  (synopsis "A frontend for the docs CI")
  (description "")

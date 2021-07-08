@@ -1,5 +1,0 @@
-(executable
- (name server)
- (package docs-ci-tools)
- (public_name githttpserver)
- (libraries git-unix git httpaf-lwt-unix cmdliner inotify.lwt))

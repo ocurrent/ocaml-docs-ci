@@ -1,7 +1,7 @@
 module Base = struct
   type repository = HtmlTailwind of Epoch.t | HtmlClassic of Epoch.t | Linked | Compile | Prep
 
-  let generation_folder generation = Fpath.(v ("g-" ^ Epoch.digest generation))
+  let generation_folder generation = Fpath.(v ("html-g-" ^ Epoch.digest generation))
 
   let folder = function
     | HtmlTailwind generation -> Fpath.(generation_folder generation / "html-tailwind")

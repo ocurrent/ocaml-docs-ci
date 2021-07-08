@@ -242,8 +242,9 @@ let v ~config ~api ~opam () =
       |> Current.list_seq
       |> Current.map (List.filter_map Result.to_option)
     in
+    let live = Live.set_to ~ssh generation in
     Current.all
-      [ commits_tailwind |> Current.ignore_value; commits_classic |> Current.ignore_value ]
+      [ commits_tailwind |> Current.ignore_value; commits_classic |> Current.ignore_value; live ]
   in
 
   (* 9) Report status *)

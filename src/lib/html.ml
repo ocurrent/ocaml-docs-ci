@@ -8,14 +8,6 @@ let blessing t = t.blessing
 
 let package t = t.package
 
-let base_folder ~blessed package =
-  let universe = Package.universe package |> Package.Universe.hash in
-  let opam = Package.opam package in
-  let name = OpamPackage.name_to_string opam in
-  let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "packages" / name / version)
-  else Fpath.(v "universes" / universe / name / version)
-
 let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
   let open Obuilder_spec in
   let package = Compile.package compiled in

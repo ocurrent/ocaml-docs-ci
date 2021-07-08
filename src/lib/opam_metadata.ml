@@ -104,7 +104,7 @@ module Metadata = struct
     in
     Lwt.return (Ok ())
 
-  let send_state ~generation ~job ~ssh () =
+  let send_state ~job ~ssh () =
     let port = Config.Ssh.port ssh in
     let user = Config.Ssh.user ssh in
     let privkeyfile = Config.Ssh.priv_key_file ssh in
@@ -150,7 +150,7 @@ module Metadata = struct
         let* () = Current.Job.start_with ~pool:sync_pool ~level:Mostly_harmless job in
         let** () = initialize_state ~generation ~job ~ssh () in
         let** () = write_state ~generation ~job ~repo:v in
-        let** () = send_state ~generation ~job ~ssh () in
+        let** () = send_state ~job ~ssh () in
         hash_state ~job ())
       (fun () -> Current.Switch.turn_off switch)
 end

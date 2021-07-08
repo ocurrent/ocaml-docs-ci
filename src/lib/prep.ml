@@ -26,7 +26,7 @@ let universes_assoc packages =
          name ^ ":" ^ hash)
   |> String.concat ","
 
-let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
+let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let open Obuilder_spec in
   (* the list of packages to install (which is a superset of the packages to prep) *)
   let all_deps = Package.all_deps install in
@@ -115,8 +115,7 @@ let spec ~ssh ~message ~voodoo ~base ~(install : Package.t) (prep : Package.t li
               (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
                  (Config.Ssh.storage_folder ssh)));
          (* Compute hashes *)
-         run "%s"
-           (Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES"));
+         run "%s" (Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES"));
        ]
 
 module Prep = struct
@@ -147,7 +146,7 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build No_context job (Key.{ job = { install; prep }; voodoo; config } as key) =
+  let build No_context job Key.{ job = { install; prep }; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
@@ -156,8 +155,7 @@ module Prep = struct
        For now we rebuild only if voodoo-prep changes.
     *)
     let base = Misc.get_base_image install in
-    let message = Fmt.str "Update\n\n%s" (Key.digest key) in
-    let spec = spec ~ssh:(Config.ssh config) ~message ~voodoo ~base ~install prep in
+    let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~install prep in
     let action = Misc.to_ocluster_submission spec in
     let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
     let version = Misc.base_image_version install in

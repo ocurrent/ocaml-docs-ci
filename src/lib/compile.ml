@@ -14,8 +14,6 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing prep =
   let prep_folder = Storage.folder Prep package in
   let compile_folder = Storage.folder (Compile blessing) package in
   let linked_folder = Storage.folder (Linked blessing) package in
-  let id = Package.id package in
-
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
@@ -105,17 +103,6 @@ module Compile = struct
   let pp f Key.{ prep; _ } = Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
 
   let auto_cancel = true
-
-  let remote_cache_key Key.{ voodoo; prep; deps; config; _ } =
-    (* When this key changes, the remote artifacts will be invalidated. *)
-    let deps_digest =
-      Fmt.to_to_string
-        Fmt.(list (fun f { hashes = { compile_hash; _ }; _ } -> Fmt.pf f "%s" compile_hash))
-        deps
-      |> Digest.string |> Digest.to_hex
-    in
-    Fmt.str "voodoo-compile-v2-%s-%s-%s-%s" (Prep.hash prep) deps_digest (Voodoo.Do.digest voodoo)
-      (Config.odoc config |> Digest.string |> Digest.to_hex)
 
   let build No_context job Key.{ deps; prep; blessing; voodoo; config } =
     let open Lwt.Syntax in
