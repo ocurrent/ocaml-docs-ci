@@ -100,20 +100,30 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          env "DUNE_CACHE_TRANSPORT" "direct";
          env "DUNE_CACHE_DUPLICATION" "copy";
          (* Intall packages. Recover in case of failure. *)
-         run ~network ~cache
-           "sudo apt update && ((opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to \
-            install all packages')"
-           packages_str;
+         run ~network ~cache "%s"
+         @@ Misc.Cmd.list
+              [
+                "sudo apt update";
+                Fmt.str
+                  "(opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to install all \
+                   packages'"
+                  packages_str;
+              ];
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
-         run ~network ~secrets:Config.Ssh.secrets "echo '%f' && (%s) && (%s)" (Random.float 1.)
-           create_dir_and_copy_logs_if_not_exist
-           (Storage.for_all prep_storage_folders
-              (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
-                 (Config.Ssh.storage_folder ssh)));
-         (* Compute hashes *)
-         run "%s" (Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES"));
+         run ~network ~secrets:Config.Ssh.secrets "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "echo '%f'" (Random.float 1.);
+                create_dir_and_copy_logs_if_not_exist;
+                (* Extract *)
+                Storage.for_all prep_storage_folders
+                  (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
+                     (Config.Ssh.storage_folder ssh));
+                (* Compute hashes *)
+                Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES");
+              ];
        ]
 
 module Prep = struct

@@ -113,3 +113,11 @@ let tar_cmd folder =
     "shopt -s nullglob && ((tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar %s/content.tar) || \
      (echo 'Empty directory'))"
     f f f f f
+
+module Cmd = struct
+  let tar = tar_cmd
+
+  let list =
+    let open Fmt in
+    to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
+end

@@ -27,38 +27,53 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing prep =
            [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
-         (* obtain the compiled dependencies *)
+         (* obtain the compiled dependencies, prep folder and extract it *)
          run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
-           (Storage.for_all
-              ( deps
-              |> List.rev_map (fun { blessing; package; _ } -> (Storage.Compile blessing, package))
-              )
-              (Fmt.str "rsync -aR %s:%s/./$1 .;" (Config.Ssh.host ssh)
-                 (Config.Ssh.storage_folder ssh)));
-         (* obtain the prep folder and extract it *)
-         run ~network:Misc.network ~secrets:Config.Ssh.secrets
-           "rsync -aR %s:%s/./%s . && find . -name '*.tar' -exec tar -xvf {} \\;"
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
+         @@ Misc.Cmd.list
+              [
+                Storage.for_all
+                  ( deps
+                  |> List.rev_map (fun { blessing; package; _ } ->
+                         (Storage.Compile blessing, package)) )
+                  (Fmt.str "rsync -aR %s:%s/./$1 .;" (Config.Ssh.host ssh)
+                     (Config.Ssh.storage_folder ssh));
+                Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
+                  (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
+                Fmt.str "find . -name '*.tar' -exec tar -xvf {} \\;";
+              ];
          (* prepare the compilation folder *)
-         run
-           "%s && rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
-            compile/packages/*.odoc compile/packages/%s/*.odoc"
-           (Fmt.str "mkdir -p %a" Fpath.pp compile_folder)
-           name;
+         run "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
+                Fmt.str
+                  "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
+                   compile/packages/*.odoc compile/packages/%s/*.odoc"
+                  name;
+              ];
          (* Run voodoo-do && tar compile/linked output *)
-         run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s && %s && %s && %s" name
-           (match blessing with Blessed -> "-b" | Universe -> "")
-           (Fmt.str "mkdir -p %a" Fpath.pp linked_folder)
-           (Misc.tar_cmd compile_folder) (Misc.tar_cmd linked_folder);
+         run "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s " name
+                  (match blessing with Blessed -> "-b" | Universe -> "");
+                Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+                Misc.tar_cmd compile_folder;
+                Misc.tar_cmd linked_folder;
+              ];
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
-         run ~network:Misc.network ~secrets:Config.Ssh.secrets
-           "echo '%f' && (rsync -aR ./%s ./%s %s:%s/.) && (set '%s'; %s) && (set '%s'; %s)"
-           (Random.float 1.) (Fpath.to_string compile_folder)
-           Fpath.(to_string (parent linked_folder))
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string compile_folder)
-           (Storage.Tar.hash_command ~prefix:"COMPILE")
-           (Fpath.to_string linked_folder)
-           (Storage.Tar.hash_command ~prefix:"LINKED");
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "echo '%f'" (Random.float 1.);
+                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string compile_folder)
+                  Fpath.(to_string (parent linked_folder))
+                  (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+                Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
+                  (Storage.Tar.hash_command ~prefix:"COMPILE");
+                Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
+                  (Storage.Tar.hash_command ~prefix:"LINKED");
+              ];
        ]
 
 let or_default a = function None -> a | b -> b
