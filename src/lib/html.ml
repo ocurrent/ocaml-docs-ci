@@ -25,19 +25,19 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
          run "sudo chown opam:opam . ";
          (* obtain the linked folder *)
          run ~network:Misc.network ~secrets:Config.Ssh.secrets
-           "rsync -aR %s:%s/./%s %s:%s/./%s/page-%s.odocl ." (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh) (Fpath.to_string linked_folder) (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh)
+           "rsync -aR %s:%s/./%s %s:%s/./%s/page-%s.odocl . && find . -name '*.tar' -exec tar -xvf \
+            {} \\; && find . -type d -empty -delete"
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string linked_folder)
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh)
            Fpath.(to_string (parent linked_folder))
            (Package.opam package |> OpamPackage.version_to_string);
-         run "find . -name '*.tar' -exec tar -xvf {} \\;";
-         run "find . -type d -empty -delete";
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
            [ "/home/opam/odoc"; "/home/opam/voodoo-gen" ]
            ~dst:"/home/opam/";
-         run "mv ~/odoc $(opam config var bin)/odoc";
-         run "cp ~/voodoo-gen $(opam config var bin)/voodoo-gen";
+         run
+           "mv ~/odoc $(opam config var bin)/odoc && cp ~/voodoo-gen $(opam config var \
+            bin)/voodoo-gen";
          (* Run voodoo-gen *)
          run
            "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o %s -n %s --pkg-version %s"
@@ -47,17 +47,16 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
            "opam exec -- bash -c 'for i in $(find linked -name *.odocl); do odoc html-generate $i \
             -o %s; done'"
            (Fpath.to_string (Storage.Base.folder (HtmlClassic generation)));
-         run "%s" @@ Fmt.str "mkdir -p %a %a" Fpath.pp tailwind_folder Fpath.pp classic_folder;
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
-         run "echo '%f'" (Random.float 1.);
          (* Extract tailwind and html output *)
-         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR ./%s ./%s %s:%s/."
-           (Fpath.to_string tailwind_folder) (Fpath.to_string classic_folder) (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh);
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
+         @@ Fmt.str "echo '%f' && mkdir -p %a %a && rsync -aR ./%s ./%s %s:%s/." (Random.float 1.)
+              Fpath.pp tailwind_folder Fpath.pp classic_folder (Fpath.to_string tailwind_folder)
+              (Fpath.to_string classic_folder) (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
          (* Print hashes *)
-         run "set '%s' tailwind; %s" (Fpath.to_string tailwind_folder)
-           (Storage.hash_command ~prefix:"TAILWIND");
-         run "set '%s' classic; %s" (Fpath.to_string classic_folder)
+         run "(set '%s' tailwind; %s) && (set '%s' classic; %s)" (Fpath.to_string tailwind_folder)
+           (Storage.hash_command ~prefix:"TAILWIND")
+           (Fpath.to_string classic_folder)
            (Storage.hash_command ~prefix:"CLASSIC");
        ]
 
