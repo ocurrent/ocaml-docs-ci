@@ -92,6 +92,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
          run "opam repo remove default && opam repo add opam /src";
+         copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Pre-install build tools *)
          build_preinstall;
          (* Enable build cache conditionally on dune version *)
@@ -103,14 +104,11 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
            "sudo apt update && ((opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to \
             install all packages')"
            packages_str;
-         run ~cache "du -sh /home/opam/.cache/dune";
-         copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Perform the prep step for all packages *)
          run "opam exec -- ~/voodoo-prep -u %s" (universes_assoc prep);
          (* Extract artifacts  - cache needs to be invalidated if we want to be able to read the logs *)
-         run "echo '%f'" (Random.float 1.);
-         run "%s" create_dir_and_copy_logs_if_not_exist;
-         run ~network ~secrets:Config.Ssh.secrets "%s"
+         run ~network ~secrets:Config.Ssh.secrets "echo '%f' && (%s) && (%s)" (Random.float 1.)
+           create_dir_and_copy_logs_if_not_exist
            (Storage.for_all prep_storage_folders
               (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
                  (Config.Ssh.storage_folder ssh)));

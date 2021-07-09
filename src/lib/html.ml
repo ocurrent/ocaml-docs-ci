@@ -23,6 +23,13 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
        [
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
+         (* Import odoc and voodoo-do *)
+         copy ~from:(`Build "tools")
+           [ "/home/opam/odoc"; "/home/opam/voodoo-gen" ]
+           ~dst:"/home/opam/";
+         run
+           "mv ~/odoc $(opam config var bin)/odoc && cp ~/voodoo-gen $(opam config var \
+            bin)/voodoo-gen";
          (* obtain the linked folder *)
          run ~network:Misc.network ~secrets:Config.Ssh.secrets
            "rsync -aR %s:%s/./%s %s:%s/./%s/page-%s.odocl . && find . -name '*.tar' -exec tar -xvf \
@@ -31,13 +38,6 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh)
            Fpath.(to_string (parent linked_folder))
            (Package.opam package |> OpamPackage.version_to_string);
-         (* Import odoc and voodoo-do *)
-         copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-gen" ]
-           ~dst:"/home/opam/";
-         run
-           "mv ~/odoc $(opam config var bin)/odoc && cp ~/voodoo-gen $(opam config var \
-            bin)/voodoo-gen";
          (* Run voodoo-gen *)
          run
            "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o %s -n %s --pkg-version %s"

@@ -22,6 +22,11 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing prep =
        [
          workdir "/home/opam/docs/";
          run "sudo chown opam:opam . ";
+         (* Import odoc and voodoo-do *)
+         copy ~from:(`Build "tools")
+           [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
+           ~dst:"/home/opam/";
+         run "mv ~/odoc $(opam config var bin)/odoc";
          (* obtain the compiled dependencies *)
          run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
            (Storage.for_all
@@ -30,36 +35,29 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing prep =
               )
               (Fmt.str "rsync -aR %s:%s/./$1 .;" (Config.Ssh.host ssh)
                  (Config.Ssh.storage_folder ssh)));
-         (* obtain the prep folder *)
-         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR %s:%s/./%s ."
+         (* obtain the prep folder and extract it *)
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets
+           "rsync -aR %s:%s/./%s . && find . -name '*.tar' -exec tar -xvf {} \\;"
            (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
-         run "find . -name '*.tar' -exec tar -xvf {} \\;";
          (* prepare the compilation folder *)
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
          run
-           "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
-            compile/packages/*.odoc";
-         run "rm -f compile/packages/%s/*.odoc" name;
-         (* Import odoc and voodoo-do *)
-         copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
-           ~dst:"/home/opam/";
-         run "mv ~/odoc $(opam config var bin)/odoc";
-         (* Run voodoo-do *)
-         run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s" name
-           (match blessing with Blessed -> "-b" | Universe -> "");
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
-         (* tar compile/linked output *)
-         run "%s && %s" (Misc.tar_cmd compile_folder) (Misc.tar_cmd linked_folder);
+           "%s && rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
+            compile/packages/*.odoc compile/packages/%s/*.odoc"
+           (Fmt.str "mkdir -p %a" Fpath.pp compile_folder)
+           name;
+         (* Run voodoo-do && tar compile/linked output *)
+         run "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s && %s && %s && %s" name
+           (match blessing with Blessed -> "-b" | Universe -> "")
+           (Fmt.str "mkdir -p %a" Fpath.pp linked_folder)
+           (Misc.tar_cmd compile_folder) (Misc.tar_cmd linked_folder);
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
-         run "echo '%f'" (Random.float 1.);
-         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR ./%s ./%s %s:%s/."
-           (Fpath.to_string compile_folder)
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets
+           "echo '%f' && (rsync -aR ./%s ./%s %s:%s/.) && (set '%s'; %s) && (set '%s'; %s)"
+           (Random.float 1.) (Fpath.to_string compile_folder)
            Fpath.(to_string (parent linked_folder))
-           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
-         run "set '%s'; %s" (Fpath.to_string compile_folder)
-           (Storage.Tar.hash_command ~prefix:"COMPILE");
-         run "set '%s'; %s" (Fpath.to_string linked_folder)
+           (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string compile_folder)
+           (Storage.Tar.hash_command ~prefix:"COMPILE")
+           (Fpath.to_string linked_folder)
            (Storage.Tar.hash_command ~prefix:"LINKED");
        ]
 
