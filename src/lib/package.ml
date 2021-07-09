@@ -41,6 +41,8 @@ and Package : sig
 
   val digest : t -> string
 
+  val id : t -> string
+
   val pp : t Fmt.t
 
   val compare : t -> t -> int
@@ -62,7 +64,9 @@ end = struct
 
   let commit t = t.commit
 
-  let digest t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
+  let id t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
+
+  let digest = id
 
   let v opam deps commit = { opam; universe = Universe.v deps; commit }
 
@@ -102,44 +106,66 @@ end = struct
     obtain root |> Option.get
 end
 
-and Blessed : sig
-  type t
+and Blessing : sig
+  type t = Blessed | Universe
 
-  val v : Package.t list -> t
+  val is_blessed : t -> bool
 
-  val empty: OpamPackage.t -> t
+  val to_string : t -> string
 
-  val is_blessed : t -> Package.t -> bool
+  module Set : sig
+    type b = t
+
+    type t
+
+    val empty : OpamPackage.t -> t
+
+    val v : Package.t list -> t
+
+    val get : t -> Package.t -> b
+  end
 end = struct
-  module StringSet = Set.Make (String)
+  type t = Blessed | Universe
 
-  type t = { opam : OpamPackage.t; universe : string }
+  let is_blessed t = t = Blessed
 
-  let universe_size u = Universe.deps u |> List.length
+  let of_bool t = if t then Blessed else Universe
 
-  let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
+  let to_string = function Blessed -> "blessed" | Universe -> "universe"
 
-  let v (packages : Package.t list) : t =
-    assert (packages <> []);
-    let first_package = List.hd packages in
-    let opam = first_package |> Package.opam in
-    let first_universe = first_package |> Package.universe in
-    let best_universe, _ =
-      List.fold_left
-        (fun (cur_best_universe, cur_best_universe_size) new_package ->
-          assert (Package.opam new_package = opam);
-          let new_universe = Package.universe new_package in
-          let size = universe_size new_universe in
-          if size > cur_best_universe_size then (new_universe, size)
-          else (cur_best_universe, cur_best_universe_size))
-        (first_universe, universe_size first_universe)
-        (List.tl packages)
-    in
-    { opam; universe = Universe.hash best_universe }
+  module Set = struct
+    type b = t
 
-  let is_blessed { opam; universe } pkg =
-    assert (Package.opam pkg = opam);
-    Universe.hash (Package.universe pkg) = universe
+    module StringSet = Set.Make (String)
+
+    type t = { opam : OpamPackage.t; universe : string }
+
+    let universe_size u = Universe.deps u |> List.length
+
+    let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
+
+    let v (packages : Package.t list) : t =
+      assert (packages <> []);
+      let first_package = List.hd packages in
+      let opam = first_package |> Package.opam in
+      let first_universe = first_package |> Package.universe in
+      let best_universe, _ =
+        List.fold_left
+          (fun (cur_best_universe, cur_best_universe_size) new_package ->
+            assert (Package.opam new_package = opam);
+            let new_universe = Package.universe new_package in
+            let size = universe_size new_universe in
+            if size > cur_best_universe_size then (new_universe, size)
+            else (cur_best_universe, cur_best_universe_size))
+          (first_universe, universe_size first_universe)
+          (List.tl packages)
+      in
+      { opam; universe = Universe.hash best_universe }
+
+    let get { opam; universe } pkg =
+      assert (Package.opam pkg = opam);
+      of_bool (Universe.hash (Package.universe pkg) = universe)
+  end
 end
 
 include Package

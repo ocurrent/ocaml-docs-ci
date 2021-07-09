@@ -57,23 +57,13 @@ services:
       - 'ssh-credentials:/root/.ssh/'
       - 'docs-data:/data'
 
-  git-http:
-    build:
-      dockerfile: docker/git-http/Dockerfile
-      context: .
-    ports:
-      - "8001:80"
-    volumes:
-      - "docs-data:/var/lib/git/repos/"
-
   git-http-classic-website:
     restart: on-failure    
-    build:
-      dockerfile: docker/git-http-website/Dockerfile
-      context: .
-    command:
-      - --repo=/data/git/html-classic
-      - --addr=0.0.0.0
+    image: nginx
+    command: >
+      bash -c "rm -rf /usr/share/nginx/html
+      && ln -s /data/live/html-classic /usr/share/nginx/html
+      && nginx -g 'daemon off;'"
     ports:
         - "8000:8000"
     volumes:
@@ -81,12 +71,11 @@ services:
 
   git-http-tailwind-website:
     restart: on-failure    
-    build:
-      dockerfile: docker/git-http-website/Dockerfile
-      context: .
-    command:
-      - --repo=/data/git/html-tailwind
-      - --addr=0.0.0.0
+    image: nginx
+    command: >
+      bash -c "rm -rf /usr/share/nginx/html
+      && ln -s /data/live/html-tailwind /usr/share/nginx/html
+      && nginx -g 'daemon off;'"
     ports:
         - "8002:8000"
     volumes:

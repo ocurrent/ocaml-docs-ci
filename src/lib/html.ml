@@ -1,42 +1,22 @@
-type hashes = {
-  html_tailwind_commit_hash : string;
-  html_tailwind_tree_hash : string;
-  html_classic_commit_hash : string;
-  html_classic_tree_hash : string;
-}
-[@@deriving yojson]
+type hashes = { html_tailwind_hash : string; html_classic_hash : string } [@@deriving yojson]
 
-type t = { package : Package.t; blessed : bool; hashes : hashes }
+type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
 
 let hashes t = t.hashes
 
-let is_blessed t = t.blessed
+let blessing t = t.blessing
 
 let package t = t.package
 
-let base_folder ~blessed package =
-  let universe = Package.universe package |> Package.Universe.hash in
-  let opam = Package.opam package in
-  let name = OpamPackage.name_to_string opam in
-  let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "packages" / name / version)
-  else Fpath.(v "universes" / universe / name / version)
-
-let tailwind_folder ~blessed package = Fpath.(v "tailwind" // base_folder ~blessed package)
-
-let classic_folder ~blessed package = Fpath.(v "html" // base_folder ~blessed package)
-
-let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
+let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
   let open Obuilder_spec in
   let package = Compile.package compiled in
-  let folder = Compile.folder compiled in
-  let tailwind_folder = tailwind_folder ~blessed package in
-  let classic_folder = classic_folder ~blessed package in
-  let branch = Git_store.Branch.v package in
+  let linked_folder = Storage.folder (Linked blessed) package in
+  let tailwind_folder = Storage.folder (HtmlTailwind (generation, blessed)) package in
+  let classic_folder = Storage.folder (HtmlClassic (generation, blessed)) package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let version = opam |> OpamPackage.version_to_string in
-  let message = Fmt.str "docs ci update %s\n\n%s" (Fmt.to_to_string Package.pp package) cache_key in
   let tools = Voodoo.Gen.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
@@ -45,10 +25,10 @@ let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
          run "sudo chown opam:opam . ";
          (* obtain the linked folder *)
          run ~network:Misc.network ~secrets:Config.Ssh.secrets
-           "rsync -aR %s:%s/./linked/%s %s:%s/./linked/%s/page-%s.odocl ." (Config.Ssh.host ssh)
-           (Config.Ssh.storage_folder ssh) (Fpath.to_string folder) (Config.Ssh.host ssh)
+           "rsync -aR %s:%s/./%s %s:%s/./%s/page-%s.odocl ." (Config.Ssh.host ssh)
+           (Config.Ssh.storage_folder ssh) (Fpath.to_string linked_folder) (Config.Ssh.host ssh)
            (Config.Ssh.storage_folder ssh)
-           Fpath.(to_string (parent folder))
+           Fpath.(to_string (parent linked_folder))
            (Package.opam package |> OpamPackage.version_to_string);
          run "find . -name '*.tar' -exec tar -xvf {} \\;";
          run "find . -type d -empty -delete";
@@ -58,34 +38,33 @@ let spec ~ssh ~cache_key ~base ~voodoo ~blessed compiled =
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
          run "cp ~/voodoo-gen $(opam config var bin)/voodoo-gen";
-         (* Run voodoo-do *)
+         (* Run voodoo-gen *)
          run
-           "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o tailwind -n %s \
-            --pkg-version %s"
+           "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o %s -n %s --pkg-version %s"
+           (Fpath.to_string (Storage.Base.folder (HtmlTailwind generation)))
            name version;
          run
            "opam exec -- bash -c 'for i in $(find linked -name *.odocl); do odoc html-generate $i \
-            -o html; done'";
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp tailwind_folder;
-         run "%s" @@ Fmt.str "mkdir -p %a" Fpath.pp classic_folder;
+            -o %s; done'"
+           (Fpath.to_string (Storage.Base.folder (HtmlClassic generation)));
+         run "%s" @@ Fmt.str "mkdir -p %a %a" Fpath.pp tailwind_folder Fpath.pp classic_folder;
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
          run "echo '%f'" (Random.float 1.);
-         (* Extract html/tailwind output *)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlTailwind ~ssh ~branch
-           ~folder:"tailwind" ~message ~git_path:"/tmp/git-html-tailwind";
-         (* Extract html output*)
-         Git_store.Cluster.write_folder_to_git ~repository:HtmlClassic ~ssh ~branch ~folder:"html"
-           ~message ~git_path:"/tmp/git-html-classic";
-         run "cd /tmp/git-html-tailwind && %s"
-           (Git_store.print_branches_info ~prefix:"TAILWIND" ~branches:[ branch ]);
-         run "cd /tmp/git-html-classic && %s"
-           (Git_store.print_branches_info ~prefix:"HTML" ~branches:[ branch ]);
+         (* Extract tailwind and html output *)
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "rsync -aR ./%s ./%s %s:%s/."
+           (Fpath.to_string tailwind_folder) (Fpath.to_string classic_folder) (Config.Ssh.host ssh)
+           (Config.Ssh.storage_folder ssh);
+         (* Print hashes *)
+         run "set '%s' tailwind; %s" (Fpath.to_string tailwind_folder)
+           (Storage.hash_command ~prefix:"TAILWIND");
+         run "set '%s' classic; %s" (Fpath.to_string classic_folder)
+           (Storage.hash_command ~prefix:"CLASSIC");
        ]
 
 let or_default a = function None -> a | b -> b
 
 module Gen = struct
-  type t = No_context
+  type t = Epoch.t
 
   let id = "voodoo-gen"
 
@@ -101,9 +80,9 @@ module Gen = struct
     type t = { config : Config.t; compile : Compile.t; voodoo : Voodoo.Gen.t }
 
     let key { config; compile; voodoo } =
-      Fmt.str "v4-%s-%s-%s-%s"
+      Fmt.str "v6-%s-%s-%s-%s"
         (Compile.package compile |> Package.digest)
-        (Compile.hashes compile).linked_tree_hash (Voodoo.Gen.digest voodoo) (Config.odoc config)
+        (Compile.hashes compile).linked_hash (Voodoo.Gen.digest voodoo) (Config.odoc config)
 
     let digest t = key t |> Digest.string |> Digest.to_hex
   end
@@ -112,20 +91,13 @@ module Gen = struct
 
   let auto_cancel = true
 
-  let remote_cache_key Key.{ voodoo; compile; config; _ } =
-    Fmt.str "voodoo-gen-v0-%s-%s-%s-%s"
-      (Compile.package compile |> Package.digest)
-      (Compile.hashes compile).linked_tree_hash (Voodoo.Gen.digest voodoo)
-      (Config.odoc config |> Digest.string |> Digest.to_hex)
-
-  let build No_context job (Key.{ compile; voodoo; config } as key) =
+  let build generation job (Key.{ compile; voodoo; config } as key) =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
-    let blessed = Compile.is_blessed compile in
-    let cache_key = remote_cache_key key in
+    let blessed = Compile.blessing compile in
     Current.Job.log job "Cache digest: %s" (Key.key key);
     let spec =
-      spec ~ssh:(Config.ssh config) ~cache_key ~voodoo ~base:Misc.default_base_image ~blessed
+      spec ~ssh:(Config.ssh config) ~generation ~voodoo ~base:Misc.default_base_image ~blessed
         compile
     in
     let action = Misc.to_ocluster_submission spec in
@@ -142,35 +114,27 @@ module Gen = struct
     let extract_hashes (v_html_tailwind, v_html_classic) line =
       (* some early stopping could be done here *)
       let html_tailwind =
-        Git_store.parse_branch_info ~prefix:"TAILWIND" line |> or_default v_html_tailwind
+        Storage.parse_hash ~prefix:"TAILWIND" line |> or_default v_html_tailwind
       in
-      let html_classic =
-        Git_store.parse_branch_info ~prefix:"HTML" line |> or_default v_html_classic
-      in
+      let html_classic = Storage.parse_hash ~prefix:"CLASSIC" line |> or_default v_html_classic in
       (html_tailwind, html_classic)
     in
     let** html_tailwind, html_classic = Misc.fold_logs build_job extract_hashes (None, None) in
     try
       let html_tailwind = Option.get html_tailwind in
       let html_classic = Option.get html_classic in
-
       Lwt.return_ok
-        {
-          html_tailwind_commit_hash = html_tailwind.commit_hash;
-          html_tailwind_tree_hash = html_tailwind.tree_hash;
-          html_classic_commit_hash = html_classic.commit_hash;
-          html_classic_tree_hash = html_classic.tree_hash;
-        }
+        { html_tailwind_hash = html_tailwind.hash; html_classic_hash = html_classic.hash }
     with Invalid_argument _ -> Lwt.return_error (`Msg "Gen: failed to parse output")
 end
 
 module GenCache = Current_cache.Make (Gen)
 
-let v ~config ~name ~voodoo compile =
+let v ~generation ~config ~name ~voodoo compile =
   let open Current.Syntax in
   Current.component "html %s" name
-  |> let> compile = compile and> voodoo = voodoo in
-     let blessed = Compile.is_blessed compile in
+  |> let> compile = compile and> voodoo = voodoo and> generation = generation in
+     let blessing = Compile.blessing compile in
      let package = Compile.package compile in
-     let output = GenCache.get No_context Gen.Key.{ compile; voodoo; config } in
-     Current.Primitive.map_result (Result.map (fun hashes -> { package; blessed; hashes })) output
+     let output = GenCache.get generation Gen.Key.{ compile; voodoo; config } in
+     Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output
