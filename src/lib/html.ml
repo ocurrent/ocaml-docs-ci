@@ -43,6 +43,7 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
                 "find . -type d -empty -delete";
               ];
          (* Run voodoo-gen *)
+         workdir (Fpath.to_string (Storage.Base.generation_folder `Linked generation));
          run
            "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o %s -n %s --pkg-version %s"
            (Fpath.to_string (Storage.Base.folder (HtmlTailwind generation)))

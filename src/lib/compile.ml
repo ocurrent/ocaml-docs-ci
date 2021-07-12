@@ -57,8 +57,12 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
               [
                 Fmt.str "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s " name
                   (match blessing with Blessed -> "-b" | Universe -> "");
-                Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
                 Misc.tar_cmd compile_folder;
+                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/" Fpath.pp
+                  (Storage.Base.generation_folder `Linked generation)
+                  Fpath.pp
+                  (Storage.Base.generation_folder `Linked generation);
+                Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
                 Misc.tar_cmd linked_folder;
               ];
          (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
@@ -103,7 +107,7 @@ module Compile = struct
     }
 
     let key { config; deps; prep; blessing; voodoo } =
-      Fmt.str "v8-%s-%s-%s-%a-%s-%s"
+      Fmt.str "v9-%s-%s-%s-%a-%s-%s"
         (Package.Blessing.to_string blessing)
         (Prep.package prep |> Package.digest)
         (Prep.hash prep)
