@@ -1,27 +1,32 @@
 module Base = struct
-  type repository = HtmlTailwind of Epoch.t | HtmlClassic of Epoch.t | Linked | Compile | Prep
+  type repository =
+    | HtmlTailwind of Epoch.t
+    | HtmlClassic of Epoch.t
+    | Linked of Epoch.t
+    | Compile
+    | Prep
 
-  let generation_folder generation = Fpath.(v ("html-g-" ^ Epoch.digest generation))
+  let generation_folder stage generation = Fpath.(v ("epoch-" ^ Epoch.digest stage generation))
 
   let folder = function
-    | HtmlTailwind generation -> Fpath.(generation_folder generation / "html-tailwind")
-    | HtmlClassic generation -> Fpath.(generation_folder generation / "html-classic")
+    | HtmlTailwind generation -> Fpath.(generation_folder `Html generation / "html-tailwind")
+    | HtmlClassic generation -> Fpath.(generation_folder `Html generation / "html-classic")
+    | Linked generation -> Fpath.(generation_folder `Linked generation / "linked")
     | Compile -> Fpath.v "compile"
-    | Linked -> Fpath.v "linked"
     | Prep -> Fpath.v "prep"
 end
 
 type repository =
   | HtmlTailwind of (Epoch.t * Package.Blessing.t)
   | HtmlClassic of (Epoch.t * Package.Blessing.t)
-  | Linked of Package.Blessing.t
+  | Linked of (Epoch.t * Package.Blessing.t)
   | Compile of Package.Blessing.t
   | Prep
 
 let to_base_repo = function
   | HtmlClassic (t, _) -> Base.HtmlClassic t
   | HtmlTailwind (t, _) -> Base.HtmlTailwind t
-  | Linked _ -> Linked
+  | Linked (t, _) -> Linked t
   | Compile _ -> Compile
   | Prep -> Prep
 
@@ -36,7 +41,7 @@ let base_folder ~blessed package =
 let folder repository package =
   let blessed =
     match repository with
-    | HtmlTailwind (_, b) | HtmlClassic (_, b) | Linked b | Compile b -> b
+    | HtmlTailwind (_, b) | HtmlClassic (_, b) | Linked (_, b) | Compile b -> b
     | Prep -> Universe
   in
   let blessed = blessed = Blessed in

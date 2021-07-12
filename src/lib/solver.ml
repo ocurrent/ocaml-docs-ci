@@ -132,20 +132,22 @@ module Solver = struct
 
   let latched = true
 
-  module Key = struct
-    (* TODO: what happens when the platform changes / the blacklist. *)
-    type t = { packages : Track.t list; blacklist : string list; platform : Platform.t }
-
-    let digest { packages; blacklist; _ } =
-      blacklist
-      @ List.map (fun t -> (Track.pkg t |> OpamPackage.to_string) ^ "-" ^ Track.digest t) packages
-      |> Digestif.SHA256.digestv_string |> Digestif.SHA256.to_hex
-  end
+  (* A single instance of the solver is expected. *)
+  module Key = Current.Unit
 
   module Value = struct
-    type t = Git.Commit.t
+    type t = {
+      packages : Track.t list;
+      blacklist : string list;
+      platform : Platform.t;
+      opam_commit : Git.Commit.t;
+    }
 
-    let digest = Git.Commit.hash
+    (* TODO: what happens when the platform changes. *)
+    let digest { packages; blacklist; opam_commit; _ } =
+      (Git.Commit.hash opam_commit :: blacklist)
+      @ List.map (fun t -> (Track.pkg t |> OpamPackage.to_string) ^ "-" ^ Track.digest t) packages
+      |> Digestif.SHA256.digestv_string |> Digestif.SHA256.to_hex
   end
 
   module Outcome = struct
@@ -156,14 +158,14 @@ module Solver = struct
     let unmarshal t = Marshal.from_string t 0
   end
 
-  let run (solver, pool) job Key.{ packages; blacklist; platform } opam =
+  let run (solver, pool) job () Value.{ packages; blacklist; platform; opam_commit } =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
     let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->
-          let+ res = perform_solve ~solver ~pool ~job ~opam ~platform pkg in
+          let+ res = perform_solve ~solver ~pool ~job ~opam:opam_commit ~platform pkg in
           let root = Track.pkg pkg in
           let result =
             match res with
@@ -204,4 +206,5 @@ let incremental ~config ~(blacklist : string list) ~(opam : Git.Commit.t Current
   let solver_pool = solver_pool config in
   Current.component "incremental solver"
   |> let> opam = opam and> packages = packages in
-     SolverCache.run solver_pool { packages; blacklist; platform = Platform.platform_amd64 } opam
+     SolverCache.run solver_pool ()
+       { packages; blacklist; platform = Platform.platform_amd64; opam_commit = opam }

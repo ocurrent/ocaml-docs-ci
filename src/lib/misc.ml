@@ -48,13 +48,13 @@ module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
 
     let id = B.id
 
-    module Key = B.Key
-    module Value = Current.Unit
+    module Key = Current.String
+    module Value = B.Key
     module Outcome = B.Value
 
-    let run op job key () = B.build op job key
+    let run op job _ key = B.build op job key
 
-    let pp f (key, ()) = B.pp f key
+    let pp f (_, key) = B.pp f key
 
     let auto_cancel = B.auto_cancel
 
@@ -63,7 +63,7 @@ module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
 
   include Current_cache.Generic (Adaptor)
 
-  let get ?schedule ctx key = run ?schedule ctx key ()
+  let get ~opkey ?schedule ctx key = run ?schedule ctx opkey key
 end
 
 let profile =
@@ -113,3 +113,11 @@ let tar_cmd folder =
     "shopt -s nullglob && ((tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar %s/content.tar) || \
      (echo 'Empty directory'))"
     f f f f f
+
+module Cmd = struct
+  let tar = tar_cmd
+
+  let list =
+    let open Fmt in
+    to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
+end

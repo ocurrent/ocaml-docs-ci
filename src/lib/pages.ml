@@ -17,7 +17,7 @@ let spec ~ssh ~generation ~base ~voodoo ~input_hash () =
            (Config.Ssh.storage_folder ssh)
            (Fpath.to_string (Storage.Base.folder (HtmlTailwind generation))) input_hash;
          run "OCAMLRUNPARAM=b cd %s && opam exec -- /home/opam/voodoo-gen packages -o html-tailwind"
-           (Fpath.to_string (Storage.Base.generation_folder generation));
+           (Fpath.to_string (Storage.Base.generation_folder `Html generation));
          run ~network:Misc.network ~secrets:Config.Ssh.secrets
            "rsync -avzR --exclude=\"/*/*/*/*/*/\" ./%s %s:%s/.  "
            (Fpath.to_string (Storage.Base.folder (HtmlTailwind generation)))

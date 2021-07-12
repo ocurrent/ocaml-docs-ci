@@ -16,29 +16,7 @@ and Package : sig
   type t
   (** A package in the docs-ci sense: it's composed of the package name, version, 
   and its dependency universe. *)
-end
 
-and Blessing : sig
-  type t = Blessed | Universe
-
-  val is_blessed : t -> bool
-
-  val to_string : t -> string
-
-  module Set : sig
-    type b = t
-
-    type t
-    (** The structure containing which packages are blessed or not. A blessed package is a package
-    aimed to be built for the main documentation pages. *)
-
-    val empty : OpamPackage.t -> t
-
-    val v : Package.t list -> t
-    (** Compute which packages are blessed. *)
-
-    val get : t -> Package.t -> b
-  end
 end
 
 type t = Package.t
@@ -71,3 +49,26 @@ val id : t -> string
 module Map : Map.S with type key = t
 
 module Set : Set.S with type elt = t
+
+module Blessing : sig
+  type t = Blessed | Universe
+
+  val is_blessed : t -> bool
+
+  val to_string : t -> string
+
+  module Set : sig
+    type b = t
+
+    type t
+    (** The structure containing which packages are blessed or not. A blessed package is a package
+    aimed to be built for the main documentation pages. *)
+
+    val empty : OpamPackage.t -> t
+
+    val v : counts:int Map.t -> Package.t list -> t
+    (** Compute which packages are blessed. *)
+
+    val get : t -> Package.t -> b
+  end
+end

@@ -18,7 +18,7 @@ module Metadata = struct
   module Key = struct
     type t = Epoch.t
 
-    let digest v = Fmt.str "metadata4-%s" (Epoch.digest v)
+    let digest v = Fmt.str "metadata4-%s" (Epoch.digest `Html v)
   end
 
   module Value = struct
@@ -49,7 +49,7 @@ module Metadata = struct
     Current.Process.exec ~cancellable:false ~job
       ( "",
         Bos.Cmd.(
-          v "rsync" % "-avzR" % "--delete" % "-e"
+          v "rsync" % "-avzR" % "--delete" % "--exclude=\"/*/*/*/*/*/\"" % "-e"
           % Fmt.str "ssh -p %d -i %a" port Fpath.pp privkeyfile
           % Fmt.str "--rsync-path=mkdir -p %s/%a && rsync" root_folder Fpath.pp
               (Storage.Base.folder (HtmlTailwind generation))
@@ -113,7 +113,7 @@ module Metadata = struct
     Current.Process.exec ~cancellable:false ~job
       ( "",
         Bos.Cmd.(
-          v "rsync" % "-avzR" % "-e"
+          v "rsync" % "-avzR" % "--exclude=\"/*/*/*/*/*/\"" % "-e"
           % Fmt.str "ssh -p %d -i %a" port Fpath.pp privkeyfile
           % (Fpath.to_string state_dir ^ "/./")
           % Fmt.str "%s@%s:%s" user host root_folder)
