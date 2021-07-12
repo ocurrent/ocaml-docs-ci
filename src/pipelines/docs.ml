@@ -160,7 +160,7 @@ let v ~config ~api ~opam () =
   (* 3.b) Expand that list to all the obtainable package.version.universe *)
   let all_packages =
     (* todo: add a append-only layer at this step *)
-    all_packages_jobs |> List.rev_map Package.all_deps |> List.flatten
+    all_packages_jobs |> List.rev_map Package.all_deps |> List.flatten |> Package.Set.of_list
   in
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
@@ -184,6 +184,19 @@ let v ~config ~api ~opam () =
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
+    let counts =
+      let counts_mut = ref Package.Map.empty in
+      Package.Set.iter
+        (fun package ->
+          Package.all_deps package
+          |> List.iter (fun dependency ->
+                 counts_mut :=
+                   Package.Map.update dependency
+                     (function Some v -> Some (v + 1) | None -> Some 1)
+                     !counts_mut))
+        all_packages;
+      !counts_mut
+    in
     let by_opam_package =
       Package.Map.fold
         (fun package job opam_map ->
@@ -206,7 +219,7 @@ let v ~config ~api ~opam () =
                        | pkg, (Error (`Active _) | Ok _) -> Some pkg)
                   |> function
                   | [] -> Package.Blessing.Set.empty opam
-                  | list -> Package.Blessing.Set.v list))
+                  | list -> Package.Blessing.Set.v ~counts list))
   in
 
   (* 7) Odoc compile and html-generate artifacts *)

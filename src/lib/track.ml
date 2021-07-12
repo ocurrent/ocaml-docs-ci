@@ -21,7 +21,7 @@ module Track = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { limit: int option; repo : Git.Commit.t; filter : string list }
+    type t = { limit : int option; repo : Git.Commit.t; filter : string list }
 
     let digest { repo; filter; limit } =
       Git.Commit.hash repo ^ String.concat ";" filter ^ "; "
@@ -67,7 +67,9 @@ module Track = struct
     Git.with_checkout ~job repo @@ fun dir ->
     Bos.OS.Dir.contents Fpath.(dir / "packages")
     >>= (fun packages ->
-          packages |> List.filter filter |> List.rev_map (get_versions ~limit) |> List.flatten |> Result.ok)
+          packages |> List.filter filter
+          |> List.rev_map (get_versions ~limit)
+          |> List.flatten |> Result.ok)
     |> Lwt.return
 end
 
@@ -95,4 +97,5 @@ let v ~limit ~(filter : string list) (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "Track packages - %a" Fmt.(list string) filter
   |> let> repo = repo in
-     TrackCache.get No_context { filter; repo; limit }
+     (* opkey is a constant because we expect only one instance of track *)
+     TrackCache.get ~opkey:"track" No_context { filter; repo; limit }

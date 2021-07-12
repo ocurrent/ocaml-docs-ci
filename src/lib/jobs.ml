@@ -23,9 +23,11 @@ package.version.universe -> 1 2 3 4 5
 2) For each job, sort by increasing universe size and set `prep` as the never previously encountered packages in the universe.
 
 *)
-let schedule ~(targets : Package.t list) jobs : t list =
+let schedule ~(targets : Package.Set.t) jobs : t list =
   Printf.printf "Schedule %d\n" (List.length jobs);
-  let targets_digests = targets |> List.rev_map Package.digest |> StringSet.of_list in
+  let targets_digests =
+    targets |> Package.Set.to_seq |> Seq.map Package.digest |> StringSet.of_seq
+  in
   let jobs =
     jobs
     |> List.rev_map (fun pkg ->

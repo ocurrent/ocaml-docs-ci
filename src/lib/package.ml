@@ -106,25 +106,14 @@ end = struct
     obtain root |> Option.get
 end
 
-and Blessing : sig
-  type t = Blessed | Universe
+include Package
 
-  val is_blessed : t -> bool
+let all_deps pkg = pkg :: (pkg |> universe |> Universe.deps)
 
-  val to_string : t -> string
+module PackageMap = Map.Make (Package)
+module PackageSet = Set.Make (Package)
 
-  module Set : sig
-    type b = t
-
-    type t
-
-    val empty : OpamPackage.t -> t
-
-    val v : Package.t list -> t
-
-    val get : t -> Package.t -> b
-  end
-end = struct
+module Blessing = struct
   type t = Blessed | Universe
 
   let is_blessed t = t = Blessed
@@ -144,23 +133,38 @@ end = struct
 
     let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
 
-    let v (packages : Package.t list) : t =
+    module Universe_info = struct
+      type t = { universe : Universe.t; deps_count : int; revdeps_count : int }
+
+      (* To compare two possibilities, we want first to maximize the number of dependencies
+         in the universe (to favorize optional dependencies) and then maximize the number of revdeps:
+         this is for stability purposes, as any blessing change will force downstream recomputations. *)
+      let compare a b =
+        match Int.compare a.deps_count b.deps_count with
+        | 0 -> Int.compare a.revdeps_count b.revdeps_count
+        | v -> v
+
+      let make ~counts package =
+        let universe = Package.universe package in
+        let deps_count = universe_size universe in
+        { universe; deps_count; revdeps_count = PackageMap.find package counts }
+    end
+
+    let v ~counts (packages : Package.t list) : t =
       assert (packages <> []);
       let first_package = List.hd packages in
       let opam = first_package |> Package.opam in
-      let first_universe = first_package |> Package.universe in
-      let best_universe, _ =
+      let first_universe = Universe_info.make ~counts first_package in
+      let best_universe =
         List.fold_left
-          (fun (cur_best_universe, cur_best_universe_size) new_package ->
+          (fun best_universe new_package ->
             assert (Package.opam new_package = opam);
-            let new_universe = Package.universe new_package in
-            let size = universe_size new_universe in
-            if size > cur_best_universe_size then (new_universe, size)
-            else (cur_best_universe, cur_best_universe_size))
-          (first_universe, universe_size first_universe)
-          (List.tl packages)
+            let new_universe = Universe_info.make ~counts new_package in
+            if Universe_info.compare new_universe best_universe > 0 then new_universe
+            else best_universe)
+          first_universe (List.tl packages)
       in
-      { opam; universe = Universe.hash best_universe }
+      { opam; universe = Universe.hash best_universe.universe }
 
     let get { opam; universe } pkg =
       assert (Package.opam pkg = opam);
@@ -168,9 +172,5 @@ end = struct
   end
 end
 
-include Package
-
-let all_deps pkg = pkg :: (pkg |> universe |> Universe.deps)
-
-module Map = Map.Make (Package)
-module Set = Set.Make (Package)
+module Map = PackageMap
+module Set = PackageSet
