@@ -8,12 +8,12 @@ let blessing t = t.blessing
 
 let package t = t.package
 
-let spec ~ssh ~base ~voodoo ~deps ~blessing prep =
+let spec ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let prep_folder = Storage.folder Prep package in
   let compile_folder = Storage.folder (Compile blessing) package in
-  let linked_folder = Storage.folder (Linked blessing) package in
+  let linked_folder = Storage.folder (Linked (generation, blessing)) package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
@@ -81,7 +81,7 @@ let or_default a = function None -> a | b -> b
 module Compile = struct
   type output = t
 
-  type t = No_context
+  type t = Epoch.t
 
   let id = "voodoo-do"
 
@@ -117,12 +117,12 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let build No_context job Key.{ deps; prep; blessing; voodoo; config } =
+  let build generation job Key.{ deps; prep; blessing; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
     let base = Misc.get_base_image package in
-    let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep in
+    let spec = spec ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.base_image_version package in
     let cache_hint = "docs-universe-compile-" ^ version in
@@ -151,12 +151,16 @@ end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~config ~name ~voodoo ~blessing ~deps prep =
+let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
-  |> let> prep = prep and> voodoo = voodoo and> blessing = blessing and> deps = deps in
+  |> let> prep = prep
+     and> voodoo = voodoo
+     and> blessing = blessing
+     and> deps = deps
+     and> generation = generation in
      let package = Prep.package prep in
      let output =
-       CompileCache.get No_context Compile.Key.{ prep; blessing; voodoo; deps; config }
+       CompileCache.get generation Compile.Key.{ prep; blessing; voodoo; deps; config }
      in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output

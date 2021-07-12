@@ -21,6 +21,7 @@ val package : t -> Package.t
 (** The compiled package *)
 
 val v :
+  generation:Epoch.t Current.t ->
   config:Config.t ->
   name:string ->
   voodoo:Voodoo.Do.t Current.t ->

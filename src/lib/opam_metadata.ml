@@ -18,7 +18,7 @@ module Metadata = struct
   module Key = struct
     type t = Epoch.t
 
-    let digest v = Fmt.str "metadata4-%s" (Epoch.digest v)
+    let digest v = Fmt.str "metadata4-%s" (Epoch.digest `Html v)
   end
 
   module Value = struct

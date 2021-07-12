@@ -11,7 +11,7 @@ let package t = t.package
 let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
   let open Obuilder_spec in
   let package = Compile.package compiled in
-  let linked_folder = Storage.folder (Linked blessed) package in
+  let linked_folder = Storage.folder (Linked (generation, blessed)) package in
   let tailwind_folder = Storage.folder (HtmlTailwind (generation, blessed)) package in
   let classic_folder = Storage.folder (HtmlClassic (generation, blessed)) package in
   let opam = package |> Package.opam in

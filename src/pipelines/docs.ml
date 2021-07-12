@@ -44,7 +44,8 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           Compile.v ~config ~name ~voodoo:voodoo_do ~blessing ~deps:compile_dependencies prep
+           Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
+             ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
