@@ -169,6 +169,8 @@ module Do = struct
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network ~cache
+             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext -iy odoc-parser";
+           run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t.commit);
@@ -193,6 +195,8 @@ module Gen = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
+           run ~network ~cache
+             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext -iy odoc-parser";
            run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
