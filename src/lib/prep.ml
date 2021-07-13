@@ -105,7 +105,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
               [
                 "sudo apt update";
                 Fmt.str
-                  "(opam depext -viy %s | tee ~/opam.err.log) || echo 'Failed to install all \
+                  "(opam depext -viy %s 2>&1 | tee ~/opam.err.log) || echo 'Failed to install all \
                    packages'"
                   packages_str;
               ];
