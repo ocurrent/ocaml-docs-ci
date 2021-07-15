@@ -8,7 +8,7 @@ let blessing t = t.blessing
 
 let package t = t.package
 
-let spec ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
+let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let prep_folder = Storage.folder Prep package in
@@ -80,12 +80,79 @@ let spec ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
               ];
        ]
 
+let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep opamfile =
+  let open Obuilder_spec in
+  let package = Prep.package prep in
+  let prep_folder = Storage.folder Prep package in
+  let compile_folder = Storage.folder (Compile blessing) package in
+  let linked_folder = Storage.folder (Linked (generation, blessing)) package in
+  let opam = package |> Package.opam in
+  let name = opam |> OpamPackage.name_to_string in
+  let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
+  base |> Spec.children ~name:"tools" tools
+  |> Spec.add
+       [
+         workdir "/home/opam/docs/";
+         run "sudo chown opam:opam . ";
+         (* Import odoc and voodoo-do *)
+         copy ~from:(`Build "tools")
+           [ "/home/opam/odoc"; "/home/opam/voodoo-do" ]
+           ~dst:"/home/opam/";
+         run "mv ~/odoc $(opam config var bin)/odoc";
+         (* obtain the prep folder (containing opam.err.log) and extract it *)
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
+                  (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
+                Fmt.str "find . -name '*.tar' -exec tar -xvf {} \\;";
+                Fmt.str "echo '%s' > %a/opam" opamfile Fpath.pp prep_folder;
+              ];
+         (* prepare the compilation folder *)
+         run "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
+                Fmt.str
+                  "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
+                   compile/packages/*.odoc compile/packages/%s/*.odoc"
+                  name;
+              ];
+         (* Run voodoo-do && tar compile/linked output *)
+         run "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do --failed -p %s %s " name
+                  (match blessing with Blessed -> "-b" | Universe -> "");
+                Misc.tar_cmd compile_folder;
+                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/" Fpath.pp
+                  (Storage.Base.generation_folder `Linked generation)
+                  Fpath.pp
+                  (Storage.Base.generation_folder `Linked generation);
+                Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
+                Misc.tar_cmd linked_folder;
+              ];
+         (* Extract compile output   - cache needs to be invalidated if we want to be able to read the logs *)
+         run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
+         @@ Misc.Cmd.list
+              [
+                Fmt.str "echo '%f'" (Random.float 1.);
+                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string compile_folder)
+                  Fpath.(to_string (parent linked_folder))
+                  (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
+                Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
+                  (Storage.Tar.hash_command ~prefix:"COMPILE");
+                Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
+                  (Storage.Tar.hash_command ~prefix:"LINKED");
+              ];
+       ]
+
 let or_default a = function None -> a | b -> b
 
 module Compile = struct
   type output = t
 
-  type t = Epoch.t
+  type t = { generation : Epoch.t; opam_repository : Current_git.Commit.t }
 
   let id = "voodoo-do"
 
@@ -121,12 +188,26 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let build generation job Key.{ deps; prep; blessing; voodoo; config } =
+  let obtain_opam_file ~opam_repository ~job package =
+    Current_git.with_checkout ~job opam_repository @@ fun dir ->
+    Fpath.(dir / OpamPackage.name_to_string package / OpamPackage.to_string package / "opam")
+    |> Bos.OS.File.read |> Lwt.return
+
+  let build { generation; opam_repository } job Key.{ deps; prep; blessing; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
+    let ( let++ ) a b = Lwt_result.map b a in
     let package = Prep.package prep in
     let base = Misc.get_base_image package in
-    let spec = spec ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep in
+    let** spec =
+      match Prep.result prep with
+      | Success ->
+          Lwt.return_ok
+            (spec_success ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep)
+      | Failed ->
+          let++ opamfile = obtain_opam_file ~opam_repository ~job (Package.opam package) in
+          spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~blessing prep opamfile
+    in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.base_image_version package in
     let cache_hint = "docs-universe-compile-" ^ version in
@@ -155,16 +236,19 @@ end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
+let v ~generation ~opam_repository ~config ~name ~voodoo ~blessing ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
   |> let> prep = prep
      and> voodoo = voodoo
      and> blessing = blessing
      and> deps = deps
-     and> generation = generation in
+     and> generation = generation
+     and> opam_repository = opam_repository in
      let package = Prep.package prep in
      let output =
-       CompileCache.get generation Compile.Key.{ prep; blessing; voodoo; deps; config }
+       CompileCache.get
+         { Compile.generation; opam_repository }
+         Compile.Key.{ prep; blessing; voodoo; deps; config }
      in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output

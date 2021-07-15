@@ -32,7 +32,9 @@ module Track = struct
     Fmt.pf f "opam repo track\n%a\n%a" Git.Commit.pp_short repo Fmt.(list string) filter
 
   module Value = struct
-    type t = (OpamPackage.t * string) list [@@deriving yojson]
+    type package_definition = { package : OpamPackage.t; digest : string } [@@deriving yojson]
+
+    type t = package_definition list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
 
@@ -44,9 +46,7 @@ module Track = struct
 
   let take = function Some n -> take n | None -> Fun.id
 
-  let get_digest path =
-    let content = Bos.OS.File.read path |> Result.get_ok in
-    Digestif.SHA256.(digest_string content |> to_hex)
+  let get_file path = Bos.OS.File.read path |> Result.get_ok
 
   let get_versions ~limit path =
     let open Rresult in
@@ -54,9 +54,14 @@ module Track = struct
     >>| (fun versions ->
           versions
           |> List.rev_map (fun path ->
-                 (path |> Fpath.basename |> OpamPackage.of_string, get_digest Fpath.(path / "opam"))))
+                 let content = get_file Fpath.(path / "opam") in
+                 Value.
+                   {
+                     package = path |> Fpath.basename |> OpamPackage.of_string;
+                     digest = Digest.(string content |> to_hex);
+                   }))
     |> Result.get_ok
-    |> List.sort (fun (a, _) (b, _) -> OpamPackage.compare a b)
+    |> List.sort (fun a b -> OpamPackage.compare a.Value.package b.package)
     |> List.rev |> take limit
 
   let build No_context job { Key.repo; filter; limit } =
@@ -74,23 +79,24 @@ module Track = struct
 end
 
 module TrackCache = Misc.LatchedBuilder (Track)
+open Track.Value
 
-type t = O.OpamPackage.t * string [@@deriving yojson]
+type t = package_definition [@@deriving yojson]
 
-let digest = snd
+let pkg t = t.package
 
-let pkg = fst
+let digest t = t.digest
 
 module Map = OpamStd.Map.Make (struct
   type nonrec t = t
 
-  let compare (a, _) (b, _) = O.OpamPackage.compare a b
+  let compare a b = O.OpamPackage.compare a.package b.package
 
-  let to_json (pkg, digest) = `A [ OpamPackage.to_json pkg; `String digest ]
+  let to_json { package; digest } = `A [ OpamPackage.to_json package; `String digest ]
 
   let of_json _ = None
 
-  let to_string (pkg, _) = OpamPackage.to_string pkg
+  let to_string t = OpamPackage.to_string t.package
 end)
 
 let v ~limit ~(filter : string list) (repo : Git.Commit.t Current.t) =
