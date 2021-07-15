@@ -1,7 +1,5 @@
 (* Pages - /packages/index.html and packages/<foo>/index.html *)
 
-let id = "pages"
-
 let spec ~ssh ~generation ~base ~voodoo ~input_hash () =
   let open Obuilder_spec in
   let tools = Voodoo.Gen.spec ~base voodoo |> Spec.finish in
