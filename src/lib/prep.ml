@@ -201,15 +201,17 @@ end
 
 module PrepCache = Current_cache.Make (Prep)
 
-type t = { hash : string; package : Package.t }
+type prep_result = Success | Failed
+
+type t = { hash : string; package : Package.t; result : prep_result }
 
 let hash t = t.hash
 
 let package t = t.package
 
-type prep_result = [ `Success of t | `Failed of t ]
+let result t = t.result
 
-type prep = prep_result Package.Map.t
+type prep = t Package.Map.t
 
 let pp f t = Fmt.pf f "%s:%s" (Package.id t.package) t.hash
 
@@ -232,8 +234,8 @@ let combine ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
          let package_id = Package.id package in
          match StringMap.find_opt package_id artifacts_branches_output with
          | Some hash when StringSet.mem package_id failed_branches ->
-             Some (package, `Failed { package; hash })
-         | Some hash -> Some (package, `Success { package; hash })
+             Some (package, { package; hash; result = Failed })
+         | Some hash -> Some (package, { package; hash; result = Success })
          | None -> None)
   |> Package.Map.of_seq
 

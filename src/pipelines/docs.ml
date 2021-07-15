@@ -24,7 +24,7 @@ module PrepStatus = struct
     | v -> v
 end
 
-let compile ~generation ~config ~voodoo_gen ~voodoo_do
+let compile ~generation ~opam_repository ~config ~voodoo_gen ~voodoo_do
     ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
     (preps : Prep.t Current.t Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
@@ -44,7 +44,7 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
+           Compile.v ~generation ~opam_repository ~config ~name ~voodoo:voodoo_do ~blessing
              ~deps:compile_dependencies prep
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
@@ -176,11 +176,6 @@ let v ~config ~api ~opam () =
     |> List.fold_left
          (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
          Package.Map.empty
-    |> Package.Map.map (fun result ->
-           let* v = result in
-           match v with
-           | `Success t -> Current.return t
-           | `Failed _ -> Current.fail "Preparation failed")
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
@@ -225,7 +220,8 @@ let v ~config ~api ~opam () =
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node =
     let c, compile_node =
-      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
+      compile ~generation ~opam_repository:opam ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed
+        prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
     (c |> List.to_seq |> Package.Map.of_seq, compile_node)
