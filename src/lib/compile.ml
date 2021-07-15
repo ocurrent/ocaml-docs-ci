@@ -190,7 +190,8 @@ module Compile = struct
 
   let obtain_opam_file ~opam_repository ~job package =
     Current_git.with_checkout ~job opam_repository @@ fun dir ->
-    Fpath.(dir / OpamPackage.name_to_string package / OpamPackage.to_string package / "opam")
+    Fpath.(
+      dir / "packages" / OpamPackage.name_to_string package / OpamPackage.to_string package / "opam")
     |> Bos.OS.File.read |> Lwt.return
 
   let build { generation; opam_repository } job Key.{ deps; prep; blessing; voodoo; config } =
