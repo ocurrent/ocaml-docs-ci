@@ -22,7 +22,6 @@ val package : t -> Package.t
 
 val v :
   generation:Epoch.t Current.t ->
-  opam_repository:Current_git.Commit.t Current.t ->
   config:Config.t ->
   name:string ->
   voodoo:Voodoo.Do.t Current.t ->
