@@ -106,7 +106,7 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep opamfile =
                 Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
                   (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
                 Fmt.str "find . -name '*.tar' -exec tar -xvf {} \\;";
-                Fmt.str "echo '%s' > %a/opam" opamfile Fpath.pp prep_folder;
+                Fmt.str "echo '%s' > %a/opam" (Misc.escape opamfile) Fpath.pp prep_folder;
               ];
          (* prepare the compilation folder *)
          run "%s"
