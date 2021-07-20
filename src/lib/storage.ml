@@ -52,7 +52,7 @@ let for_all packages command =
     let pp_package f (repository, package) =
       let dir = folder repository package |> Fpath.to_string in
       let id = Package.id package in
-      Fmt.pf f "%s,%s" dir id
+      Fmt.pf f "%s,%s,%s" dir id (Package.opam package |> OpamPackage.to_string)
     in
     Fmt.(to_to_string (list ~sep:(const string " ") pp_package) packages)
   in
