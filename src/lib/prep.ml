@@ -77,7 +77,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
 
   let create_dir_and_copy_logs_if_not_exist =
     let command =
-      Fmt.str "([ -d $1 ] && %s) || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1)"
+      Fmt.str "([ -d $1 ] || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1)) && (%s)"
         (Misc.tar_cmd (Fpath.v "$1"))
     in
     Storage.for_all prep_storage_folders command
