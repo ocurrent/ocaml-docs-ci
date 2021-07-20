@@ -32,7 +32,7 @@ module Op = struct
         % "-i"
         % p (Ssh.priv_key_file ssh)
         % (Ssh.user ssh ^ "@" ^ Ssh.host ssh)
-        % Fmt.str "ln -sf %a %a" Fpath.pp target_folder Fpath.pp live_folder)
+        % Fmt.str "ln -sfT %a %a" Fpath.pp target_folder Fpath.pp live_folder)
     in
     Current.Process.exec ~cancellable:true ~job ("", Bos.Cmd.to_list command |> Array.of_list)
 end
