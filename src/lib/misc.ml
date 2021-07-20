@@ -121,25 +121,3 @@ module Cmd = struct
     let open Fmt in
     to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
 end
-
-(* Transform ' into \' in a string *)
-let escape str =
-  let count' =
-    Astring.String.fold_left (fun count chr -> if chr = '\'' then count + 1 else count) 0 str
-  in
-  if count' = 0 then str
-  else
-    let new_string = Bytes.create (String.length str + count') in
-    let _ =
-      Astring.String.fold_left
-        (fun index chr ->
-          if chr = '\'' then (
-            Bytes.set new_string index '\\';
-            Bytes.set new_string (index + 1) '\'';
-            index + 2 )
-          else (
-            Bytes.set new_string index chr;
-            index + 1 ))
-        0 str
-    in
-    Bytes.unsafe_to_string new_string
