@@ -80,7 +80,7 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
               ];
        ]
 
-let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep opamfile =
+let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let prep_folder = Storage.folder Prep package in
@@ -151,7 +151,7 @@ let or_default a = function None -> a | b -> b
 module Compile = struct
   type output = t
 
-  type t = { generation : Epoch.t; opam_repository : Current_git.Commit.t }
+  type t = { generation : Epoch.t; }
 
   let id = "voodoo-do"
 
@@ -187,16 +187,9 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let obtain_opam_file ~opam_repository ~job package =
-    Current_git.with_checkout ~job opam_repository @@ fun dir ->
-    Fpath.(
-      dir / "packages" / OpamPackage.name_to_string package / OpamPackage.to_string package / "opam")
-    |> Bos.OS.File.read |> Lwt.return
-
-  let build { generation; opam_repository } job Key.{ deps; prep; blessing; voodoo; config } =
+  let build { generation; _ } job Key.{ deps; prep; blessing; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
-    let ( let++ ) a b = Lwt_result.map b a in
     let package = Prep.package prep in
     let base = Misc.get_base_image package in
     let** spec =
@@ -205,8 +198,8 @@ module Compile = struct
           Lwt.return_ok
             (spec_success ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep)
       | Failed ->
-          let++ opamfile = obtain_opam_file ~opam_repository ~job (Package.opam package) in
-          spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~blessing prep opamfile
+          Lwt.return_ok
+            (spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~blessing prep)
     in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.base_image_version package in
@@ -236,19 +229,18 @@ end
 
 module CompileCache = Current_cache.Make (Compile)
 
-let v ~generation ~opam_repository ~config ~name ~voodoo ~blessing ~deps prep =
+let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
   |> let> prep = prep
      and> voodoo = voodoo
      and> blessing = blessing
      and> deps = deps
-     and> generation = generation
-     and> opam_repository = opam_repository in
+     and> generation = generation in
      let package = Prep.package prep in
      let output =
        CompileCache.get
-         { Compile.generation; opam_repository }
+         { Compile.generation }
          Compile.Key.{ prep; blessing; voodoo; deps; config }
      in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output
