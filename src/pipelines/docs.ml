@@ -252,9 +252,15 @@ let v ~config ~api ~opam () =
       |> Current.list_seq
       |> Current.map (List.filter_map Result.to_option)
     in
-    let live = Live.set_to ~ssh generation in
+    let live_html = Live.set_to ~ssh "html" `Html generation in
+    let live_linked = Live.set_to ~ssh "linked" `Linked generation in
     Current.all
-      [ commits_tailwind |> Current.ignore_value; commits_classic |> Current.ignore_value; live ]
+      [
+        commits_tailwind |> Current.ignore_value;
+        commits_classic |> Current.ignore_value;
+        live_html;
+        live_linked;
+      ]
   in
 
   (* 9) Report status *)
