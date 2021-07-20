@@ -86,20 +86,35 @@ module Metadata = struct
         packages Name.Map.empty
     in
     let* () =
+      let packages_dir = Fpath.(
+        state_dir
+        // Storage.Base.folder (HtmlTailwind generation)
+        / "packages")
+      in
+      Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp packages_dir) |> ignore;
       Lwt_stream.iter_s
         (fun (name, versions) ->
           let dir =
             Fpath.(
-              state_dir
-              // Storage.Base.folder (HtmlTailwind generation)
-              / "packages" / OpamPackage.Name.to_string name)
+              packages_dir / OpamPackage.Name.to_string name)
           in
           let file = Fpath.(dir / "package.json") in
-          Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp dir) |> ignore;
+          let* () =
+            Lwt.catch
+              (fun () -> Lwt_unix.mkdir (Fpath.(to_string dir)) 0o755)
+              (function
+                | Unix.Unix_error(Unix.EEXIST, _, _) -> Lwt.return ()
+                | e ->
+                  Current.Job.log job "Caught unexpected exception in mkdir: %s\n%!"
+                    (Printexc.to_string e);
+                  Lwt.fail e)
+          in
           let* file = Lwt_io.open_file ~mode:Output (Fpath.to_string file) in
           let json = OpamPackage.Version.Set.to_json versions in
           let* () = Lwt_io.write file (OpamJson.to_string json) in
-          Lwt_io.close file)
+          let* () = Lwt_io.close file in
+          Lwt.return ()
+          )
         (Lwt_stream.of_seq (OpamPackage.Name.Map.to_seq versions))
     in
     Lwt.return (Ok ())
