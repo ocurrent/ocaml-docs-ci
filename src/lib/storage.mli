@@ -33,7 +33,7 @@ val hash_command : prefix:string -> string
 module Tar : sig
   (* print sha256 hash of $1/content.tar or empty if it doesn't exist as following line:
      <prefix>:$HASH:$2*)
-  val hash_command : prefix:string -> string
+  val hash_command : ?extra_files:string list -> prefix:string -> unit -> string
 end
 
 (* parse a line created by the previous command *)

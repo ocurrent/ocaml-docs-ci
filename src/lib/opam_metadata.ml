@@ -40,6 +40,7 @@ module Metadata = struct
     let content = Bos.OS.File.read path |> Result.get_ok in
     Digestif.SHA256.(digest_string content |> to_hex)
 
+    (* /*/*/*/*/*/ = /generation-.../html-tailwind/packages/<pkg>/versions.json *)
   let initialize_state ~generation ~job ~ssh () =
     let port = Config.Ssh.port ssh in
     let user = Config.Ssh.user ssh in
@@ -134,26 +135,17 @@ module Metadata = struct
           % Fmt.str "%s@%s:%s" user host root_folder)
         |> Bos.Cmd.to_list |> Array.of_list )
 
-  let hash_state ~job () =
-    let ( let** ) = Lwt_result.bind in
-    let** () =
-      Current.Process.exec ~cancellable:false ~job
-        ( "",
-          [|
-            "bash";
-            "-c";
-            Fmt.str "find %a -type f -name '*.json' -maxdepth 5 -exec sha256sum {} \\;" Fpath.pp
-              state_dir;
-          |] )
-    in
+  let hash_state ~job generation =
+    let folder = Fpath.(state_dir // Storage.Base.folder (HtmlTailwind generation)) in
+    (* folder = <state_dir>/<generation id>/html-tailwind/ => depth = 5 - 2*)
     Current.Process.check_output ~cancellable:false ~job
       ( "",
         [|
           "bash";
           "-c";
           Fmt.str
-            "find %a -type f -name '*.json' -maxdepth 5 -exec sha256sum {} \\; | sort | sha256sum"
-            Fpath.pp state_dir;
+            "find %a -type f -name '*.json' -maxdepth 3 -exec sha256sum {} \\; | sort | sha256sum"
+            Fpath.pp folder;
         |] )
 
   let publish { ssh } job generation v =
@@ -166,7 +158,7 @@ module Metadata = struct
         let** () = initialize_state ~generation ~job ~ssh () in
         let** () = write_state ~generation ~job ~repo:v in
         let** () = send_state ~job ~ssh () in
-        hash_state ~job ())
+        hash_state ~job generation)
       (fun () -> Current.Switch.turn_off switch)
 end
 

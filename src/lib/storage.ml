@@ -61,11 +61,19 @@ let for_all packages command =
 type id_hash = { id : string; hash : string } [@@deriving yojson]
 
 module Tar = struct
-  let hash_command ~prefix =
-    Fmt.str
-      "HASH=$((sha256sum $1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
-       \"%s:$2:$HASH\\n\";"
-      prefix
+  let hash_command ?(extra_files = []) ~prefix () =
+    match extra_files with
+    | [] ->
+        Fmt.str
+          "HASH=$((sha256sum $1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
+           \"%s:$2:$HASH\\n\";"
+          prefix
+    | extra_files ->
+        Fmt.str
+          "HASH=$((sha256sum $1/content.tar %s | sort | sha256sum | cut -d \" \" -f 1)  || echo -n \
+           'empty'); printf \"%s:$2:$HASH\\n\";"
+          (List.map (fun f -> "'" ^ f ^ "'") extra_files |> String.concat " ")
+          prefix
 end
 
 let hash_command ~prefix =

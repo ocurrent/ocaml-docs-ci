@@ -74,9 +74,9 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
                   Fpath.(to_string (parent linked_folder))
                   (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
                 Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
-                  (Storage.Tar.hash_command ~prefix:"COMPILE");
+                  (Storage.Tar.hash_command ~prefix:"COMPILE" ());
                 Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
-                  (Storage.Tar.hash_command ~prefix:"LINKED");
+                  (Storage.Tar.hash_command ~prefix:"LINKED" ());
               ];
        ]
 
@@ -86,8 +86,9 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
   let prep_folder = Storage.folder Prep package in
   let compile_folder = Storage.folder (Compile blessing) package in
   let linked_folder = Storage.folder (Linked (generation, blessing)) package in
-  let opam = package |> Package.opam in
-  let name = opam |> OpamPackage.name_to_string in
+  let opam = Package.opam package in
+  let name = OpamPackage.name_to_string opam in
+  let version = OpamPackage.version_to_string opam in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
   base |> Spec.children ~name:"tools" tools
   |> Spec.add
@@ -140,9 +141,11 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
                   Fpath.(to_string (parent linked_folder))
                   (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
                 Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
-                  (Storage.Tar.hash_command ~prefix:"COMPILE");
+                  (Storage.Tar.hash_command ~prefix:"COMPILE" ());
                 Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
-                  (Storage.Tar.hash_command ~prefix:"LINKED");
+                  (Storage.Tar.hash_command
+                     ~extra_files:[ "../page-" ^ version ^ ".odocl" ]
+                     ~prefix:"LINKED" ());
               ];
        ]
 
