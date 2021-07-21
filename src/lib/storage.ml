@@ -72,7 +72,7 @@ module Tar = struct
         Fmt.str
           "HASH=$((sha256sum $1/content.tar %s | sort | sha256sum | cut -d \" \" -f 1)  || echo -n \
            'empty'); printf \"%s:$2:$HASH\\n\";"
-          (List.map (fun f -> "'" ^ f ^ "'") extra_files |> String.concat " ")
+          (List.map (fun f -> "\"$1/" ^ f ^ "\"") extra_files |> String.concat " ")
           prefix
 end
 
