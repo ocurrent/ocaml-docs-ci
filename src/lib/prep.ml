@@ -122,7 +122,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
                   (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
                      (Config.Ssh.storage_folder ssh));
                 (* Compute hashes *)
-                Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES");
+                Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES" ());
               ];
        ]
 
