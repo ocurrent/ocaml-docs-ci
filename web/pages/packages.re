@@ -42,13 +42,13 @@ let render = (state, packages) => {
 
   let by_char = make_map(packages);
 
-  let content = CharMap.map(List.map(item(state)), by_char) 
-    |> CharMap.bindings 
-    |> List.map(compile) 
+  let content = CharMap.map(List.map(item(state)), by_char)
+    |> CharMap.bindings
+    |> List.map(compile)
     |> List.flatten;
 
-  let chars = CharMap.bindings(by_char) 
-    |> List.map(fst) 
+  let chars = CharMap.bindings(by_char)
+    |> List.map(fst)
     |> List.map ((c) => {
       let c = Char.escaped(c);
       <a href={"#index-"++c} style="margin-right: 0.75rem; font-size: 1.75rem;">{c |> Html.txt}</a>

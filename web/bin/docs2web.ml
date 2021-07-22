@@ -83,7 +83,11 @@ let job ~interface ~port ~api ~prefix ~polling =
   @@ Dream.router
        [
          Dream.get "/" (fun _ -> respond (Docs2web_pages.Index.v ~state));
+         Dream.post "/graphql" (Dream.graphql Lwt.return (Docs2web.Gql_packages.schema ~state));
+         Dream.any "/api" (Dream.graphql Lwt.return (Docs2web.Gql_packages.schema ~state));
+         Dream.get "/graphql" (Dream.graphiql "/api");
          Dream.scope "/packages" [] (packages_scope ~state Packages);
+         Dream.get "/gql-packages" (fun _ -> respond (Docs2web_pages.Server.v ~prefix));
          Dream.scope "/universes" []
            [
              Dream.get "/" (fun _ -> Dream.respond "universes");
