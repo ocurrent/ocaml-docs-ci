@@ -14,10 +14,12 @@
 (maintainers "lucas@tarides.com")
 
 (package
- (name docs-ci)
+ (name ocaml-docs-ci)
  (synopsis "An OCurrent pipeline")
  (description "A longer description")
  (depends
+  (ocaml
+   (>= 4.08.0))
   (current
    (>= 0.3))
   current_web
@@ -31,28 +33,4 @@
   dockerfile
   graphql-cohttp
   graphql-lwt
-  conf-libev
-  (ocaml
-   (>= 4.08.0))))
-
-(package
- (name docs-ci-web)
- (synopsis "A frontend for the docs CI")
- (description "")
- (depends
-  (ocaml
-   (>= 4.08.0))
-  dune
-  (dream
-   (>= 1.0.0~alpha))
-  (git-unix
-   (>= 3.3.3))
-  (tyxml-jsx
-   (>= 4.4.0))
-  (lambdasoup
-   (>= 0.7.2))
-  (reason
-   (>= 3.7.0))
-  (omd
-   (>= 2.0.0~alpha))
-  opam-format))
+  conf-libev))

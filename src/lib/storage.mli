@@ -1,6 +1,5 @@
 type repository =
-  | HtmlTailwind of (Epoch.t * Package.Blessing.t)
-  | HtmlClassic of (Epoch.t * Package.Blessing.t)
+  | HtmlRaw of (Epoch.t * Package.Blessing.t)
   | Linked of (Epoch.t * Package.Blessing.t)
   | Compile of Package.Blessing.t
   | Prep
@@ -9,8 +8,7 @@ val folder : repository -> Package.t -> Fpath.t
 
 module Base : sig
   type repository =
-    | HtmlTailwind of Epoch.t
-    | HtmlClassic of Epoch.t
+    | HtmlRaw of Epoch.t
     | Linked of Epoch.t
     | Compile
     | Prep

@@ -133,7 +133,7 @@ let compile_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
-let v ~config ~api ~opam () =
+let v ~config ~opam () =
   let open Current.Syntax in
   let voodoo = Voodoo.v config in
   let ssh = Config.ssh config in
@@ -144,9 +144,6 @@ let v ~config ~api ~opam () =
     let+ voodoo = voodoo in
     Epoch.v config voodoo
   in
-  (* 0) Generate everything that's statically known just from the repository *)
-  let metadata = Opam_metadata.v ~generation ~ssh ~repo:opam in
-  let pages = Pages.v ~generation ~config ~voodoo:v_gen ~metadata_branch:metadata in
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
@@ -220,84 +217,27 @@ let v ~config ~api ~opam () =
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node =
     let c, compile_node =
-      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed
-        prepped
+      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
     (c |> List.to_seq |> Package.Map.of_seq, compile_node)
   in
 
-  (* 8) Update live branches *)
+  (* 8) Update live folders *)
   let live_branch =
-    Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:""
+    Current.collapse ~input:html_input_node ~key:"Update live folders" ~value:""
     @@
-    let commits_tailwind =
-      let+ pages_commits =
-        Package.Map.bindings html
-        |> List.map (fun (_, html_current) ->
-               html_current
-               |> Current.map (fun t -> (Html.hashes t).html_tailwind_hash)
-               |> Current.state ~hidden:true)
-        |> Current.list_seq
-        |> Current.map (List.filter_map Result.to_option)
-      and+ metadata = pages in
-      metadata :: pages_commits
-    in
-    let commits_classic =
+    let commits_raw =
       Package.Map.bindings html
       |> List.map (fun (_, html_current) ->
              html_current
-             |> Current.map (fun t -> (Html.hashes t).html_classic_hash)
+             |> Current.map (fun t -> (Html.hashes t).html_raw_hash)
              |> Current.state ~hidden:true)
       |> Current.list_seq
       |> Current.map (List.filter_map Result.to_option)
     in
     let live_html = Live.set_to ~ssh "html" `Html generation in
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
-    Current.all
-      [
-        commits_tailwind |> Current.ignore_value;
-        commits_classic |> Current.ignore_value;
-        live_html;
-        live_linked;
-      ]
+    Current.all [ commits_raw |> Current.ignore_value; live_html; live_linked ]
   in
-
-  (* 9) Report status *)
-  let package_registry =
-    let+ tracked = tracked in
-    List.iter
-      (fun p ->
-        Log.app (fun f -> f "Track: %s" (OpamPackage.to_string (Track.pkg p)));
-        Web.register (Track.pkg p) api)
-      tracked
-  in
-  let package_status =
-    Package.Map.merge
-      (fun _ a b -> match (a, b) with Some a, Some b -> Some (a, b) | _ -> None)
-      prepped html
-    |> Package.Map.mapi (fun package (prep_job, compile_job) ->
-           let blessed = OpamPackage.Map.find (Package.opam package) blessed in
-           let+ prep = prep_job |> Current.state ~hidden:true
-           and+ compile = compile_job |> Current.state ~hidden:true
-           and+ blessed = blessed in
-           let blessed =
-             if Package.Blessing.Set.get blessed package = Blessed then
-               Docs_ci_lib.Web.Status.Blessed
-             else Universe
-           in
-           match (prep, compile) with
-           | Error (`Msg _), _ -> Web.Status.Failed
-           | Error (`Active _), _ -> Pending Prep
-           | _, Ok _ -> Success blessed
-           | _, Error (`Msg _) -> Failed
-           | _, Error (`Active _) -> Pending (Compile blessed))
-  in
-  let status =
-    package_status
-    |> Package.Map.mapi (fun package status ->
-           Web.set_package_status ~package:(Current.return package) ~status api)
-    |> Package.Map.bindings |> List.map snd |> Current.all
-    |> Current.collapse ~input:html_input_node ~key:"Set status (graphql)" ~value:""
-  in
-  Current.all [ package_registry; status; live_branch ]
+  live_branch

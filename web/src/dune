@@ -1,6 +1,0 @@
-(library
- (name docs2web)
- (package docs-ci-web)
- (libraries cmdliner git-unix opam-format tyxml lambdasoup yojson cohttp-lwt-unix
-   dream)
- (preprocess (pps graphql_ppx -- -schema web/schema.json)))

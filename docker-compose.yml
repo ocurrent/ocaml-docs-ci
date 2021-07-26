@@ -10,7 +10,7 @@ services:
       - --capnp-public-address=tcp:scheduler:9000
       - --pools=linux-x86_64,linux-arm64,linux-ppc64
       - --state-dir=/var/lib/ocluster-scheduler
-      - --default-clients=docs-ci
+      - --default-clients=ocaml-docs-ci
     init: true
     ports:
       - "9000:9000"
@@ -57,31 +57,19 @@ services:
       - 'ssh-credentials:/root/.ssh/'
       - 'docs-data:/data'
 
-  git-http-classic-website:
+  http-raw-website:
     restart: on-failure    
     image: nginx
     command: >
       bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/live/html-classic /usr/share/nginx/html
-      && nginx -g 'daemon off;'"
-    ports:
-        - "8000:8000"
-    volumes:
-      - 'docs-data:/data/'
-
-  git-http-tailwind-website:
-    restart: on-failure    
-    image: nginx
-    command: >
-      bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/live/html-tailwind /usr/share/nginx/html
+      && ln -s /data/live/html-raw /usr/share/nginx/html
       && nginx -g 'daemon off;'"
     ports:
         - "8002:8000"
     volumes:
       - 'docs-data:/data/'
 
-  docs-ci:
+  ocaml-docs-ci:
     build:
       dockerfile: Dockerfile
       context: .
@@ -91,7 +79,7 @@ services:
       - "worker"
     command:
       - --confirm=above-average
-      - --ocluster-submission=/capnp-secrets/submit-docs-ci.cap
+      - --ocluster-submission=/capnp-secrets/submit-ocaml-docs-ci.cap
       - --ssh-host=172.17.0.1 # ocluster jobs are spawned by the host's docker, so they don't have 
                               # access to this docker-compose's network. therefore we have to get 
                               # to the storage server through the host network.
@@ -100,7 +88,6 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://git-http-classic-website:8000/ # docs-ci-web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri
@@ -108,32 +95,15 @@ services:
     restart: on-failure         # (wait for the scheduler to write the submission cap)
     ports:
       - 8080:8080 # HTTP UI
-      - 8081:8081 # GraphQL endpoint for docs2web
     volumes:
-      - 'docs-ci-data:/var/lib/ocurrent'
+      - 'ocaml-docs-ci-data:/var/lib/ocurrent'
       - "capnp-secrets:/capnp-secrets"
       - 'ssh-credentials:/ssh/'
     environment:
       - CI_PROFILE=docker
 
-  docs-ci-web:
-    build:
-      dockerfile: Dockerfile.web
-      context: .
-    command:
-      - --api=http://docs-ci:8081/graphql
-      - --port=8082
-      - --prefix=/
-      - --interface=0.0.0.0
-    init: true
-    ports:
-      - '8082:8082' # Docs2web UI
-    volumes:
-      - 'docs-ci-web-data:/var/lib/docs-ci-web/var'
-
 volumes:
-  docs-ci-data:
-  docs-ci-web-data:
+  ocaml-docs-ci-data:
   worker-data:
   scheduler-data:
   capnp-secrets:

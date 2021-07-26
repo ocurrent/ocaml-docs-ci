@@ -1,5 +1,0 @@
-(executable
- (name docs2web)
- (package docs-ci-web)
- (public_name docs-ci-web)
- (libraries docs2web docs2web_pages))

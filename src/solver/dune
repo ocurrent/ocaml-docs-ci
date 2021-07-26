@@ -1,7 +1,7 @@
 (executable
  (name main)
- (package docs-ci)
- (public_name docs-ci-solver)
+ (package ocaml-docs-ci)
+ (public_name ocaml-docs-ci-solver)
  (preprocess
   (pps ppx_deriving.std ppx_deriving_yojson))
  (libraries lwt.unix solver_api ppx_deriving_yojson.runtime opam-0install

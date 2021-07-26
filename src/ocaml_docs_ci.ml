@@ -4,7 +4,7 @@ let () = Logging.init ()
 
 let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
 
-let program_name = "docs-ci"
+let program_name = "ocaml-docs-ci"
 
 let main current_config mode gql_port config =
   let () =
@@ -15,10 +15,9 @@ let main current_config mode gql_port config =
         exit 1
   in
   let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
-  let api = Docs_ci_lib.Web.make config in
   let engine =
     Current.Engine.create ~config:current_config (fun () ->
-        Docs_ci_pipelines.Docs.v ~config ~api ~opam:repo_opam () |> Current.ignore_value)
+        Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam () |> Current.ignore_value)
   in
   let site =
     let routes = Current_web.routes engine in
@@ -31,7 +30,6 @@ let main current_config mode gql_port config =
          (* The main thread evaluating the pipeline. *)
          Current_web.run ~mode site;
          (* Optional: provides a web UI *)
-         Docs_ci_lib.Web.serve ~port:gql_port api |> Lwt.map Result.ok;
        ])
 
 (* Command-line parsing *)

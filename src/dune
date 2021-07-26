@@ -1,11 +1,24 @@
-;;
-
 (executable
- (public_name docs-ci)
- (package docs-ci)
- (name docs_ci)
- (libraries current current.cache current_git current_github current_web
-   current_docker astring dockerfile cmdliner fmt.tty logs.fmt lwt lwt.unix
-   obuilder-spec opam-file-format docs_ci_pipelines docs_ci_lib)
+ (public_name ocaml-docs-ci)
+ (package ocaml-docs-ci)
+ (name ocaml_docs_ci)
+ (libraries
+  current
+  current.cache
+  current_git
+  current_github
+  current_web
+  current_docker
+  astring
+  dockerfile
+  cmdliner
+  fmt.tty
+  logs.fmt
+  lwt
+  lwt.unix
+  obuilder-spec
+  opam-file-format
+  docs_ci_pipelines
+  docs_ci_lib)
  (preprocess
   (pps ppx_deriving_yojson)))

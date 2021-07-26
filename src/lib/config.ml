@@ -9,7 +9,6 @@ module Ssh = struct
     private_key_file : string;
     public_key : string;
     folder : string;
-    html_endpoint : string;
   }
 
   let named f = Cmdliner.Term.(app (const f))
@@ -50,12 +49,6 @@ module Ssh = struct
     @@ Arg.info ~doc:"SSH storage folder" ~docv:"FILE" [ "ssh-folder" ]
     |> named (fun x -> `SSH_folder x)
 
-  let ssh_endpoint =
-    Arg.required
-    @@ Arg.opt Arg.(some string) None
-    @@ Arg.info ~doc:"SSH <storage folder>/html/ public endpoint" ~docv:"FILE" [ "ssh-endpoint" ]
-    |> named (fun x -> `SSH_endpoint x)
-
   let load_file path =
     try
       let ch = open_in path in
@@ -68,7 +61,7 @@ module Ssh = struct
       else failwith @@ Fmt.str "File %S does not exist" path
 
   let v (`SSH_host host) (`SSH_user user) (`SSH_port port) (`SSH_pubkey pubkey)
-      (`SSH_privkey privkey) (`SSH_folder folder) (`SSH_endpoint endpoint) =
+      (`SSH_privkey privkey) (`SSH_folder folder) =
     {
       host;
       user;
@@ -80,13 +73,10 @@ module Ssh = struct
           |> to_string);
       public_key = load_file pubkey;
       folder;
-      html_endpoint = endpoint;
     }
 
   let cmdliner =
-    Term.(
-      const v $ ssh_host $ ssh_user $ ssh_port $ ssh_pubkey $ ssh_privkey $ ssh_folder
-      $ ssh_endpoint)
+    Term.(const v $ ssh_host $ ssh_user $ ssh_port $ ssh_pubkey $ ssh_privkey $ ssh_folder)
 
   let config t =
     Fmt.str
@@ -121,8 +111,6 @@ module Ssh = struct
   let priv_key_file t = Fpath.v t.private_key_file
 
   let port t = t.port
-
-  let docs_public_endpoint t = t.html_endpoint
 
   let digest t =
     Fmt.str "%s-%s-%d-%s" t.host t.user t.port t.folder |> Digest.string |> Digest.to_hex
