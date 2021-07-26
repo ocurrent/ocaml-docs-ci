@@ -231,12 +231,12 @@ let v ~config ~api ~opam () =
   let live_branch =
     Current.collapse ~input:html_input_node ~key:"Update live branches" ~value:""
     @@
-    let commits_tailwind =
+    let commits_raw =
       let+ pages_commits =
         Package.Map.bindings html
         |> List.map (fun (_, html_current) ->
                html_current
-               |> Current.map (fun t -> (Html.hashes t).html_tailwind_hash)
+               |> Current.map (fun t -> (Html.hashes t).html_raw_hash)
                |> Current.state ~hidden:true)
         |> Current.list_seq
         |> Current.map (List.filter_map Result.to_option)
@@ -256,7 +256,7 @@ let v ~config ~api ~opam () =
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
     Current.all
       [
-        commits_tailwind |> Current.ignore_value;
+        commits_raw |> Current.ignore_value;
         commits_classic |> Current.ignore_value;
         live_html;
         live_linked;

@@ -4,7 +4,7 @@ let () = Logging.init ()
 
 let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
 
-let program_name = "docs-ci"
+let program_name = "ocaml-docs-ci"
 
 let main current_config mode gql_port config =
   let () =

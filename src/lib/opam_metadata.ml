@@ -40,7 +40,7 @@ module Metadata = struct
     let content = Bos.OS.File.read path |> Result.get_ok in
     Digestif.SHA256.(digest_string content |> to_hex)
 
-    (* /*/*/*/*/*/ = /generation-.../html-tailwind/packages/<pkg>/versions.json *)
+    (* /*/*/*/*/*/ = /generation-.../html-raw/packages/<pkg>/versions.json *)
   let initialize_state ~generation ~job ~ssh () =
     let port = Config.Ssh.port ssh in
     let user = Config.Ssh.user ssh in
@@ -53,9 +53,9 @@ module Metadata = struct
           v "rsync" % "-avzR" % "--delete" % "--exclude=/*/*/*/*/*/" % "-e"
           % Fmt.str "ssh -p %d -i %a" port Fpath.pp privkeyfile
           % Fmt.str "--rsync-path=mkdir -p %s/%a && rsync" root_folder Fpath.pp
-              (Storage.Base.folder (HtmlTailwind generation))
+              (Storage.Base.folder (HtmlRaw generation))
           % Fmt.str "%s@%s:%s/./%a" user host root_folder Fpath.pp
-              (Storage.Base.folder (HtmlTailwind generation))
+              (Storage.Base.folder (HtmlRaw generation))
           % Fmt.str "%a/./" Fpath.pp state_dir)
         |> Bos.Cmd.to_list |> Array.of_list )
 
@@ -89,7 +89,7 @@ module Metadata = struct
     let* () =
       let packages_dir = Fpath.(
         state_dir
-        // Storage.Base.folder (HtmlTailwind generation)
+        // Storage.Base.folder (HtmlRaw generation)
         / "packages")
       in
       Sys.command (Format.asprintf "mkdir -p %a" Fpath.pp packages_dir) |> ignore;
@@ -136,8 +136,8 @@ module Metadata = struct
         |> Bos.Cmd.to_list |> Array.of_list )
 
   let hash_state ~job generation =
-    let folder = Fpath.(state_dir // Storage.Base.folder (HtmlTailwind generation)) in
-    (* folder = <state_dir>/<generation id>/html-tailwind/ => depth = 5 - 2*)
+    let folder = Fpath.(state_dir // Storage.Base.folder (HtmlRaw generation)) in
+    (* folder = <state_dir>/<generation id>/html-raw/ => depth = 5 - 2*)
     Current.Process.check_output ~cancellable:false ~job
       ( "",
         [|

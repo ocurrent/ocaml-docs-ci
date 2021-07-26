@@ -14,7 +14,7 @@ end
 
 and Package : sig
   type t
-  (** A package in the docs-ci sense: it's composed of the package name, version, 
+  (** A package in the ocaml-docs-ci sense: it's composed of the package name, version, 
   and its dependency universe. *)
 
 end

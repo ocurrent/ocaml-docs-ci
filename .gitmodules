@@ -4,6 +4,3 @@
 [submodule "vendor/ocurrent"]
 	path = vendor/ocurrent
 	url = https://github.com/TheLortex/ocurrent
-[submodule "web/vendor/graphql-ppx"]
-	path = web/vendor/graphql-ppx
-	url = https://github.com/reasonml-community/graphql-ppx.git

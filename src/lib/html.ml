@@ -1,4 +1,4 @@
-type hashes = { html_tailwind_hash : string; html_classic_hash : string } [@@deriving yojson]
+type hashes = { html_raw_hash : string; html_classic_hash : string } [@@deriving yojson]
 
 type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
 
@@ -12,7 +12,7 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
   let open Obuilder_spec in
   let package = Compile.package compiled in
   let linked_folder = Storage.folder (Linked (generation, blessed)) package in
-  let tailwind_folder = Storage.folder (HtmlTailwind (generation, blessed)) package in
+  let raw_folder = Storage.folder (HtmlRaw (generation, blessed)) package in
   let classic_folder = Storage.folder (HtmlClassic (generation, blessed)) package in
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
@@ -45,8 +45,8 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
          (* Run voodoo-gen *)
          workdir (Fpath.to_string (Storage.Base.generation_folder `Linked generation));
          run
-           "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen pkgver -o %s -n %s --pkg-version %s"
-           (Fpath.to_string (Storage.Base.folder (HtmlTailwind generation)))
+           "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-gen -o %s -n %s --pkg-version %s"
+           (Fpath.to_string (Storage.Base.folder (HtmlRaw generation)))
            name version;
          run
            "opam exec -- bash -c 'for i in $(find linked -name *.odocl); do odoc html-generate $i \
@@ -57,15 +57,15 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
          @@ Misc.Cmd.list
               [
                 Fmt.str "echo '%f'" (Random.float 1.);
-                Fmt.str "mkdir -p %a %a" Fpath.pp tailwind_folder Fpath.pp classic_folder;
-                (* Extract tailwind and html output *)
-                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string tailwind_folder)
+                Fmt.str "mkdir -p %a %a" Fpath.pp raw_folder Fpath.pp classic_folder;
+                (* Extract raw and html output *)
+                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string raw_folder)
                   (Fpath.to_string classic_folder) (Config.Ssh.host ssh)
                   (Config.Ssh.storage_folder ssh);
                 (* Print hashes *)
-                Fmt.str "(set '%s' tailwind; %s) && (set '%s' classic; %s)"
-                  (Fpath.to_string tailwind_folder)
-                  (Storage.hash_command ~prefix:"TAILWIND")
+                Fmt.str "(set '%s' raw; %s) && (set '%s' classic; %s)"
+                  (Fpath.to_string raw_folder)
+                  (Storage.hash_command ~prefix:"RAW")
                   (Fpath.to_string classic_folder)
                   (Storage.hash_command ~prefix:"CLASSIC");
               ];
@@ -121,20 +121,20 @@ module Gen = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let** _ = Current_ocluster.Connection.run_job ~job build_job in
-    let extract_hashes (v_html_tailwind, v_html_classic) line =
+    let extract_hashes (v_html_raw, v_html_classic) line =
       (* some early stopping could be done here *)
-      let html_tailwind =
-        Storage.parse_hash ~prefix:"TAILWIND" line |> or_default v_html_tailwind
+      let html_raw =
+        Storage.parse_hash ~prefix:"RAW" line |> or_default v_html_raw
       in
       let html_classic = Storage.parse_hash ~prefix:"CLASSIC" line |> or_default v_html_classic in
-      (html_tailwind, html_classic)
+      (html_raw, html_classic)
     in
-    let** html_tailwind, html_classic = Misc.fold_logs build_job extract_hashes (None, None) in
+    let** html_raw, html_classic = Misc.fold_logs build_job extract_hashes (None, None) in
     try
-      let html_tailwind = Option.get html_tailwind in
+      let html_raw = Option.get html_raw in
       let html_classic = Option.get html_classic in
       Lwt.return_ok
-        { html_tailwind_hash = html_tailwind.hash; html_classic_hash = html_classic.hash }
+        { html_raw_hash = html_raw.hash; html_classic_hash = html_classic.hash }
     with Invalid_argument _ -> Lwt.return_error (`Msg "Gen: failed to parse output")
 end
 

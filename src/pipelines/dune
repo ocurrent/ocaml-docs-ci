@@ -2,7 +2,7 @@
 
 (library
  (name docs_ci_pipelines)
- (package docs-ci)
+ (package ocaml-docs-ci)
  (libraries docs_ci_lib current current.cache current_github current_git
    current_web current_docker astring dockerfile cmdliner fmt.tty logs.fmt
    lwt lwt.unix obuilder-spec opam-file-format current_ocluster)

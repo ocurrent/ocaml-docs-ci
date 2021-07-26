@@ -5,7 +5,7 @@ compiled dependencies. It uses `voodoo-do` to perform the compilation, link and 
 steps, outputting the results in the compile/ and html/ folders.  
 *)
 
-type hashes = { html_tailwind_hash : string; html_classic_hash : string }
+type hashes = { html_raw_hash : string; html_classic_hash : string }
 
 type t
 (** A compiled package *)

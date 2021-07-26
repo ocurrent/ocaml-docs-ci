@@ -1,6 +1,0 @@
-(library
- (name docs2web_pages)
- (package docs-ci-web)
- (libraries dream tyxml docs2web omd)
- (preprocess
-  (pps tyxml-jsx)))
