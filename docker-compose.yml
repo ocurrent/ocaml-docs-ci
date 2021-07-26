@@ -57,18 +57,30 @@ services:
       - 'ssh-credentials:/root/.ssh/'
       - 'docs-data:/data'
 
-  http-raw-website:
+  http-raw-live-website:
     restart: on-failure    
     image: nginx
     command: >
       bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/live/html-raw /usr/share/nginx/html
+      && ln -s /data/html-live/html-raw /usr/share/nginx/html
       && nginx -g 'daemon off;'"
     ports:
         - "8002:8000"
     volumes:
       - 'docs-data:/data/'
 
+  http-raw-current-website:
+    restart: on-failure    
+    image: nginx
+    command: >
+      bash -c "rm -rf /usr/share/nginx/html
+      && ln -s /data/html-current/html-raw /usr/share/nginx/html
+      && nginx -g 'daemon off;'"
+    ports:
+        - "8003:8000"
+    volumes:
+      - 'docs-data:/data/'
+            
   ocaml-docs-ci:
     build:
       dockerfile: Dockerfile
