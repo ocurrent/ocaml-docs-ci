@@ -68,7 +68,8 @@ module Op = struct
   let voodoo_do_paths =
     Fpath.[ v "voodoo-do.opam"; v "voodoo-lib.opam"; v "src/voodoo-do/"; v "src/voodoo/" ]
 
-  let voodoo_gen_paths = Fpath.[ v "voodoo-gen.opam"; v "src/voodoo-gen/"; v "src/voodoo/"; v "src/voodoo-web/" ]
+  let voodoo_gen_paths =
+    Fpath.[ v "voodoo-gen.opam"; v "src/voodoo-gen/"; v "src/voodoo/"; v "src/voodoo-web/" ]
 
   let get_oldest_commit_for ~job ~dir ~from paths =
     let paths = List.map Fpath.to_string paths in
@@ -169,7 +170,8 @@ module Do = struct
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network ~cache
-             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext -iy odoc-parser";
+             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext \
+              -iy odoc-parser";
            run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
@@ -194,9 +196,12 @@ module Gen = struct
     base
     |> Spec.add
          [
-           run ~network "sudo apt-get update && sudo apt-get install -yy m4";
+           run ~network
+             "sudo apt-get update && sudo apt-get install -yy m4 && opam repo set-url default \
+              https://github.com/ocaml/opam-repository.git#53f602dc16f725d46da26144f29a6be8dfa3c24b";
            run ~network ~cache
-             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext -iy odoc-parser";
+             "opam pin -ny odoc-parser https://github.com/ocaml-doc/odoc-parser.git && opam depext \
+              -iy odoc-parser";
            run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
