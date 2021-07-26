@@ -57,19 +57,7 @@ services:
       - 'ssh-credentials:/root/.ssh/'
       - 'docs-data:/data'
 
-  git-http-classic-website:
-    restart: on-failure    
-    image: nginx
-    command: >
-      bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/live/html-classic /usr/share/nginx/html
-      && nginx -g 'daemon off;'"
-    ports:
-        - "8000:8000"
-    volumes:
-      - 'docs-data:/data/'
-
-  git-http-raw-website:
+  http-raw-website:
     restart: on-failure    
     image: nginx
     command: >
@@ -100,7 +88,6 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
-      - --ssh-endpoint=http://git-http-classic-website:8000/ # ocaml-docs-ci-web access the documentation files using this endpoint
       - --jobs=6
       - --limit=1
       - --filter=uri
@@ -108,7 +95,6 @@ services:
     restart: on-failure         # (wait for the scheduler to write the submission cap)
     ports:
       - 8080:8080 # HTTP UI
-      - 8081:8081 # GraphQL endpoint for docs2web
     volumes:
       - 'ocaml-docs-ci-data:/var/lib/ocurrent'
       - "capnp-secrets:/capnp-secrets"
@@ -118,7 +104,6 @@ services:
 
 volumes:
   ocaml-docs-ci-data:
-  ocaml-docs-ci-web-data:
   worker-data:
   scheduler-data:
   capnp-secrets:

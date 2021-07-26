@@ -243,24 +243,9 @@ let v ~config ~api ~opam () =
       and+ metadata = pages in
       metadata :: pages_commits
     in
-    let commits_classic =
-      Package.Map.bindings html
-      |> List.map (fun (_, html_current) ->
-             html_current
-             |> Current.map (fun t -> (Html.hashes t).html_classic_hash)
-             |> Current.state ~hidden:true)
-      |> Current.list_seq
-      |> Current.map (List.filter_map Result.to_option)
-    in
     let live_html = Live.set_to ~ssh "html" `Html generation in
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
-    Current.all
-      [
-        commits_raw |> Current.ignore_value;
-        commits_classic |> Current.ignore_value;
-        live_html;
-        live_linked;
-      ]
+    Current.all [ commits_raw |> Current.ignore_value; live_html; live_linked ]
   in
 
   (* 9) Report status *)
