@@ -144,9 +144,6 @@ let v ~config ~opam () =
     let+ voodoo = voodoo in
     Epoch.v config voodoo
   in
-  (* 0) Generate everything that's statically known just from the repository *)
-  let metadata = Opam_metadata.v ~generation ~ssh ~repo:opam in
-  let pages = Pages.v ~generation ~config ~voodoo:v_gen ~metadata_branch:metadata in
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
@@ -231,16 +228,13 @@ let v ~config ~opam () =
     Current.collapse ~input:html_input_node ~key:"Update live folders" ~value:""
     @@
     let commits_raw =
-      let+ pages_commits =
-        Package.Map.bindings html
-        |> List.map (fun (_, html_current) ->
-               html_current
-               |> Current.map (fun t -> (Html.hashes t).html_raw_hash)
-               |> Current.state ~hidden:true)
-        |> Current.list_seq
-        |> Current.map (List.filter_map Result.to_option)
-      and+ metadata = pages in
-      metadata :: pages_commits
+      Package.Map.bindings html
+      |> List.map (fun (_, html_current) ->
+             html_current
+             |> Current.map (fun t -> (Html.hashes t).html_raw_hash)
+             |> Current.state ~hidden:true)
+      |> Current.list_seq
+      |> Current.map (List.filter_map Result.to_option)
     in
     let live_html = Live.set_to ~ssh "html" `Html generation in
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
