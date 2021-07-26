@@ -6,7 +6,7 @@ let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
 
 let program_name = "ocaml-docs-ci"
 
-let main current_config mode gql_port config =
+let main current_config mode config =
   let () =
     match Docs_ci_lib.Init.setup (Docs_ci_lib.Config.ssh config) with
     | Ok () -> ()
@@ -36,16 +36,10 @@ let main current_config mode gql_port config =
 
 open Cmdliner
 
-let graphql_port =
-  Arg.value @@ Arg.opt Arg.int 8081
-  @@ Arg.info
-       ~doc:"The port on which to listen for incoming Graphql endpoint HTTP connections."
-       ~docv:"GQL_PORT" [ "gql-port" ]
-
 let cmd =
   let doc = "an OCurrent pipeline" in
   ( Term.(
-      const main $ Current.Config.cmdliner $ Current_web.cmdliner $ graphql_port
+      const main $ Current.Config.cmdliner $ Current_web.cmdliner
       $ Docs_ci_lib.Config.cmdliner),
     Term.info program_name ~doc )
 
