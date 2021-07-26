@@ -56,7 +56,7 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
                 Fmt.str "rsync -aR ./%s %s:%s/." (Fpath.to_string raw_folder) (Config.Ssh.host ssh)
                   (Config.Ssh.storage_folder ssh);
                 (* Print hashes *)
-                Fmt.str "(set '%s' raw; %s)" (Fpath.to_string raw_folder)
+                Fmt.str "set '%s' raw; %s" (Fpath.to_string raw_folder)
                   (Storage.hash_command ~prefix:"RAW");
               ];
        ]
