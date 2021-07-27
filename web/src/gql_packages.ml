@@ -18,24 +18,24 @@ module Info = struct
   }
 end
 
-type dependencies_with_constraints = {
+type dependencies = {
+  dependencyName: string;
+  constraints: string;
+}
+
+(* type dependencies_with_constraints = {
   dependencyName: string;
   constraints: string;
 }
 
 type dependencies_without_constraints = {
   dependencyName: string;
-}
+} *)
 
-type dependencies = {
-  dependencyName: string;
-  constraints: string;
-}
-
-type dependants = {
+(* type dependants = {
   dependantName: string;
   version: string
-}
+} *)
 
 type package = {
   name : string;
@@ -48,13 +48,13 @@ type package = {
   homepage : string;
   tags : string;
   maintainers : string;
-  dependencies: dependencies list
+  dependencies: dependencies list;
 }
 
 type response = {
   totalPackages: int;
   limit: int;
-  packages: package list
+  packages: package list;
 }
 
 let starts_with s1 s2 =
@@ -75,15 +75,22 @@ let is_package s1 s2 =
     let s2 = String.lowercase_ascii s2 in
     String.(equal s2 s1)
 
-let package_dependencies deps = 
+let get_dependencies deps = 
   let dependencies = List.map (function | (name, None) -> { dependencyName = OpamPackage.Name.to_string name; constraints = "" } | (name, Some constraints) -> { dependencyName = OpamPackage.Name.to_string name; constraints = constraints }) deps in
   dependencies
 
 let all_packages ~state =
   let packagesFromSource = State.all_packages_gql(state) in
   let packagesFromSource = OpamPackage.Name.Map.bindings(packagesFromSource) in
-  let packages = List.map (fun (name, (version, info)) -> { name = OpamPackage.Name.to_string name; version = OpamPackage.Version.to_string version; synopsis = info.Package.Info.synopsis; description = info.Package.Info.description; license = info.Package.Info.license; publication_date = info.Package.Info.publication_date; authors = String.concat ";" info.Package.Info.authors;  homepage = String.concat ";" info.Package.Info.homepage; tags = String.concat ";" info.Package.Info.tags; maintainers = String.concat ";" info.Package.Info.maintainers; dependencies = (package_dependencies info.Package.Info.dependencies) }) packagesFromSource in
+  let packages = List.map (fun (name, (version, info)) -> { name = OpamPackage.Name.to_string name; version = OpamPackage.Version.to_string version; synopsis = info.Package.Info.synopsis; description = info.Package.Info.description; license = info.Package.Info.license; publication_date = info.Package.Info.publication_date; authors = String.concat ";" info.Package.Info.authors;  homepage = String.concat ";" info.Package.Info.homepage; tags = String.concat ";" info.Package.Info.tags; maintainers = String.concat ";" info.Package.Info.maintainers; dependencies = (get_dependencies info.Package.Info.dependencies) }) packagesFromSource in
   packages
+
+let single_package ~state name version =
+  let version = OpamPackage.Version.of_string version in
+  let versions = State.get_package_gql state name in
+  let info = OpamPackage.Version.Map.find version versions in
+  let package = { name = OpamPackage.Name.to_string name; version = OpamPackage.Version.to_string version; synopsis = info.Package.Info.synopsis; description = info.Package.Info.description; license = info.Package.Info.license; publication_date = info.Package.Info.publication_date; authors = String.concat ";" info.Package.Info.authors;  homepage = String.concat ";" info.Package.Info.homepage; tags = String.concat ";" info.Package.Info.tags; maintainers = String.concat ";" info.Package.Info.maintainers; dependencies = (get_dependencies info.Package.Info.dependencies) } in
+  package
 
 let get_package_dependendants dependencies packageName = 
   let res = List.find_opt (fun deps -> is_package packageName deps.dependencyName) dependencies in
@@ -96,12 +103,9 @@ let package_dependendants ~state packageName =
   let dependendants = List.filter (fun pkg -> get_package_dependendants pkg.dependencies packageName ) all_packages in
   dependendants
 
-let single_package ~state name version =
-  let version = OpamPackage.Version.of_string version in
-  let versions = State.get_package_gql state name in
-  let info = OpamPackage.Version.Map.find version versions in
-  let package = { name = OpamPackage.Name.to_string name; version = OpamPackage.Version.to_string version; synopsis = info.Package.Info.synopsis; description = info.Package.Info.description; license = info.Package.Info.license; publication_date = info.Package.Info.publication_date; authors = String.concat ";" info.Package.Info.authors;  homepage = String.concat ";" info.Package.Info.homepage; tags = String.concat ";" info.Package.Info.tags; maintainers = String.concat ";" info.Package.Info.maintainers; dependencies = (package_dependencies info.Package.Info.dependencies) } in
-  package
+let package_dependencies packages packageName = 
+  let dependencies = List.find (fun pkg -> is_package packageName pkg.name) packages in
+  dependencies
 
 let dependencies =
   Graphql_lwt.Schema.(obj "package" ~fields:(fun _ ->
@@ -209,7 +213,7 @@ let response =
       "packages"
       ~doc:"packages"
       ~args:Arg.[]
-      ~typ:(non_null (list (non_null package))) (* composing with the package schema we just defined *)
+      ~typ:(non_null (list (non_null package)))
       ~resolve:(fun _ p -> p.packages)
     ]
   ))
@@ -309,5 +313,23 @@ let schema ~(state:State.t) : Dream.request Graphql_lwt.Schema.schema =
           ]
           ~resolve:(fun _ () name ->
             let package_dependendants = package_dependendants ~state name in
-            package_dependendants)
+            package_dependendants);
+    field
+      "dependencies"
+      ~typ:(non_null (list (non_null package)))
+      ~args:
+        Arg.
+          [ 
+            arg'
+              ~doc:
+                "All package dependencies"
+                "name"
+              ~typ:string
+              ~default:""
+          ]
+          ~resolve:(fun _ () name ->
+            let all_packages = all_packages ~state in 
+            let single_package = List.find (fun package -> is_package name package.name) all_packages in
+            let package_dependencies = List.map (fun deps -> package_dependencies all_packages deps.dependencyName ) single_package.dependencies in
+            package_dependencies)
     ])
