@@ -42,6 +42,70 @@ let create_new_tbody () =
   tbody##.id := Js.string "opam_packages";
   Dom.replaceChild table tbody tfoot
 
+let package_query ~search =
+  let query = 
+    {|
+      {
+        allPackages (filter: "|} ^ search ^ {|") {
+          totalPackages
+          limit
+          packages {
+            name
+            version
+            synopsis
+          }
+        }
+      }
+    |}
+  in
+  Ezjsonm.value_to_string (`O [ "query", `String query ])
+
+let page_query ~offset ~limit =
+  let query = 
+    {|
+      {
+        allPackages (offset: "|} ^ offset ^ {|", limit: "|} ^ limit ^ {|") {
+          totalPackages
+          limit
+          packages {
+            name
+            version
+            synopsis
+          }
+        }
+      }
+    |}
+  in
+  Ezjsonm.value_to_string (`O [ "query", `String query ])
+
+(* 
+let create_pagination totalPackages limit = 
+  let pages = totalPackages / limit in
+  let rem = totalPackages mod limit in
+  if rem > 0 then
+    let pages = pages + 1
+  else 
+    let pages = pages
+  for i = 0 to pages () do
+    let btn_name = 
+    let btn ^ page = Html.(createButton document) in
+    let query = page_query i limit
+    let req =  fetch_packages query in
+    in
+  legendBtns##.onclick :=
+    Html.handler (fun v ->
+      Js.Opt.iter v##.target (fun t ->
+        search_handler (Js.to_string t##.innerHTML));
+      Js._true);
+    link##.innerHTML := Js.string page + 1;
+  done
+  let pg1 = fetch_packages page_query 0 300 in
+  Fut.await pg1 format_packages;
+  let pg2 = fetch_packages page_query 301 300 in
+  Fut.await pg1 format_packages; 
+  
+*)
+
 let display_pkgs { name; synopsis; version } =
   let loader =
     Js.Opt.get
@@ -78,13 +142,16 @@ let display_pkgs { name; synopsis; version } =
 let get_string key l =
   match List.assoc key l with `String s -> s | _ -> raise Not_found
 
-let formatPackages packages =
+let format_packages packages =
   match packages with
   | Some packages ->
     (try
       let packages = Jstr.to_string (Json.encode packages) in
+      Console.log [ packages ];
       let json = Ezjsonm.from_string packages in
-      let json = Ezjsonm.find json [ "data"; "allPackages" ] in
+      Console.log [ json ];
+      let json = Ezjsonm.find json [ "data"; "allPackages"; "packages" ] in
+      Console.log [ json ];
       match json with
       | `A pkgs ->
          let add_pkg l = function
@@ -133,21 +200,7 @@ let get_packages url query =
     Console.error [ Jstr.of_string "ERROR" ];
     Fut.return None
 
-let package_query ~search =
-  let query = 
-    {|
-      {
-        allPackages (filter: "|} ^ search ^ {|") {
-          name
-          synopsis
-          version
-        }
-      }
-    |}
-  in
-  Ezjsonm.value_to_string (`O [ "query", `String query ])
-
-let fetchPkgs query =
+let fetch_packages query =
   let url = "./graphql" in
   let result = get_packages url query in
   result
@@ -161,15 +214,15 @@ let search_handler data =
   loader##.style##.display := Js.string "block";
   let search_data = String.lowercase_ascii data in
   let query = package_query ~search:search_data in
-  let pkgs = fetchPkgs query in
+  let pkgs = fetch_packages query in
   remove_old_tbody ();
   create_new_tbody ();
-  Fut.await pkgs formatPackages
+  Fut.await pkgs format_packages
 
 let start _ =
   let query = package_query ~search:"sortByName" in
-  let result = fetchPkgs query in
-  Fut.await result formatPackages;
+  let result = fetch_packages query in
+  Fut.await result format_packages;
   let searchInput=
     Js.Opt.get
       (Html.document##getElementById (Js.string "filter"))

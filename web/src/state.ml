@@ -62,12 +62,15 @@ let all_packages_latest t =
   |> OpamPackage.Name.Map.map OpamPackage.Version.Map.max_binding
   |> Lwt.return
 
-let all_packages_lst t =
+let all_packages_gql t =
   t.packages
   |> OpamPackage.Name.Map.map OpamPackage.Version.Map.max_binding
 
 let get_package t name =
   t.packages |> OpamPackage.Name.Map.find name |> Lwt.return
+
+let get_package_gql t name =
+  t.packages |> OpamPackage.Name.Map.find name
 
 let get_package_opt t name =
   t.packages |> OpamPackage.Name.Map.find_opt name |> Lwt.return

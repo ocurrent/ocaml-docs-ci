@@ -3191,30 +3191,32 @@
      _d8_=caml_string_of_jsbytes("redirect"),
      _d9_=caml_string_of_jsbytes("referrer"),
      _d__=caml_string_of_jsbytes("referrerPolicy"),
-     _ew_=[0,caml_string_of_jsbytes("web/client/main.ml"),192,17],
-     _ev_=[0,caml_string_of_jsbytes("web/client/main.ml"),181,17],
-     _eu_=[0,caml_string_of_jsbytes("web/client/main.ml"),176,17],
+     _ew_=[0,caml_string_of_jsbytes("web/client/main.ml"),245,17],
+     _ev_=[0,caml_string_of_jsbytes("web/client/main.ml"),234,17],
+     _eu_=[0,caml_string_of_jsbytes("web/client/main.ml"),229,17],
      _et_=caml_string_of_jsbytes("sortByName"),
-     _es_=[0,caml_string_of_jsbytes("web/client/main.ml"),159,17],
-     _ep_=
-      caml_string_of_jsbytes
-       ('") {\n          name\n          synopsis\n          version\n        }\n      }\n    '),
-     _eq_=caml_string_of_jsbytes('\n      {\n        allPackages (filter: "'),
-     _er_=caml_string_of_jsbytes("query"),
-     _em_=caml_string_of_jsbytes("name"),
-     _en_=caml_string_of_jsbytes("synopsis"),
-     _eo_=caml_string_of_jsbytes("version"),
-     _el_=
+     _es_=[0,caml_string_of_jsbytes("web/client/main.ml"),212,17],
+     _ep_=caml_string_of_jsbytes("name"),
+     _eq_=caml_string_of_jsbytes("synopsis"),
+     _er_=caml_string_of_jsbytes("version"),
+     _eo_=
       [0,
        caml_string_of_jsbytes("data"),
-       [0,caml_string_of_jsbytes("allPackages"),0]],
-     _ek_=caml_string_of_jsbytes("Packages Error - "),
-     _eg_=[0,caml_string_of_jsbytes("web/client/main.ml"),59,17],
-     _ef_=[0,caml_string_of_jsbytes("web/client/main.ml"),54,17],
-     _ee_=[0,caml_string_of_jsbytes("web/client/main.ml"),49,17],
-     _eh_=caml_string_of_jsbytes("/"),
-     _ei_=caml_string_of_jsbytes("/"),
-     _ej_=caml_string_of_jsbytes("packages/"),
+       [0,
+        caml_string_of_jsbytes("allPackages"),
+        [0,caml_string_of_jsbytes("packages"),0]]],
+     _en_=caml_string_of_jsbytes("Packages Error - "),
+     _ej_=[0,caml_string_of_jsbytes("web/client/main.ml"),123,17],
+     _ei_=[0,caml_string_of_jsbytes("web/client/main.ml"),118,17],
+     _eh_=[0,caml_string_of_jsbytes("web/client/main.ml"),113,17],
+     _ek_=caml_string_of_jsbytes("/"),
+     _el_=caml_string_of_jsbytes("/"),
+     _em_=caml_string_of_jsbytes("packages/"),
+     _ee_=
+      caml_string_of_jsbytes
+       ('") {\n          totalPackages\n          limit\n          packages {\n            name\n            version\n            synopsis\n          }\n        }\n      }\n    '),
+     _ef_=caml_string_of_jsbytes('\n      {\n        allPackages (filter: "'),
+     _eg_=caml_string_of_jsbytes("query"),
      _ed_=[0,caml_string_of_jsbytes("web/client/main.ml"),39,17],
      _ec_=[0,caml_string_of_jsbytes("web/client/main.ml"),34,17],
      _eb_=[0,caml_string_of_jsbytes("web/client/main.ml"),26,17],
@@ -8162,86 +8164,19 @@
         if(31 !== i){var i=_d$_;continue}
         var
          packages_holder=[0,0],
-         display_pkgs=
-          function(param)
-           {var synopsis=param[3],version=param[2],name=param[1];
-            function _e0_(param){throw [0,Assert_failure,_ee_]}
-            var loader=get(t46.getElementById("overlay"),_e0_);
-            function _e1_(param){throw [0,Assert_failure,_ef_]}
-            var content=get(t46.getElementById("content"),_e1_);
-            function _e2_(param){throw [0,Assert_failure,_eg_]}
-            var
-             tbody=get(t46.getElementById("opam_packages"),_e2_),
-             link=unsafeCreateElement(t46,_cd_);
-            link.href
-            =
-            caml_jsstring_of_string
-             (symbol(_ej_,symbol(name,symbol(_ei_,symbol(version,_eh_)))));
-            link.innerHTML = caml_jsstring_of_string(name);
-            var tr=unsafeCreateElement(t46,_cg_),td1=createTd(t46);
-            appendChild(td1,link);
-            appendChild(tr,td1);
-            var td2=createTd(t46);
-            td2.innerHTML = caml_jsstring_of_string(synopsis);
-            appendChild(tr,td2);
-            var td3=createTd(t46);
-            td3.innerHTML = caml_jsstring_of_string(version);
-            appendChild(tr,td3);
-            appendChild(tbody,tr);
-            loader.style.display = "none";
-            return content.style.display = "block"},
-         get_string=
-          function(key,l)
-           {var match=assoc(key,l);
-            if(typeof match !== "number" && -976970511 === match[1])
-             {var s=match[2];return s}
-            throw Not_found},
-         formatPackages=
-          function(packages)
-           {if(packages)
-             {var packages$0=packages[1];
-              try
-               {var
-                 packages$1=caml_string_of_jsstring(encode$1(packages$0)),
-                 json=from_string(packages$1),
-                 json$0=find(json,_el_),
-                 switch$0=0;
-                if(typeof json$0 !== "number" && 65 === json$0[1])
-                 {var
-                   pkgs=json$0[2],
-                   add_pkg=
-                    function(l,param)
-                     {if(typeof param !== "number" && 79 === param[1])
-                       {var
-                         pkg=param[2],
-                         name=get_string(_em_,pkg),
-                         synopsis=get_string(_en_,pkg),
-                         version=get_string(_eo_,pkg);
-                        return [0,[0,name,version,synopsis],l]}
-                      return l},
-                   _eZ_=iter(display_pkgs,rev(fold_left(add_pkg,0,pkgs)));
-                  switch$0 = 1}
-                if(! switch$0)
-                 var _eZ_=log([0,caml_jsstring_of_string(packages$1),0]);
-                return _eZ_}
-              catch(e)
-               {e = caml_wrap_exception(e);
-                return error
-                        ([0,caml_jsstring_of_string(symbol(_ek_,to_string(e))),0])}}
-            return error([0,"There was an error",0])},
          package_query=
           function(search)
            {var
-             query=symbol(_eq_,symbol(search,_ep_)),
-             json=[0,79,[0,[0,_er_,[0,-976970511,query]],0]],
+             query=symbol(_ef_,symbol(search,_ee_)),
+             json=[0,79,[0,[0,_eg_,[0,-976970511,query]],0]],
              buf=create$0(1024),
              dst=[0,86585632,buf],
              sth=1;
             function enc(e,l){encode$0(e,[0,-633954146,l]);return 0}
             function value$0(counter,v,k,e)
              {if(typeof v !== "number")
-               {var _eY_=v[1];
-                if(65 <= _eY_ && ! (365180284 <= _eY_))
+               {var _e2_=v[1];
+                if(65 <= _e2_ && ! (365180284 <= _e2_))
                  {if(79 <= v[1])
                    {var ms=v[2];
                     enc(e,17732);
@@ -8262,22 +8197,22 @@
                {var
                  vs$0=vs[2],
                  v=vs[1],
-                 _eW_=function(_eX_){return arr_vs(vs$0,k,_eX_)};
+                 _e0_=function(_e1_){return arr_vs(vs$0,k,_e1_)};
                 if(counter < 50)
                  {var counter$0=counter + 1 | 0;
-                  return value$0(counter$0,v,_eW_,e)}
-                return caml_trampoline_return(value$0,[0,v,_eW_,e])}
+                  return value$0(counter$0,v,_e0_,e)}
+                return caml_trampoline_return(value$0,[0,v,_e0_,e])}
               enc(e,14596);
               return caml_call1(k,e)}
             function obj_ms$0(counter,ms,k,e)
              {if(ms)
                {var ms$0=ms[2],match=ms[1],v=match[2],n=match[1];
                 enc(e,[0,869834347,n]);
-                var _eU_=function(_eV_){return obj_ms(ms$0,k,_eV_)};
+                var _eY_=function(_eZ_){return obj_ms(ms$0,k,_eZ_)};
                 if(counter < 50)
                  {var counter$0=counter + 1 | 0;
-                  return value$0(counter$0,v,_eU_,e)}
-                return caml_trampoline_return(value$0,[0,v,_eU_,e])}
+                  return value$0(counter$0,v,_eY_,e)}
+                return caml_trampoline_return(value$0,[0,v,_eY_,e])}
               enc(e,17718);
               return caml_call1(k,e)}
             function value(v,k,e){return caml_trampoline(value$0(0,v,k,e))}
@@ -8293,7 +8228,76 @@
             function finish(e){encode$0(e,3455931);return 0}
             value(json,finish,e);
             return contents(buf)},
-         fetchPkgs=
+         display_pkgs=
+          function(param)
+           {var synopsis=param[3],version=param[2],name=param[1];
+            function _eV_(param){throw [0,Assert_failure,_eh_]}
+            var loader=get(t46.getElementById("overlay"),_eV_);
+            function _eW_(param){throw [0,Assert_failure,_ei_]}
+            var content=get(t46.getElementById("content"),_eW_);
+            function _eX_(param){throw [0,Assert_failure,_ej_]}
+            var
+             tbody=get(t46.getElementById("opam_packages"),_eX_),
+             link=unsafeCreateElement(t46,_cd_);
+            link.href
+            =
+            caml_jsstring_of_string
+             (symbol(_em_,symbol(name,symbol(_el_,symbol(version,_ek_)))));
+            link.innerHTML = caml_jsstring_of_string(name);
+            var tr=unsafeCreateElement(t46,_cg_),td1=createTd(t46);
+            appendChild(td1,link);
+            appendChild(tr,td1);
+            var td2=createTd(t46);
+            td2.innerHTML = caml_jsstring_of_string(synopsis);
+            appendChild(tr,td2);
+            var td3=createTd(t46);
+            td3.innerHTML = caml_jsstring_of_string(version);
+            appendChild(tr,td3);
+            appendChild(tbody,tr);
+            loader.style.display = "none";
+            return content.style.display = "block"},
+         get_string=
+          function(key,l)
+           {var match=assoc(key,l);
+            if(typeof match !== "number" && -976970511 === match[1])
+             {var s=match[2];return s}
+            throw Not_found},
+         format_packages=
+          function(packages)
+           {if(packages)
+             {var packages$0=packages[1];
+              try
+               {var packages$1=caml_string_of_jsstring(encode$1(packages$0));
+                log([0,packages$1,0]);
+                var json=from_string(packages$1);
+                log([0,json,0]);
+                var json$0=find(json,_eo_);
+                log([0,json$0,0]);
+                var switch$0=0;
+                if(typeof json$0 !== "number" && 65 === json$0[1])
+                 {var
+                   pkgs=json$0[2],
+                   add_pkg=
+                    function(l,param)
+                     {if(typeof param !== "number" && 79 === param[1])
+                       {var
+                         pkg=param[2],
+                         name=get_string(_ep_,pkg),
+                         synopsis=get_string(_eq_,pkg),
+                         version=get_string(_er_,pkg);
+                        return [0,[0,name,version,synopsis],l]}
+                      return l},
+                   _eU_=iter(display_pkgs,rev(fold_left(add_pkg,0,pkgs)));
+                  switch$0 = 1}
+                if(! switch$0)
+                 var _eU_=log([0,caml_jsstring_of_string(packages$1),0]);
+                return _eU_}
+              catch(e)
+               {e = caml_wrap_exception(e);
+                return error
+                        ([0,caml_jsstring_of_string(symbol(_en_,to_string(e))),0])}}
+            return error([0,"There was an error",0])},
+         fetch_packages=
           function(query)
            {var
              method=[0,"POST"],
@@ -8355,7 +8359,7 @@
              s=caml_bytes_of_string(data),
              search_data=caml_string_of_bytes(map(lowercase_ascii,s)),
              query=package_query(search_data),
-             pkgs=fetchPkgs(query),
+             pkgs=fetch_packages(query),
              tf=unsafeCreateElement(t46,_ce_);
             tf.id = "tfoot";
             function _eG_(param){throw [0,Assert_failure,_ea_]}
@@ -8371,11 +8375,11 @@
              tbody=unsafeCreateElement(t46,_cf_);
             tbody.id = "opam_packages";
             replaceChild(table$0,tbody,tfoot);
-            return await$0(pkgs,formatPackages)},
+            return await$0(pkgs,format_packages)},
          start=
           function(param)
-           {var query=package_query(_et_),result=fetchPkgs(query);
-            await$0(result,formatPackages);
+           {var query=package_query(_et_),result=fetch_packages(query);
+            await$0(result,format_packages);
             function _ez_(param){throw [0,Assert_failure,_eu_]}
             var e=get(t46.getElementById("filter"),_ez_);
             function _eA_(param){throw [0,Assert_failure,_ev_]}
