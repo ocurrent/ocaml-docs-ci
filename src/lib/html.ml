@@ -33,11 +33,8 @@ let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
          run ~network:Misc.network ~secrets:Config.Ssh.secrets "%s"
          @@ Misc.Cmd.list
               [
-                Fmt.str "rsync -aR %s:%s/./%s %s:%s/./%s/page-%s.odocl ." (Config.Ssh.host ssh)
-                  (Config.Ssh.storage_folder ssh) (Fpath.to_string linked_folder)
-                  (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh)
-                  Fpath.(to_string (parent linked_folder))
-                  (Package.opam package |> OpamPackage.version_to_string);
+                Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
+                  (Config.Ssh.storage_folder ssh) (Fpath.to_string linked_folder);
                 "find . -name '*.tar' -exec tar -xvf {} \\;";
                 "find . -type d -empty -delete";
               ];

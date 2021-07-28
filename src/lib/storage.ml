@@ -26,13 +26,14 @@ let to_base_repo = function
   | Compile _ -> Compile
   | Prep -> Prep
 
-let base_folder ~blessed package =
+let base_folder ~blessed ~prep package =
+  let universes = if prep then "universes" else "u" in
   let universe = Package.universe package |> Package.Universe.hash in
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
-  if blessed then Fpath.(v "packages" / name / version)
-  else Fpath.(v "universes" / universe / name / version)
+  if blessed then Fpath.(v "p" / name / version)
+  else Fpath.(v universes / universe / name / version)
 
 let folder repository package =
   let blessed =
@@ -41,7 +42,7 @@ let folder repository package =
     | Prep -> Universe
   in
   let blessed = blessed = Blessed in
-  Fpath.(Base.folder (to_base_repo repository) // base_folder ~blessed package)
+  Fpath.(Base.folder (to_base_repo repository) // base_folder ~blessed ~prep:(repository=Prep) package)
 
 let for_all packages command =
   let data =
