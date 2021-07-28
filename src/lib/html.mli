@@ -14,8 +14,8 @@ val hashes : t -> hashes
 (** Hash of the compiled artifacts  *)
 
 val blessing : t -> Package.Blessing.t
-(** A blessed package is compiled in the compile/packages/... hierarchy, whereas a non-blessed 
- package is compiled in the compile/universes/... hierarchy *)
+(** A blessed package is compiled in the compile/p/... hierarchy, whereas a non-blessed 
+ package is compiled in the compile/u/... hierarchy *)
 
 val package : t -> Package.t
 (** The compiled package *)
