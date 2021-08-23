@@ -2,7 +2,7 @@ module Git = Current_git
 
 let () = Logging.init ()
 
-let monthly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 30) ()
+let hourly = Current_cache.Schedule.v ~valid_for:(Duration.of_hour 1) ()
 
 let program_name = "ocaml-docs-ci"
 
@@ -14,7 +14,7 @@ let main current_config mode config =
         Docs_ci_lib.Log.err (fun f -> f "Failed to initialize the storage server:\n%s" msg);
         exit 1
   in
-  let repo_opam = Git.clone ~schedule:monthly "https://github.com/ocaml/opam-repository.git" in
+  let repo_opam = Git.clone ~schedule:hourly "https://github.com/ocaml/opam-repository.git" in
   let engine =
     Current.Engine.create ~config:current_config (fun () ->
         Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam () |> Current.ignore_value)
