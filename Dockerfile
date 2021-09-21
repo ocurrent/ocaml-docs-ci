@@ -26,7 +26,7 @@ RUN sudo apt-get update && sudo apt-get install -y capnproto graphviz libcapnp-d
 RUN opam install --deps-only .
 ADD --chown=opam . .
 RUN --mount=type=cache,target=./_build/,uid=1000,gid=1000 opam config exec -- dune build ./_build/install/default/bin/ocaml-docs-ci ./_build/install/default/bin/ocaml-docs-ci-solver && cp ./_build/install/default/bin/ocaml-docs-ci ./_build/install/default/bin/ocaml-docs-ci-solver .
-FROM debian:10
+FROM debian:11
 RUN apt-get update && apt-get install rsync libev4 openssh-client curl gnupg2 dumb-init git graphviz libsqlite3-dev ca-certificates netbase gzip bzip2 xz-utils unzip tar -y --no-install-recommends
 RUN git config --global user.name "docs" && git config --global user.email "ci"
 WORKDIR /var/lib/ocurrent
