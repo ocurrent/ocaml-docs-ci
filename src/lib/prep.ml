@@ -119,7 +119,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
                 create_dir_and_copy_logs_if_not_exist;
                 (* Extract *)
                 Storage.for_all prep_storage_folders
-                  (Fmt.str "rsync -aR ./$1 %s:%s/.;" (Config.Ssh.host ssh)
+                  (Fmt.str "rsync -aR --no-p ./$1 %s:%s/.;" (Config.Ssh.host ssh)
                      (Config.Ssh.storage_folder ssh));
                 (* Compute hashes *)
                 Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES" ());
