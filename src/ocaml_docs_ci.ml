@@ -32,12 +32,13 @@ let main current_config github_auth mode config =
   in
   let has_role = if github_auth = None then Current_web.Site.allow_all else has_role in
   let secure_cookies = github_auth <> None in
+  let authn = Option.map Current_github.Auth.make_login_uri github_auth in
   let site =
     let routes =
       Routes.((s "login" /? nil) @--> Current_github.Auth.login github_auth)
       :: Current_web.routes engine
     in
-    Current_web.Site.(v ~has_role ~secure_cookies) ~name:program_name routes
+    Current_web.Site.(v ?authn ~has_role ~secure_cookies) ~name:program_name routes
   in
   Logging.run
     (Lwt.choose
