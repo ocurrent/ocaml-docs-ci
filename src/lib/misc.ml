@@ -1,3 +1,9 @@
+(* docker manifest inspect ocaml/opam:ubuntu-ocaml-4.13
+
+amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
+*)
+let ocaml_413_image_hash = "sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa"
+
 let base_image_version package =
   let deps = Package.all_deps package in
   let ocaml_version =
@@ -5,16 +11,17 @@ let base_image_version package =
     |> List.find_opt (fun pkg ->
            pkg |> Package.opam |> OpamPackage.name_to_string = "ocaml-base-compiler")
     |> Option.map (fun pkg -> pkg |> Package.opam |> OpamPackage.version_to_string)
-    |> Option.value ~default:"4.12.0"
+    |> Option.value ~default:"4.13.0"
   in
   match Astring.String.cuts ~sep:"." ocaml_version with
+  | [ "4"; "13"; _micro ] -> "4.13@" ^ ocaml_413_image_hash
   | [ major; minor; _micro ] -> major ^ "." ^ minor
-  | _xs -> "4.12"
+  | _xs -> "4.13@" ^ ocaml_413_image_hash
 
 (** Select base image to use *)
 let get_base_image package = Spec.make ("ocaml/opam:ubuntu-ocaml-" ^ base_image_version package)
 
-let default_base_image = Spec.make "ocaml/opam:ubuntu-ocaml-4.12"
+let default_base_image = Spec.make ("ocaml/opam:ubuntu-ocaml-4.13@" ^ ocaml_413_image_hash)
 
 let network = [ "host" ]
 
