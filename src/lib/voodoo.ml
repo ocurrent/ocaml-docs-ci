@@ -195,7 +195,7 @@ module Gen = struct
          [
            run ~network
              "sudo apt-get update && sudo apt-get install -yy m4 && opam repo set-url default \
-              https://github.com/ocaml/opam-repository.git#53f602dc16f725d46da26144f29a6be8dfa3c24b";
+              https://github.com/ocaml/opam-repository.git#c1ab98721ec2efc4c65d0c5a65a85c826925db6c";
            run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);
@@ -208,3 +208,4 @@ module Gen = struct
 
   let commit t = t.commit
 end
+
