@@ -109,7 +109,7 @@ let fold_logs build_job fn =
             let lines = String.split_on_char '\n' data in
             let fst = List.hd lines in
             let rest = List.tl lines in
-            aux next ((prev_line ^ fst) :: rest) acc )
+            aux next ((prev_line ^ fst) :: rest) acc)
     | line :: next -> aux start next (fn acc line)
   in
   aux 0L []

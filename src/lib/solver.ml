@@ -21,8 +21,10 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   let package = Track.pkg track in
   let packages = [ OpamPackage.name_to_string package; "ocaml-variants" ] in
   let constraints =
-    [ (OpamPackage.name_to_string package, `Eq, OpamPackage.version_to_string package);
-     ("ocaml-variants", `Eq, "4.12.0+domains+effects") ]
+    [
+      (OpamPackage.name_to_string package, `Eq, OpamPackage.version_to_string package);
+      ("ocaml-variants", `Eq, "4.12.0+domains+effects");
+    ]
   in
   let request =
     {
@@ -54,8 +56,7 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
       match res with
       | Ok [] -> Fmt.error_msg "no platform"
       | Ok [ x ] ->
-        
-        let solution =
+          let solution =
             List.map
               (fun (a, b) -> (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               x.packages
@@ -147,7 +148,7 @@ module Solver = struct
 
     (* TODO: what happens when the platform changes. *)
     let digest { packages; blacklist; opam_commit; _ } =
-      (Git.Commit.hash opam_commit :: blacklist)
+      Git.Commit.hash opam_commit :: blacklist
       @ List.map (fun t -> (Track.pkg t |> OpamPackage.to_string) ^ "-" ^ Track.digest t) packages
       |> Digestif.SHA256.digestv_string |> Digestif.SHA256.to_hex
   end
@@ -184,8 +185,8 @@ module Solver = struct
       (List.length solved)
       (List.length (solved |> List.filter (fun x -> x)));
     Lwt.return_ok
-      ( packages
-      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false) )
+      (packages
+      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false))
 end
 
 module SolverCache = Current_cache.Generic (Solver)

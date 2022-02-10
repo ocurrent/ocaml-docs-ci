@@ -105,8 +105,8 @@ module Op = struct
   let build No_context job ssh =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Mostly_harmless job in
-    let+ () = sync ~job ssh in 
-    Result.Ok (())
+    let+ () = sync ~job ssh in
+    Result.Ok ()
 end
 
 module Cache = Current_cache.Make (Op)
