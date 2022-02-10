@@ -331,7 +331,7 @@ module Gen = struct
       |> List.flatten
     in
     let all_universes = t |> all_universes |> List.map (universe ~t) in
-    let all_files = (packages t :: universes t :: all_packages) @ all_universes in
+    let all_files = packages t :: universes t :: all_packages @ all_universes in
     let open Fmt in
     let pp_gen f { content; odoc; _ } = pf f "echo '%s' > %a.new" content Fpath.pp odoc.file in
     (list ~sep:(any "\n") pp_gen) f all_files

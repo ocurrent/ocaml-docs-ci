@@ -27,7 +27,9 @@ fi\n
 
 let add_rsync_retry_script =
   Obuilder_spec.run
-    "printf '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && ls -l /usr/bin/rsync && cat /usr/local/bin/rsync" rsync_retry_script
+    "printf '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && ls -l \
+     /usr/bin/rsync && cat /usr/local/bin/rsync"
+    rsync_retry_script
 
 let make base =
   let open Obuilder_spec in

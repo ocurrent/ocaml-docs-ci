@@ -32,9 +32,9 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
          @@ Misc.Cmd.list
               [
                 Storage.for_all
-                  ( deps
+                  (deps
                   |> List.rev_map (fun { blessing; package; _ } ->
-                         (Storage.Compile blessing, package)) )
+                         (Storage.Compile blessing, package)))
                   (Fmt.str "rsync -aR %s:%s/./$1 .;" (Config.Ssh.host ssh)
                      (Config.Ssh.storage_folder ssh));
                 Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
@@ -154,7 +154,7 @@ let or_default a = function None -> a | b -> b
 module Compile = struct
   type output = t
 
-  type t = { generation : Epoch.t; }
+  type t = { generation : Epoch.t }
 
   let id = "voodoo-do"
 
@@ -242,8 +242,6 @@ let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
      and> generation = generation in
      let package = Prep.package prep in
      let output =
-       CompileCache.get
-         { Compile.generation }
-         Compile.Key.{ prep; blessing; voodoo; deps; config }
+       CompileCache.get { Compile.generation } Compile.Key.{ prep; blessing; voodoo; deps; config }
      in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output

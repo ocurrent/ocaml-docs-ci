@@ -1,9 +1,5 @@
 module Base = struct
-  type repository =
-    | HtmlRaw of Epoch.t
-    | Linked of Epoch.t
-    | Compile
-    | Prep
+  type repository = HtmlRaw of Epoch.t | Linked of Epoch.t | Compile | Prep
 
   let generation_folder stage generation = Fpath.(v ("epoch-" ^ Epoch.digest stage generation))
 
@@ -37,12 +33,11 @@ let base_folder ~blessed ~prep package =
 
 let folder repository package =
   let blessed =
-    match repository with
-    | HtmlRaw (_, b) | Linked (_, b) | Compile b -> b
-    | Prep -> Universe
+    match repository with HtmlRaw (_, b) | Linked (_, b) | Compile b -> b | Prep -> Universe
   in
   let blessed = blessed = Blessed in
-  Fpath.(Base.folder (to_base_repo repository) // base_folder ~blessed ~prep:(repository=Prep) package)
+  Fpath.(
+    Base.folder (to_base_repo repository) // base_folder ~blessed ~prep:(repository = Prep) package)
 
 let for_all packages command =
   let data =

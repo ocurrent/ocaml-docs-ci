@@ -1,6 +1,4 @@
-
-module Ssh : sig 
-
+module Ssh : sig
   type t
 
   val secrets : Obuilder_spec.Secret.t list

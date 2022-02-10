@@ -7,11 +7,7 @@ type repository =
 val folder : repository -> Package.t -> Fpath.t
 
 module Base : sig
-  type repository =
-    | HtmlRaw of Epoch.t
-    | Linked of Epoch.t
-    | Compile
-    | Prep
+  type repository = HtmlRaw of Epoch.t | Linked of Epoch.t | Compile | Prep
 
   val folder : repository -> Fpath.t
 
