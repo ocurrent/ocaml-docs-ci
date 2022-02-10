@@ -25,10 +25,12 @@ end
 
 (** A request to select sets of packages for the builds. *)
 module Solve_request = struct
+  type rel = [ `Eq | `Geq | `Gt | `Leq | `Lt | `Neq ] [@@deriving yojson]
+
   type t = {
     opam_repository_commit : string;  (** Commit in opam repository to use. *)
     pkgs : string list;  (** Name of packages to solve. *)
-    constraints : (string * string) list;  (** Version locks *)
+    constraints : (string * rel * string) list;  (** Version locks *)
     platforms : (string * Vars.t) list;  (** Possible build platforms, by ID. *)
   }
   [@@deriving yojson]

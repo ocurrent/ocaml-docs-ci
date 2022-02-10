@@ -88,8 +88,8 @@ let main commit =
         let root_pkgs = pkgs |> List.map OpamPackage.Name.of_string in
         let constraints =
           constraints
-          |> List.map (fun (name, version) ->
-                 (OpamPackage.Name.of_string name, (`Eq, OpamPackage.Version.of_string version)))
+          |> List.map (fun (name, rel, version) ->
+                 (OpamPackage.Name.of_string name, (rel, OpamPackage.Version.of_string version)))
           |> OpamPackage.Name.Map.of_list
         in
         platforms

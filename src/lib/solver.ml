@@ -19,9 +19,10 @@ let job_log job =
 let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   let open Lwt.Syntax in
   let package = Track.pkg track in
-  let packages = [ OpamPackage.name_to_string package; "ocaml-base-compiler" ] in
+  let packages = [ OpamPackage.name_to_string package; "ocaml-variants" ] in
   let constraints =
-    [ (OpamPackage.name_to_string package, OpamPackage.version_to_string package) ]
+    [ (OpamPackage.name_to_string package, `Eq, OpamPackage.version_to_string package);
+     ("ocaml-variants", `Eq, "4.12.0+domains+effects") ]
   in
   let request =
     {
@@ -53,7 +54,8 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
       match res with
       | Ok [] -> Fmt.error_msg "no platform"
       | Ok [ x ] ->
-          let solution =
+        
+        let solution =
             List.map
               (fun (a, b) -> (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               x.packages
