@@ -171,11 +171,12 @@ module Compile = struct
       config : Config.t;
       deps : output list;
       prep : Prep.t;
+      base : Spec.t;
       blessing : Package.Blessing.t;
       voodoo : Voodoo.Do.t;
     }
 
-    let key { config; deps; prep; blessing; voodoo } =
+    let key { config; deps; prep; blessing; voodoo; base = _ } =
       Fmt.str "v9-%s-%s-%s-%a-%s-%s"
         (Package.Blessing.to_string blessing)
         (Prep.package prep |> Package.digest)
@@ -190,11 +191,10 @@ module Compile = struct
 
   let auto_cancel = true
 
-  let build { generation; _ } job Key.{ deps; prep; blessing; voodoo; config } =
+  let build { generation; _ } job Key.{ deps; prep; blessing; voodoo; config; base } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
-    let base = Misc.get_base_image package in
     let** spec =
       match Prep.result prep with
       | Success ->
@@ -205,7 +205,7 @@ module Compile = struct
             (spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~blessing prep)
     in
     let action = Misc.to_ocluster_submission spec in
-    let version = Misc.base_image_version package in
+    let version = Misc.cache_hint package in
     let cache_hint = "docs-universe-compile-" ^ version in
     let build_pool =
       Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint
@@ -241,7 +241,9 @@ let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
      and> deps = deps
      and> generation = generation in
      let package = Prep.package prep in
+     let base = Prep.base prep in
      let output =
-       CompileCache.get { Compile.generation } Compile.Key.{ prep; blessing; voodoo; deps; config }
+       CompileCache.get { Compile.generation }
+         Compile.Key.{ prep; blessing; voodoo; deps; config; base }
      in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output

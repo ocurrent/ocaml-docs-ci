@@ -27,6 +27,7 @@
   solver_api
   graphql-cohttp
   graphql-lwt
-  graphql)
+  graphql
+  ocaml-version)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))
