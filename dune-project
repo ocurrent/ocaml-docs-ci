@@ -33,4 +33,5 @@
   dockerfile
   graphql-cohttp
   graphql-lwt
-  conf-libev))
+  conf-libev
+  ocaml-version))
