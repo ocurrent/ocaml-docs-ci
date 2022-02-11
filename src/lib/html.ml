@@ -74,9 +74,9 @@ module Gen = struct
   end
 
   module Key = struct
-    type t = { config : Config.t; compile : Compile.t; voodoo : Voodoo.Gen.t }
+    type t = { config : Config.t; compile : Compile.t; voodoo : Voodoo.Gen.t; base : Spec.t }
 
-    let key { config; compile; voodoo } =
+    let key { config; compile; voodoo; base = _ } =
       Fmt.str "v6-%s-%s-%s-%s"
         (Compile.package compile |> Package.digest)
         (Compile.hashes compile).linked_hash (Voodoo.Gen.digest voodoo) (Config.odoc config)
@@ -88,15 +88,12 @@ module Gen = struct
 
   let auto_cancel = true
 
-  let build generation job (Key.{ compile; voodoo; config } as key) =
+  let build generation job (Key.{ compile; voodoo; config; base } as key) =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let blessed = Compile.blessing compile in
     Current.Job.log job "Cache digest: %s" (Key.key key);
-    let spec =
-      spec ~ssh:(Config.ssh config) ~generation ~voodoo ~base:Misc.default_base_image ~blessed
-        compile
-    in
+    let spec = spec ~ssh:(Config.ssh config) ~generation ~voodoo ~base ~blessed compile in
     let action = Misc.to_ocluster_submission spec in
     let cache_hint = "docs-universe-gen" in
     let build_pool =
@@ -125,8 +122,11 @@ module GenCache = Current_cache.Make (Gen)
 let v ~generation ~config ~name ~voodoo compile =
   let open Current.Syntax in
   Current.component "html %s" name
-  |> let> compile = compile and> voodoo = voodoo and> generation = generation in
+  |> let> compile = compile
+     and> voodoo = voodoo
+     and> generation = generation
+     and> base = Misc.default_base_image in
      let blessing = Compile.blessing compile in
      let package = Compile.package compile in
-     let output = GenCache.get generation Gen.Key.{ compile; voodoo; config } in
+     let output = GenCache.get generation Gen.Key.{ compile; voodoo; config; base } in
      Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output
