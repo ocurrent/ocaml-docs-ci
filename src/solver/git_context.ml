@@ -14,7 +14,6 @@ type t = {
 }
 
 let user_restrictions t name = OpamPackage.Name.Map.find_opt name t.constraints
-
 let dev = OpamPackage.Version.of_string "dev"
 
 let env t pkg v =
@@ -56,7 +55,7 @@ let candidates t name =
                      | _ ->
                          OpamConsole.error "Available expression not a boolean: %s"
                            (OpamFilter.to_string available);
-                         (v, Error Unavailable) )) )
+                         (v, Error Unavailable))))
 
 let pp_rejection f = function
   | UserConstraint x ->
@@ -75,7 +74,7 @@ let read_package store pkg hash =
   | Some hash -> (
       Store.read store hash >|= function
       | Ok (Git.Value.Blob blob) -> OpamFile.OPAM.read_from_string (Store.Value.Blob.to_string blob)
-      | _ -> Fmt.failwith "Bad Git object type for %s!" (OpamPackage.to_string pkg) )
+      | _ -> Fmt.failwith "Bad Git object type for %s!" (OpamPackage.to_string pkg))
 
 (* Get a map of the versions inside [entry] (an entry under "packages") *)
 let read_versions store (entry : Store.Value.Tree.entry) =
@@ -113,8 +112,8 @@ let read_packages store commit =
                  | name -> (
                      read_versions store entry >|= function
                      | None -> acc
-                     | Some versions -> OpamPackage.Name.Map.add name versions acc ))
-               OpamPackage.Name.Map.empty )
+                     | Some versions -> OpamPackage.Name.Map.add name versions acc))
+               OpamPackage.Name.Map.empty)
 
 let create ?(test = OpamPackage.Name.Set.empty) ?(pins = OpamPackage.Name.Map.empty) ~constraints
     ~env ~packages () =

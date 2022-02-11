@@ -28,10 +28,10 @@ let rec with_epoch t epoch fn =
         (fun () -> fn v)
         (fun () ->
           t.users <- t.users - 1;
-          ( match t.current with
+          (match t.current with
           | `Active _ -> ()
           | `Draining (_, cond) -> if t.users = 0 then Lwt_condition.broadcast cond ()
-          | `Idle | `Activating _ -> assert false );
+          | `Idle | `Activating _ -> assert false);
           Lwt.return_unit)
   | `Active (_, old_v) ->
       let cond = Lwt_condition.create () in

@@ -161,10 +161,15 @@ let v ~config ~opam () =
   in
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
+  (* 4a) Decide on a docker tag for each job *)
+  let jobs' = jobs |> List.map (fun job -> (job, Misc.spec_of_job job)) in
   (* 5) Run the preparation step *)
   let prepped, prepped_input_node =
-    jobs
-    |> List.map (fun job -> (job, Prep.v ~config ~voodoo:v_prep job))
+    jobs'
+    |> List.map (fun (job, spec) ->
+           ( job,
+             let* spec = spec in
+             Prep.v ~config ~voodoo:v_prep ~spec job ))
     |> prep_hierarchical_collapse ~input:solver_result
   in
   let prepped =

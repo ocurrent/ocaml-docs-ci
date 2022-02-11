@@ -9,7 +9,7 @@ module OpamPackage = struct
     | `String str -> (
         match OpamPackage.of_string_opt str with
         | Some x -> Ok x
-        | None -> Error "failed to parse version" )
+        | None -> Error "failed to parse version")
     | _ -> Error "failed to parse version"
 end
 
@@ -17,7 +17,6 @@ module Track = struct
   type t = No_context
 
   let id = "opam-repo-track"
-
   let auto_cancel = true
 
   module Key = struct
@@ -33,11 +32,9 @@ module Track = struct
 
   module Value = struct
     type package_definition = { package : OpamPackage.t; digest : string } [@@deriving yojson]
-
     type t = package_definition list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
-
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
@@ -45,7 +42,6 @@ module Track = struct
     match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
 
   let take = function Some n -> take n | None -> Fun.id
-
   let get_file path = Lwt_io.with_file ~mode:Input (Fpath.to_string path) Lwt_io.read
 
   let get_versions ~limit path =
@@ -86,18 +82,14 @@ open Track.Value
 type t = package_definition [@@deriving yojson]
 
 let pkg t = t.package
-
 let digest t = t.digest
 
 module Map = OpamStd.Map.Make (struct
   type nonrec t = t
 
   let compare a b = O.OpamPackage.compare a.package b.package
-
   let to_json { package; digest } = `A [ OpamPackage.to_json package; `String digest ]
-
   let of_json _ = None
-
   let to_string t = OpamPackage.to_string t.package
 end)
 

@@ -16,13 +16,9 @@ let job_log job =
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
 
-let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
+let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam constraints =
   let open Lwt.Syntax in
-  let package = Track.pkg track in
-  let packages = [ OpamPackage.name_to_string package; "ocaml-base-compiler" ] in
-  let constraints =
-    [ (OpamPackage.name_to_string package, OpamPackage.version_to_string package) ]
-  in
+  let packages = List.map (fun (p, _, _) -> p) constraints in
   let request =
     {
       Solver_api.Worker.Solve_request.opam_repository_commit =
@@ -58,23 +54,28 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
               (fun (a, b) -> (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               x.packages
           in
-          let min_compiler_version = OpamPackage.Version.of_string "4.02.3" in
-          let compiler =
-            List.find
-              (fun (p, _) ->
-                OpamPackage.name p |> OpamPackage.Name.to_string = "ocaml-base-compiler")
-              solution
-            |> fst
-          in
-          let version = OpamPackage.version compiler in
-          if OpamPackage.Version.compare version min_compiler_version >= 0 then
-            Ok (solution, x.commit)
-          else Fmt.error_msg "Solution requires compiler verion older than minimum"
+          Ok (solution, x.commit)
       | Ok _ -> Fmt.error_msg "??"
       | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg)
     (fun exn ->
       let* () = Current.Switch.turn_off switch in
       raise exn)
+
+let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
+  let open Lwt.Syntax in
+  let package = Track.pkg track in
+  let constraints =
+    [ (OpamPackage.name_to_string package, `Eq, OpamPackage.version_to_string package) ]
+  in
+  let* res =
+    perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+      (("ocaml-base-compiler", `Geq, "4.02.3") :: constraints)
+  in
+  match res with
+  | Ok x -> Lwt.return (Ok x)
+  | Error _ ->
+      perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+        (("ocaml-variants", `Eq, "4.12.0+domains") :: constraints)
 
 let solver_version = "v1"
 
@@ -111,11 +112,9 @@ module Cache = struct
 end
 
 type key = Track.t
-
 type t = Track.t list
 
 let keys t = t
-
 let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
 
 (* is solved ? *)
@@ -125,11 +124,8 @@ module Solver = struct
   type t = Solver_api.Solver.t * unit Current.Pool.t
 
   let id = "incremental-solver-" ^ solver_version
-
   let pp f _ = Fmt.pf f "incremental solver %s" solver_version
-
   let auto_cancel = false
-
   let latched = true
 
   (* A single instance of the solver is expected. *)
@@ -154,7 +150,6 @@ module Solver = struct
     type t = Track.t list
 
     let marshal t = Marshal.to_string t []
-
     let unmarshal t = Marshal.from_string t 0
   end
 
@@ -182,8 +177,8 @@ module Solver = struct
       (List.length solved)
       (List.length (solved |> List.filter (fun x -> x)));
     Lwt.return_ok
-      ( packages
-      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false) )
+      (packages
+      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false))
 end
 
 module SolverCache = Current_cache.Generic (Solver)

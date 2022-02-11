@@ -1,20 +1,12 @@
-
-module Ssh : sig 
-
+module Ssh : sig
   type t
 
   val secrets : Obuilder_spec.Secret.t list
-
   val secrets_values : t -> (string * string) list
-
   val host : t -> string
-
   val user : t -> string
-
   val priv_key_file : t -> Fpath.t
-
   val port : t -> int
-
   val storage_folder : t -> string
 
   val digest : t -> string
@@ -24,7 +16,6 @@ end
 type t
 
 val cmdliner : t Cmdliner.Term.t
-
 val ssh : t -> Ssh.t
 
 val odoc : t -> string

@@ -22,6 +22,7 @@ depends: [
   "graphql-cohttp"
   "graphql-lwt"
   "conf-libev"
+  "ocaml-version"
   "odoc" {with-doc}
 ]
 build: [

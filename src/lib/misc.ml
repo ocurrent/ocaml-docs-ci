@@ -1,32 +1,89 @@
 (* docker manifest inspect ocaml/opam:ubuntu-ocaml-4.13
 
-amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
+   amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
 *)
-let ocaml_413_image_hash = "sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa"
 
-let base_image_version package =
-  let deps = Package.all_deps package in
-  let ocaml_version =
-    deps
-    |> List.find_opt (fun pkg ->
-           pkg |> Package.opam |> OpamPackage.name_to_string = "ocaml-base-compiler")
-    |> Option.map (fun pkg -> pkg |> Package.opam |> OpamPackage.version_to_string)
-    |> Option.value ~default:"4.13.0"
-  in
-  match Astring.String.cuts ~sep:"." ocaml_version with
-  | [ "4"; "13"; _micro ] -> "4.13@" ^ ocaml_413_image_hash
-  | [ major; minor; _micro ] -> major ^ "." ^ minor
-  | _xs -> "4.13@" ^ ocaml_413_image_hash
+module Platform : sig
+  val v : packages:Package.t list -> Ocaml_version.t option
+  val to_string : Ocaml_version.t -> string
+end = struct
+  let v ~packages =
+    let ( let* ) = Option.bind in
+    let ocaml_version name =
+      packages
+      |> List.find_opt (fun pkg -> pkg |> Package.opam |> OpamPackage.name_to_string = name)
+      |> Option.map (fun pkg -> pkg |> Package.opam |> OpamPackage.version_to_string)
+    in
+    let is_base =
+      List.exists
+        (fun p -> Package.opam p |> OpamPackage.name_to_string = "ocaml-base-compiler")
+        packages
+    in
+    let* version =
+      if is_base then ocaml_version "ocaml-base-compiler" else ocaml_version "ocaml-variants"
+    in
+    Ocaml_version.of_string version |> Result.to_option
+
+  let to_string v = Ocaml_version.to_string v
+end
+
+module Image : sig
+  val tag : Ocaml_version.t -> string
+  val peek : Ocaml_version.t -> string Current.t
+end = struct
+  let images = ref []
+  let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
+
+  let tag ocaml_version =
+    Fmt.str "ocaml/opam:debian-11-ocaml-%d.%02d%s"
+      (Ocaml_version.major ocaml_version)
+      (Ocaml_version.minor ocaml_version)
+      (match Ocaml_version.extra ocaml_version with
+      | None -> ""
+      | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))
+
+  let reall_peek ocaml_version =
+    let open Current.Syntax in
+    let arch = "amd64" in
+    let tag = tag ocaml_version in
+    (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
+    Current_docker.Default.peek ~schedule:weekly ~arch tag
+
+  let peek ocaml_version =
+    try List.assoc ocaml_version !images
+    with Not_found ->
+      let result = reall_peek ocaml_version in
+      images := (ocaml_version, result) :: !images;
+      result
+end
+
+let cache_hint package =
+  let packages = Package.all_deps package in
+  Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest |> Platform.to_string
 
 (** Select base image to use *)
-let get_base_image package = Spec.make ("ocaml/opam:ubuntu-ocaml-" ^ base_image_version package)
+let get_base_image packages =
+  let open Current.Syntax in
+  let version = Platform.v ~packages in
+  let+ tag = Option.map Image.peek version |> Option.get in
+  Spec.make tag
 
-let default_base_image = Spec.make ("ocaml/opam:ubuntu-ocaml-4.13@" ^ ocaml_413_image_hash)
+let default_base_image =
+  let open Current.Syntax in
+  let version = Ocaml_version.Releases.latest in
+  let+ tag = Image.peek version in
+  Spec.make tag
+
+let spec_of_job job =
+  let install = job.Jobs.install in
+  let all_deps = Package.all_deps install in
+  try get_base_image all_deps
+  with e ->
+    Format.eprintf "Error with job: %a" (Fmt.list Package.pp) all_deps;
+    raise e
 
 let network = [ "host" ]
-
 let docs_cache_folder = "/home/opam/docs-cache/"
-
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
 (** Obuilder operation to locally pull the selected folders. The [digests] option 
@@ -60,11 +117,8 @@ module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
     module Outcome = B.Value
 
     let run op job _ key = B.build op job key
-
     let pp f (_, key) = B.pp f key
-
     let auto_cancel = B.auto_cancel
-
     let latched = true
   end
 
@@ -109,7 +163,7 @@ let fold_logs build_job fn =
             let lines = String.split_on_char '\n' data in
             let fst = List.hd lines in
             let rest = List.tl lines in
-            aux next ((prev_line ^ fst) :: rest) acc )
+            aux next ((prev_line ^ fst) :: rest) acc)
     | line :: next -> aux start next (fn acc line)
   in
   aux 0L []

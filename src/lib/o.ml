@@ -9,7 +9,7 @@ module OpamPackage = struct
     | `String str -> (
         match OpamPackage.of_string_opt str with
         | Some x -> Ok x
-        | None -> Error "failed to parse version" )
+        | None -> Error "failed to parse version")
     | _ -> Error "failed to parse version"
 
   let pp f t = Fmt.pf f "%s" (to_string t)

@@ -1,11 +1,9 @@
 module Git = Current_git
 
 type t
-
 type key
 
 val keys : t -> key list
-
 val get : key -> Package.t
 
 val incremental :

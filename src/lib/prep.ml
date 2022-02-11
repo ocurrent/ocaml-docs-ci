@@ -1,7 +1,5 @@
 let prep_version = "v3"
-
 let network = Misc.network
-
 let cache = Voodoo.cache
 
 let not_base x =
@@ -14,10 +12,11 @@ let not_base x =
          "ocaml-config";
          "ocaml";
          "ocaml-base-compiler";
+         "ocaml-variants";
        ])
 
 (* association list from package to universes encoded as "<PKG>:<UNIVERSE HASH>,..."
-to be consumed by voodoo-prep *)
+   to be consumed by voodoo-prep *)
 let universes_assoc packages =
   packages
   |> List.map (fun pkg ->
@@ -77,7 +76,9 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
 
   let create_dir_and_copy_logs_if_not_exist =
     let command =
-      Fmt.str "([ -d $1 ] || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1 && opam show $3 --raw > $1/opam)) && (%s)"
+      Fmt.str
+        "([ -d $1 ] || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1 && opam show $3 \
+         --raw > $1/opam)) && (%s)"
         (Misc.tar_cmd (Fpath.v "$1"))
     in
     Storage.for_all prep_storage_folders command
@@ -130,13 +131,13 @@ module Prep = struct
   type t = No_context
 
   let id = "voodoo-prep"
-
   let auto_cancel = true
 
   module Key = struct
-    type t = { job : Jobs.t; voodoo : Voodoo.Prep.t; config : Config.t }
+    type t = { job : Jobs.t; base : Spec.t; voodoo : Voodoo.Prep.t; config : Config.t }
 
     let digest { job = { install; prep }; voodoo; _ } =
+      (* base is derived from 'prep' so we don't need to include it in the hash *)
       Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install) (Voodoo.Prep.digest voodoo)
         (String.concat "\n" (List.rev_map Package.digest prep |> List.sort String.compare))
       |> Digest.string |> Digest.to_hex
@@ -146,15 +147,13 @@ module Prep = struct
 
   module Value = struct
     type item = Storage.id_hash [@@deriving yojson]
-
     type t = item list * string list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
-
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build No_context job Key.{ job = { install; prep }; voodoo; config } =
+  let build No_context job Key.{ job = { install; prep }; base; voodoo; config } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
@@ -162,11 +161,10 @@ module Prep = struct
        requires changes in the solver.
        For now we rebuild only if voodoo-prep changes.
     *)
-    let base = Misc.get_base_image install in
     let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~install prep in
     let action = Misc.to_ocluster_submission spec in
     let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
-    let version = Misc.base_image_version install in
+    let version = Misc.cache_hint install in
     let cache_hint = "docs-universe-prep-" ^ version in
     let build_pool =
       Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint ~src
@@ -186,7 +184,7 @@ module Prep = struct
           | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
               Current.Job.log job "Failed: %s" branch;
               (git_hashes, branch :: failed)
-          | _ -> (git_hashes, failed) )
+          | _ -> (git_hashes, failed))
     in
 
     let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
@@ -202,14 +200,12 @@ end
 module PrepCache = Current_cache.Make (Prep)
 
 type prep_result = Success | Failed
-
-type t = { hash : string; package : Package.t; result : prep_result }
+type t = { base : Spec.t; hash : string; package : Package.t; result : prep_result }
 
 let hash t = t.hash
-
 let package t = t.package
-
 let result t = t.result
+let base t = t.base
 
 type prep = t Package.Map.t
 
@@ -221,7 +217,7 @@ let compare a b =
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
-let combine ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
+let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
   let packages = job.prep in
   let artifacts_branches_output =
     artifacts_branches_output |> List.to_seq
@@ -234,17 +230,17 @@ let combine ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
          let package_id = Package.id package in
          match StringMap.find_opt package_id artifacts_branches_output with
          | Some hash when StringSet.mem package_id failed_branches ->
-             Some (package, { package; hash; result = Failed })
-         | Some hash -> Some (package, { package; hash; result = Success })
+             Some (package, { base; package; hash; result = Failed })
+         | Some hash -> Some (package, { base; package; hash; result = Success })
          | None -> None)
   |> Package.Map.of_seq
 
-let v ~config ~voodoo (job : Jobs.t) =
+let v ~config ~voodoo ~spec (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
   |> let> voodoo = voodoo in
-     PrepCache.get No_context { job; voodoo; config }
-     |> Current.Primitive.map_result (Result.map (combine ~job))
+     PrepCache.get No_context { job; voodoo; config; base = spec }
+     |> Current.Primitive.map_result (Result.map (combine ~base:spec ~job))
 
 let extract ~(job : Jobs.t) (prep : prep Current.t) =
   let open Current.Syntax in

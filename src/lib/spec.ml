@@ -1,9 +1,7 @@
 type t = { base : string; ops : Obuilder_spec.op list; children : (string * Obuilder_spec.t) list }
 
 let add next_ops { base; ops; children } = { base; ops = ops @ next_ops; children }
-
 let children ~name spec { base; ops; children } = { base; ops; children = (name, spec) :: children }
-
 let finish { base; ops; children } = Obuilder_spec.stage ~child_builds:children ~from:base ops
 
 (* https://gist.github.com/iangreenleaf/279849 *)
@@ -27,7 +25,9 @@ fi\n
 
 let add_rsync_retry_script =
   Obuilder_spec.run
-    "printf '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && ls -l /usr/bin/rsync && cat /usr/local/bin/rsync" rsync_retry_script
+    "printf '%s' | sudo tee -a /usr/local/bin/rsync && sudo chmod +x /usr/local/bin/rsync && ls -l \
+     /usr/bin/rsync && cat /usr/local/bin/rsync"
+    rsync_retry_script
 
 let make base =
   let open Obuilder_spec in

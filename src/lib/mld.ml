@@ -3,9 +3,7 @@ type name = string
 let name_of_string x = x
 
 type mld = Mld
-
 type cu = CU
-
 type 'a kind = Mld : mld kind | CU : cu kind
 
 type 'a t = {
@@ -85,7 +83,6 @@ module Gen = struct
   module StringMap = Map.Make (String)
 
   type 'a odoc = 'a t
-
   type odoc_dyn = Mld of mld t | CU of cu t
 
   let digest = function
@@ -133,7 +130,6 @@ module Gen = struct
     { universes = !universes; packages = !packages }
 
   let all_packages t = t.packages |> OpamPackage.Name.Map.keys
-
   let all_universes t = t.universes |> StringMap.bindings |> List.map fst
 
   (* Compilation unit definitions *)
@@ -362,6 +358,5 @@ module Gen = struct
       universes_indexes
 
   let pp_compile_commands = pp_commands ~pp_cmd:(pp_compile_command ())
-
   let pp_link_commands = pp_commands ~pp_cmd:(pp_link_command ())
 end

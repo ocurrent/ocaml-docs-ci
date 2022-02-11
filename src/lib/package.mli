@@ -16,7 +16,6 @@ and Package : sig
   type t
   (** A package in the ocaml-docs-ci sense: it's composed of the package name, version, 
   and its dependency universe. *)
-
 end
 
 type t = Package.t
@@ -33,28 +32,20 @@ val all_deps : t -> t list
 (** [all_deps t] is all the dependencies of t, and it includes itself. *)
 
 val pp : t Fmt.t
-
 val compare : t -> t -> int
-
 val opam : t -> OpamPackage.t
-
 val universe : t -> Universe.t
-
 val digest : t -> string
-
 val commit : t -> string
-
 val id : t -> string
 
 module Map : Map.S with type key = t
-
 module Set : Set.S with type elt = t
 
 module Blessing : sig
   type t = Blessed | Universe
 
   val is_blessed : t -> bool
-
   val to_string : t -> string
 
   module Set : sig

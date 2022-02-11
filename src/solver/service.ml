@@ -17,7 +17,6 @@ module Epoch : sig
     t Lwt.t
 
   val handle : log:Solver_api.Solver.Log.t -> Worker.Solve_request.t -> t -> Selection.t list Lwt.t
-
   val dispose : t -> unit Lwt.t
 end = struct
   type t = Lwt_process.process Lwt_pool.t
@@ -47,7 +46,7 @@ end = struct
           Opam_repository.open_store () >>= fun new_store ->
           Store.mem new_store hash >>= function
           | false -> Fmt.failwith "Still missing commit after update!"
-          | true -> Lwt.return_unit ) )
+          | true -> Lwt.return_unit) )
     >|= fun () ->
     Lwt_pool.create n_workers ~validate ~dispose (fun () -> Lwt.return (create_worker hash))
 
@@ -78,7 +77,7 @@ end = struct
         | '!' ->
             let msg = results |> Astring.String.with_range ~first:1 in
             Fmt.failwith "BUG: solver worker failed: %s" msg
-        | _ -> Fmt.failwith "BUG: bad output: %s" results )
+        | _ -> Fmt.failwith "BUG: bad output: %s" results)
 
   let handle ~log request t =
     let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } = request in
@@ -91,7 +90,7 @@ end = struct
            Lwt_pool.use t (process ~log ~id slice) >>= function
            | Error _ as e -> Lwt.return (id, e)
            | Ok packages ->
-               let repo_packages = List.map (fun (pkg,_) -> OpamPackage.of_string pkg) packages in
+               let repo_packages = List.map (fun (pkg, _) -> OpamPackage.of_string pkg) packages in
                Opam_repository.oldest_commit_with repo_packages ~from:opam_repository_commit
                >|= fun commit -> (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
@@ -146,5 +145,5 @@ let v ~n_workers ~create_worker =
                    Capnp_rpc_lwt.Service.Response.create Results.init_pointer
                  in
                  Results.response_set results json;
-                 Ok response )
+                 Ok response)
      end

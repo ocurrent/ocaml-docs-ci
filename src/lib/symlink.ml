@@ -11,9 +11,7 @@ module Op = struct
   module Outcome = Current.Unit
 
   let id = "symlink-folder"
-
   let pp f (k, v) = Fmt.pf f "Symlink folder: %a -> %a" Fpath.pp k Fpath.pp v
-
   let auto_cancel = true
 
   let publish (ssh, level) job name target_folder =

@@ -103,13 +103,9 @@ module Ssh = struct
     [ ("ssh_privkey", t.private_key); ("ssh_pubkey", t.public_key); ("ssh_config", config t) ]
 
   let storage_folder t = t.folder
-
   let host t = t.host
-
   let user t = t.user
-
   let priv_key_file t = Fpath.v t.private_key_file
-
   let port t = t.port
 
   let digest t =
@@ -168,21 +164,13 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
 let cmdliner =
   Term.(const v $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
 
-(* odoc pinned to tag 2.0.1 *)
-let odoc _ = "https://github.com/ocaml/odoc.git#30b3aafd271a211d8f7d875a2285dfe3758288da"
-
+(* odoc pinned to tag 2.1.0 *)
+let odoc _ = "https://github.com/ocaml/odoc.git#d654ee2a4ff3e1465dcf92b882c26de71f7a9986"
 let pool _ = "linux-x86_64"
-
 let jobs t = t.jobs
-
 let track_packages t = t.track_packages
-
 let take_n_last_versions t = t.take_n_last_versions
-
 let ocluster_connection_do t = t.ocluster_connection_do
-
 let ocluster_connection_prep t = t.ocluster_connection_prep
-
 let ocluster_connection_gen t = t.ocluster_connection_gen
-
 let ssh t = t.ssh
