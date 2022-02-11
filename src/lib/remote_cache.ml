@@ -1,7 +1,5 @@
 let id = "remote-cache"
-
 let state_dir = Current.state_dir id
-
 let sync_pool = Current.Pool.create ~label:"ssh" 1
 
 let sync ~job t =
@@ -32,13 +30,9 @@ let sync ~job t =
     (fun () -> Current.Switch.turn_off switch)
 
 type t = Config.Ssh.t
-
 type cache_key = string
-
 type digest = string
-
 type build_result = Ok of digest | Failed
-
 type cache_entry = (digest * build_result) option
 
 let digest = function
@@ -52,9 +46,7 @@ let pp f = function
   | Some (_, Ok digest) -> Fmt.pf f "ok -> %s" digest
 
 let folder_digest_exn = function Some (_, Ok digest) -> digest | _ -> raise Not_found
-
 let key_file path = Fpath.(state_dir // add_ext ".key" path)
-
 let digest_file path = Fpath.(state_dir // add_ext ".sha256" path)
 
 let get _ path =
@@ -99,7 +91,6 @@ module Op = struct
   module Value = Current.Unit
 
   let auto_cancel = true
-
   let id = id
 
   let build No_context job ssh =

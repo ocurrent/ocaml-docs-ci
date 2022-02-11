@@ -14,7 +14,6 @@ type t = {
 }
 
 let user_restrictions t name = OpamPackage.Name.Map.find_opt name t.constraints
-
 let dev = OpamPackage.Version.of_string "dev"
 
 let env t pkg v =

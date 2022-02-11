@@ -5,9 +5,7 @@ type name = string
 val name_of_string : string -> name
 
 type mld = Mld  (** An mld file *)
-
 type cu = CU  (** An odoc compilation unit *)
-
 type 'a kind = Mld : mld kind | CU : cu kind
 
 type 'a t = { file : Fpath.t; target : Fpath.t option; name : name; kind : 'a kind }
@@ -35,7 +33,6 @@ val pp_html_command : ?odoc:string -> ?output:Fpath.t -> unit -> _ t Fmt.t
 
 module Gen : sig
   type 'a odoc = 'a t
-
   type odoc_dyn = Mld of mld t | CU of cu t
 
   val digest : odoc_dyn -> string
@@ -50,14 +47,9 @@ module Gen : sig
   associated compilation command. *)
 
   val universes : t -> gen_page
-
   val packages : t -> gen_page
-
   val pp_makefile : ?odoc:string -> output:Fpath.t -> t Fmt.t
-
   val pp_gen_files_commands : t Fmt.t
-
   val pp_compile_commands : t Fmt.t
-
   val pp_link_commands : t Fmt.t
 end

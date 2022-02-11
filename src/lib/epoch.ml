@@ -1,7 +1,6 @@
 type t = { config : Config.t; voodoo : Voodoo.t }
 
 let version = "v1"
-
 let v config voodoo = { config; voodoo }
 
 type stage = [ `Linked | `Html ]

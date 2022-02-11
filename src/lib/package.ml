@@ -2,19 +2,14 @@ module rec Universe : sig
   type t [@@deriving yojson]
 
   val hash : t -> string
-
   val deps : t -> Package.t list
-
   val pp : t Fmt.t
-
   val v : Package.t list -> t
-
   val compare : t -> t -> int
 end = struct
   type t = { hash : string; deps : Package.t list } [@@deriving yojson]
 
   let hash t = t.hash
-
   let deps t = t.deps
 
   let v deps =
@@ -26,7 +21,6 @@ end = struct
     { hash; deps }
 
   let pp f { hash; _ } = Fmt.pf f "%s" hash
-
   let compare { hash; _ } { hash = hash2; _ } = String.compare hash hash2
 end
 
@@ -34,19 +28,12 @@ and Package : sig
   type t [@@deriving yojson]
 
   val opam : t -> OpamPackage.t
-
   val commit : t -> string
-
   val universe : t -> Universe.t
-
   val digest : t -> string
-
   val id : t -> string
-
   val pp : t Fmt.t
-
   val compare : t -> t -> int
-
   val v : OpamPackage.t -> t list -> string -> t
 
   val make :
@@ -59,15 +46,10 @@ end = struct
   type t = { opam : O.OpamPackage.t; universe : Universe.t; commit : string } [@@deriving yojson]
 
   let universe t = t.universe
-
   let opam t = t.opam
-
   let commit t = t.commit
-
   let id t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
-
   let digest = id
-
   let v opam deps commit = { opam; universe = Universe.v deps; commit }
 
   let pp f { universe; opam; _ } =
@@ -117,9 +99,7 @@ module Blessing = struct
   type t = Blessed | Universe
 
   let is_blessed t = t = Blessed
-
   let of_bool t = if t then Blessed else Universe
-
   let to_string = function Blessed -> "blessed" | Universe -> "universe"
 
   module Set = struct
@@ -130,7 +110,6 @@ module Blessing = struct
     type t = { opam : OpamPackage.t; universe : string }
 
     let universe_size u = Universe.deps u |> List.length
-
     let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
 
     module Universe_info = struct

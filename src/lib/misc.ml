@@ -1,11 +1,10 @@
 (* docker manifest inspect ocaml/opam:ubuntu-ocaml-4.13
 
-amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
+   amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
 *)
 
 module Platform : sig
   val v : packages:Package.t list -> Ocaml_version.t option
-
   val to_string : Ocaml_version.t -> string
 end = struct
   let v ~packages =
@@ -30,11 +29,9 @@ end
 
 module Image : sig
   val tag : Ocaml_version.t -> string
-
   val peek : Ocaml_version.t -> string Current.t
 end = struct
   let images = ref []
-
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
 
   let tag ocaml_version =
@@ -86,9 +83,7 @@ let spec_of_job job =
     raise e
 
 let network = [ "host" ]
-
 let docs_cache_folder = "/home/opam/docs-cache/"
-
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
 (** Obuilder operation to locally pull the selected folders. The [digests] option 
@@ -122,11 +117,8 @@ module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
     module Outcome = B.Value
 
     let run op job _ key = B.build op job key
-
     let pp f (_, key) = B.pp f key
-
     let auto_cancel = B.auto_cancel
-
     let latched = true
   end
 

@@ -1,9 +1,7 @@
 module Git = Current_git
 
 let () = Logging.init ()
-
 let hourly = Current_cache.Schedule.v ~valid_for:(Duration.of_hour 1) ()
-
 let program_name = "ocaml-docs-ci"
 
 (* Access control policy. *)
@@ -45,8 +43,7 @@ let main current_config github_auth mode config =
        [
          Current.Engine.thread engine;
          (* The main thread evaluating the pipeline. *)
-         Current_web.run ~mode site;
-         (* Optional: provides a web UI *)
+         Current_web.run ~mode site (* Optional: provides a web UI *);
        ])
 
 (* Command-line parsing *)
