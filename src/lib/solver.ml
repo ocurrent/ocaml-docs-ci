@@ -112,11 +112,9 @@ module Cache = struct
 end
 
 type key = Track.t
-
 type t = Track.t list
 
 let keys t = t
-
 let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
 
 (* is solved ? *)
@@ -126,11 +124,8 @@ module Solver = struct
   type t = Solver_api.Solver.t * unit Current.Pool.t
 
   let id = "incremental-solver-" ^ solver_version
-
   let pp f _ = Fmt.pf f "incremental solver %s" solver_version
-
   let auto_cancel = false
-
   let latched = true
 
   (* A single instance of the solver is expected. *)
@@ -146,7 +141,7 @@ module Solver = struct
 
     (* TODO: what happens when the platform changes. *)
     let digest { packages; blacklist; opam_commit; _ } =
-      Git.Commit.hash opam_commit :: blacklist
+      (Git.Commit.hash opam_commit :: blacklist)
       @ List.map (fun t -> (Track.pkg t |> OpamPackage.to_string) ^ "-" ^ Track.digest t) packages
       |> Digestif.SHA256.digestv_string |> Digestif.SHA256.to_hex
   end
@@ -155,7 +150,6 @@ module Solver = struct
     type t = Track.t list
 
     let marshal t = Marshal.to_string t []
-
     let unmarshal t = Marshal.from_string t 0
   end
 

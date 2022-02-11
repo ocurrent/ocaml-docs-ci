@@ -1,7 +1,5 @@
 let prep_version = "v3"
-
 let network = Misc.network
-
 let cache = Voodoo.cache
 
 let not_base x =
@@ -18,7 +16,7 @@ let not_base x =
        ])
 
 (* association list from package to universes encoded as "<PKG>:<UNIVERSE HASH>,..."
-to be consumed by voodoo-prep *)
+   to be consumed by voodoo-prep *)
 let universes_assoc packages =
   packages
   |> List.map (fun pkg ->
@@ -133,7 +131,6 @@ module Prep = struct
   type t = No_context
 
   let id = "voodoo-prep"
-
   let auto_cancel = true
 
   module Key = struct
@@ -150,11 +147,9 @@ module Prep = struct
 
   module Value = struct
     type item = Storage.id_hash [@@deriving yojson]
-
     type t = item list * string list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
-
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
@@ -205,15 +200,11 @@ end
 module PrepCache = Current_cache.Make (Prep)
 
 type prep_result = Success | Failed
-
 type t = { base : Spec.t; hash : string; package : Package.t; result : prep_result }
 
 let hash t = t.hash
-
 let package t = t.package
-
 let result t = t.result
-
 let base t = t.base
 
 type prep = t Package.Map.t

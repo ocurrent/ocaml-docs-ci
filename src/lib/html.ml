@@ -1,11 +1,8 @@
 type hashes = { html_raw_hash : string } [@@deriving yojson]
-
 type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
 
 let hashes t = t.hashes
-
 let blessing t = t.blessing
-
 let package t = t.package
 
 let spec ~ssh ~generation ~base ~voodoo ~blessed compiled =
@@ -69,7 +66,6 @@ module Gen = struct
     type t = hashes [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
-
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
@@ -85,7 +81,6 @@ module Gen = struct
   end
 
   let pp f Key.{ compile; _ } = Fmt.pf f "Voodoo gen %a" Package.pp (Compile.package compile)
-
   let auto_cancel = true
 
   let build generation job (Key.{ compile; voodoo; config; base } as key) =

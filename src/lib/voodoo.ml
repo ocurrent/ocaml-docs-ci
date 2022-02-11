@@ -1,9 +1,6 @@
 let network = [ "host" ]
-
 let download_cache = Obuilder_spec.Cache.v "opam-archives" ~target:"/home/opam/.opam/download-cache"
-
 let dune_cache = Obuilder_spec.Cache.v "opam-dune-cache" ~target:"/home/opam/.cache/dune"
-
 let cache = [ download_cache; dune_cache ]
 
 module Git = Current_git
@@ -16,13 +13,10 @@ type t0 = {
 
 module Op = struct
   type voodoo = t0
-
   type t = No_context
 
   let id = "voodoo-repository"
-
   let pp f _ = Fmt.pf f "voodoo-repository"
-
   let auto_cancel = false
 
   module Key = struct
@@ -136,7 +130,6 @@ let digest t =
 
 module Prep = struct
   type voodoo = t
-
   type t = Git.Commit_id.t
 
   let v { voodoo_prep; _ } = voodoo_prep
@@ -152,13 +145,11 @@ module Prep = struct
          ]
 
   let digest = Git.Commit_id.hash
-
   let commit = Fun.id
 end
 
 module Do = struct
   type voodoo = t
-
   type t = { commit : Git.Commit_id.t; config : Config.t }
 
   let v { voodoo_do; config; _ } = { commit = voodoo_do; config }
@@ -177,13 +168,11 @@ module Do = struct
          ]
 
   let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
-
   let commit t = t.commit
 end
 
 module Gen = struct
   type voodoo = t
-
   type t = { commit : Git.Commit_id.t; config : Config.t }
 
   let v { voodoo_gen; config; _ } = { commit = voodoo_gen; config }
@@ -205,6 +194,5 @@ module Gen = struct
          ]
 
   let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
-
   let commit t = t.commit
 end

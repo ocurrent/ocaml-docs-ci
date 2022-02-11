@@ -2,9 +2,7 @@ type t
 (** The type for a prepped package (build objects in a universe/package folder) *)
 
 val hash : t -> string
-
 val package : t -> Package.t
-
 val base : t -> Spec.t
 
 type prep_result = Success | Failed
@@ -19,5 +17,4 @@ val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> spec:Spec.t -> Jobs
 (** Install a package universe, extract useful files and push obtained universes on git. *)
 
 val pp : t Fmt.t
-
 val compare : t -> t -> int

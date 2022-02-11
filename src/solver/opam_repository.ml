@@ -30,8 +30,8 @@ let oldest_commit_with ~from pkgs =
            Printf.sprintf "packages/%s/%s.%s" name name version)
   in
   let cmd =
-    "git"
-    :: "-C" :: clone_path :: "log" :: "-n" :: "1" :: "--format=format:%H" :: from :: "--" :: paths
+    "git" :: "-C" :: clone_path :: "log" :: "-n" :: "1" :: "--format=format:%H" :: from :: "--"
+    :: paths
   in
   let cmd = ("", Array.of_list cmd) in
   Process.pread cmd >|= String.trim

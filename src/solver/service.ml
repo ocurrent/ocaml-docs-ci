@@ -17,7 +17,6 @@ module Epoch : sig
     t Lwt.t
 
   val handle : log:Solver_api.Solver.Log.t -> Worker.Solve_request.t -> t -> Selection.t list Lwt.t
-
   val dispose : t -> unit Lwt.t
 end = struct
   type t = Lwt_process.process Lwt_pool.t
