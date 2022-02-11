@@ -64,8 +64,8 @@ let cache_hint package =
 (** Select base image to use *)
 let get_base_image packages =
   let open Current.Syntax in
-  let version = Platform.v ~packages in
-  let+ tag = Option.map Image.peek version |> Option.get in
+  let version = Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest in
+  let+ tag = Image.peek version in
   Spec.make tag
 
 let default_base_image =
