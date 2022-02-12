@@ -41,7 +41,7 @@ module PeekerBody  = struct
 
   module Key = struct
     type t = Ocaml_version.t
-    let digest x = Ocaml_version.to_string x
+    let digest x = "v2"^Ocaml_version.to_string x
   end
 
   module Value = struct
@@ -65,7 +65,10 @@ module PeekerBody  = struct
     let+ res = Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key)) in
     match res with
     | Ok manifests ->
-      Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error
+      Result.map (fun r ->
+        let tag = "ocaml/opam@"^r in
+        Current.Job.log job "result: %s" tag;
+        tag) (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error)
     | Error (`Msg _) as e -> e
     | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
@@ -82,7 +85,6 @@ end = struct
   let images = ref []
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
   let real_peek ocaml_version =
-    let open Current.Syntax in
     try List.assoc ocaml_version !images
     with Not_found ->
       (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
@@ -91,7 +93,6 @@ end = struct
       output
 
   let peek ocaml_version =
-    let open Current.Syntax in
     let tag = tag ocaml_version in
     Current.primitive ~info:(Current.component "Docker image peek %s" tag)
       (fun () -> real_peek ocaml_version) (Current.return ())
