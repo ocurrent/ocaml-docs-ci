@@ -23,6 +23,7 @@ depends: [
   "graphql-lwt"
   "conf-libev"
   "ocaml-version"
+  "docker_hub"
   "odoc" {with-doc}
 ]
 build: [

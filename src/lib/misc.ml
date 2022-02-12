@@ -27,34 +27,74 @@ end = struct
   let to_string v = Ocaml_version.to_string v
 end
 
+let tag ocaml_version =
+  Fmt.str "debian-11-ocaml-%d.%02d%s"
+    (Ocaml_version.major ocaml_version)
+    (Ocaml_version.minor ocaml_version)
+    (match Ocaml_version.extra ocaml_version with
+    | None -> ""
+    | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))
+module PeekerBody  = struct
+  type t = unit
+
+  let id = "docker-peek"
+
+  module Key = struct
+    type t = Ocaml_version.t
+    let digest x = Ocaml_version.to_string x
+  end
+
+  module Value = struct
+    type t = string
+    let marshal x = x
+    let unmarshal x = x
+  end
+
+
+
+  let conv_error = function
+    | Ok x -> Ok x
+    | Error (`Malformed_json s) -> Error (`Msg ("Malformed json: "^s))
+    | Error `No_corresponding_arch_found -> Error (`Msg "No corresponding arch found")
+    | Error `No_corresponding_os_found -> Error (`Msg "No corresponding OS found")
+
+  let build () job key =
+    let open Lwt.Syntax in
+    let* () = Current.Job.start ~level:Current.Level.Mostly_harmless job in
+    Current.Job.log job "tag: %s" (tag key);
+    let+ res = Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key)) in
+    match res with
+    | Ok manifests ->
+      Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error
+    | Error (`Msg _) as e -> e
+    | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
+    | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
+  
+  let pp = Ocaml_version.pp
+
+  let auto_cancel = true
+end
+
+module Peeker = Current_cache.Make(PeekerBody)
 module Image : sig
-  val tag : Ocaml_version.t -> string
   val peek : Ocaml_version.t -> string Current.t
 end = struct
   let images = ref []
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
-
-  let tag ocaml_version =
-    Fmt.str "ocaml/opam:debian-11-ocaml-%d.%02d%s"
-      (Ocaml_version.major ocaml_version)
-      (Ocaml_version.minor ocaml_version)
-      (match Ocaml_version.extra ocaml_version with
-      | None -> ""
-      | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))
-
-  let reall_peek ocaml_version =
+  let real_peek ocaml_version =
     let open Current.Syntax in
-    let arch = "amd64" in
-    let tag = tag ocaml_version in
-    (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
-    Current_docker.Default.peek ~schedule:weekly ~arch tag
-
-  let peek ocaml_version =
     try List.assoc ocaml_version !images
     with Not_found ->
-      let result = reall_peek ocaml_version in
-      images := (ocaml_version, result) :: !images;
-      result
+      (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
+      let output = Peeker.get ~schedule:weekly () ocaml_version in
+      images := (ocaml_version, output) :: !images;
+      output
+
+  let peek ocaml_version =
+    let open Current.Syntax in
+    let tag = tag ocaml_version in
+    Current.primitive ~info:(Current.component "Docker image peek %s" tag)
+      (fun () -> real_peek ocaml_version) (Current.return ())
 end
 
 let cache_hint package =

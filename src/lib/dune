@@ -28,6 +28,7 @@
   graphql-cohttp
   graphql-lwt
   graphql
-  ocaml-version)
+  ocaml-version
+  docker_hub)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))
