@@ -8,7 +8,7 @@ homepage: "https://github.com/ocurrent/ocaml-docs-ci"
 bug-reports: "https://github.com/ocurrent/ocaml-docs-ci/issues"
 depends: [
   "dune" {>= "2.8"}
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.11.0"}
   "current" {>= "0.3"}
   "current_web"
   "current_git"
