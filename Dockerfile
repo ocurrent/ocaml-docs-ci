@@ -5,7 +5,6 @@ COPY --chown=opam \
 	vendor/ocurrent/current_docker.opam \
 	vendor/ocurrent/current_github.opam \
 	vendor/ocurrent/current_git.opam \
-	vendor/ocurrent/current_incr.opam \
 	vendor/ocurrent/current.opam \
 	vendor/ocurrent/current_rpc.opam \
 	vendor/ocurrent/current_slack.opam \
@@ -16,7 +15,6 @@ RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
 RUN opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
     opam pin add -yn current_github.dev "./vendor/ocurrent" && \
     opam pin add -yn current_git.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_incr.dev "./vendor/ocurrent" && \
     opam pin add -yn current.dev "./vendor/ocurrent" && \
     opam pin add -yn current_rpc.dev "./vendor/ocurrent" && \
     opam pin add -yn current_slack.dev "./vendor/ocurrent" && \
