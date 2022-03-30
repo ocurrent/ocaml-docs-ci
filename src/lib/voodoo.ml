@@ -116,9 +116,9 @@ let v config =
   { voodoo_do; voodoo_prep; voodoo_gen; config }
 
 let remote_uri commit =
-  let repo = Git.Commit_id.repo commit in
+  (*let repo = Git.Commit_id.repo commit in*)
   let commit = Git.Commit_id.hash commit in
-  repo ^ "#" ^ commit
+  "https://github.com/ocaml-doc/voodoo.git#" ^ commit
 
 let digest t =
   let key =
