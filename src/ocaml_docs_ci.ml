@@ -38,6 +38,7 @@ let main current_config github_auth mode config =
     in
     Current_web.Site.(v ?authn ~has_role ~secure_cookies) ~name:program_name routes
   in
+  ignore @@
   Logging.run
     (Lwt.choose
        [
