@@ -8,7 +8,7 @@ homepage: "https://github.com/ocurrent/ocaml-docs-ci"
 bug-reports: "https://github.com/ocurrent/ocaml-docs-ci/issues"
 depends: [
   "dune" {>= "2.8"}
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.11.0"}
   "current" {>= "0.3"}
   "current_web"
   "current_git"
@@ -16,7 +16,7 @@ depends: [
   "capnp-rpc-unix"
   "fmt"
   "lwt"
-  "cmdliner"
+  "cmdliner" {>= "1.1.0"}
   "git-unix"
   "dockerfile"
   "graphql-cohttp"
@@ -42,5 +42,5 @@ build: [
 ]
 dev-repo: "git+https://github.com/ocurrent/ocaml-docs-ci.git"
 pin-depends: [
-  ["obuilder-spec.0.4" "git+https://github.com/ocurrent/obuilder#master"]
+  ["obuilder-spec.dev" "git+https://github.com/ocurrent/obuilder#a2f4cec1774967a54808e6d5c9dfb6a4d77bc9c8"]
 ]

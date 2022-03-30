@@ -1,7 +1,7 @@
 (lang dune 2.8)
 
 (name ocaml-docs-ci)
-
+(formatting disabled)
 (generate_opam_files true)
 
 ; Edit these to give your project's URL, authors and maintainers:
@@ -19,7 +19,7 @@
  (description "A longer description")
  (depends
   (ocaml
-   (>= 4.08.0))
+   (>= 4.11.0))
   (current
    (>= 0.3))
   current_web
