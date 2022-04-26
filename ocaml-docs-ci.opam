@@ -10,13 +10,14 @@ depends: [
   "dune" {>= "2.8"}
   "ocaml" {>= "4.11.0"}
   "current" {>= "0.3"}
+  "cstruct" {< "6.1.0"}
   "current_web"
   "current_git"
   "opam-0install"
   "capnp-rpc-unix"
   "fmt"
   "lwt"
-  "cmdliner" {>= "1.1.0"}
+  "cmdliner"
   "git-unix"
   "dockerfile"
   "graphql-cohttp"
