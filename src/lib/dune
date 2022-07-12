@@ -25,9 +25,6 @@
   current_ocluster
   opam-0install
   solver_api
-  graphql-cohttp
-  graphql-lwt
-  graphql
   ocaml-version
   docker_hub)
  (preprocess
