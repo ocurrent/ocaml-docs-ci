@@ -19,8 +19,6 @@ depends: [
   "cmdliner" {>= "1.1.0"}
   "git-unix"
   "dockerfile"
-  "graphql-cohttp"
-  "graphql-lwt"
   "conf-libev"
   "ocaml-version"
   "docker_hub"
