@@ -32,8 +32,6 @@
   cmdliner
   git-unix
   dockerfile
-  graphql-cohttp
-  graphql-lwt
   conf-libev
   ocaml-version
   docker_hub))
