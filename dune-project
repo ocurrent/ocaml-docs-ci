@@ -24,6 +24,7 @@
    (>= 0.3))
   current_web
   current_git
+  current_github
   opam-0install
   capnp-rpc-unix
   fmt

@@ -12,11 +12,12 @@ depends: [
   "current" {>= "0.3"}
   "current_web"
   "current_git"
+  "current_github"
   "opam-0install"
   "capnp-rpc-unix"
   "fmt"
   "lwt"
-  "cmdliner" {>= "1.1.0"}
+  "cmdliner"
   "git-unix"
   "dockerfile"
   "graphql-cohttp"

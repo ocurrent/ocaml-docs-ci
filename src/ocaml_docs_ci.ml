@@ -53,8 +53,9 @@ open Cmdliner
 
 let cmd =
   let doc = "an OCurrent pipeline" in
-  Cmd.v (Cmd.info program_name ~doc) Term.(
-      const main $ Current.Config.cmdliner $ Current_github.Auth.cmdliner $ Current_web.cmdliner
-      $ Docs_ci_lib.Config.cmdliner)
+  let info = Cmd.info program_name ~doc in
+  Cmd.v info 
+    Term.( const main $ Current.Config.cmdliner $ Current_github.Auth.cmdliner $
+             Current_web.cmdliner $ Docs_ci_lib.Config.cmdliner)
 
 let () = exit @@ Cmd.eval cmd
