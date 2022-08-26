@@ -1,0 +1,3 @@
+(executable
+ (name test_monitor)
+ (libraries docs_ci_lib current current_web cmdliner))

@@ -107,10 +107,10 @@ module Blessing = struct
 
     module StringSet = Set.Make (String)
 
-    type t = { opam : OpamPackage.t; universe : string }
+    type t = { opam : OpamPackage.t; universe : string; blessed: Package.t option }
 
     let universe_size u = Universe.deps u |> List.length
-    let empty (opam : OpamPackage.t) : t = { opam; universe = "" }
+    let empty (opam : OpamPackage.t) : t = { opam; universe = ""; blessed = None }
 
     module Universe_info = struct
       type t = { universe : Universe.t; deps_count : int; revdeps_count : int }
@@ -134,20 +134,27 @@ module Blessing = struct
       let first_package = List.hd packages in
       let opam = first_package |> Package.opam in
       let first_universe = Universe_info.make ~counts first_package in
-      let best_universe =
+      let best_package, best_universe =
         List.fold_left
-          (fun best_universe new_package ->
+          (fun (best_package, best_universe) new_package ->
             assert (Package.opam new_package = opam);
             let new_universe = Universe_info.make ~counts new_package in
-            if Universe_info.compare new_universe best_universe > 0 then new_universe
-            else best_universe)
-          first_universe (List.tl packages)
+            if Universe_info.compare new_universe best_universe > 0 then new_package, new_universe
+            else (best_package, best_universe))
+          (first_package, first_universe) (List.tl packages)
       in
-      { opam; universe = Universe.hash best_universe.universe }
+      { opam; 
+        universe = Universe.hash best_universe.universe; 
+        blessed = Some best_package }
 
-    let get { opam; universe } pkg =
+    let get { opam; universe; _ } pkg =
       assert (Package.opam pkg = opam);
       of_bool (Universe.hash (Package.universe pkg) = universe)
+    
+    let blessed t = 
+      match t.blessed with
+      | None -> failwith "Blessed package set is empty"
+      | Some v -> v
   end
 end
 

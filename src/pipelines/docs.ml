@@ -38,26 +38,50 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
         |> Option.map @@ fun prep ->
            let dependencies = Package.universe package |> Package.Universe.deps in
            let compile_dependencies =
-             List.filter_map get_compilation_job dependencies |> Current.list_seq
+             List.filter_map get_compilation_job dependencies
+             |> List.map fst
            in
            let blessing =
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
-             ~deps:compile_dependencies prep
+           let node = 
+            Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
+              ~deps:(Current.list_seq compile_dependencies) prep
+           in
+           let monitor = 
+            Monitor.(
+            Seq [
+              ("do-deps", And
+                (("prep", Item prep) ::
+                List.map (fun compile -> 
+                  ("dep-compile", Item compile)) 
+                compile_dependencies)
+              );
+              ("do-compile", Item node)
+            ]
+            )
+           in
+           node, monitor
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
   in
   let get_compilation_node package _ =
-    match get_compilation_job package with
-    | None -> None
-    | Some compile ->
-        Some
-          (Html.v ~generation ~config
-             ~name:(package |> Package.opam |> OpamPackage.to_string)
-             ~voodoo:voodoo_gen compile)
+    get_compilation_job package
+    |> Option.map @@ fun (compile, monitor) ->
+    let node = 
+      Html.v ~generation ~config
+        ~name:(package |> Package.opam |> OpamPackage.to_string)
+        ~voodoo:voodoo_gen compile
+    in
+    let monitor =
+      match monitor with
+      | Monitor.Seq lst ->
+        Monitor.Seq (lst @ ["do-html", Item node])
+      | _ -> assert false
+    in
+    node, monitor
   in
   Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
@@ -133,7 +157,7 @@ let compile_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
-let v ~config ~opam () =
+let v ~config ~opam ~monitor () =
   let open Current.Syntax in
   let voodoo = Voodoo.v config in
   let ssh = Config.ssh config in
@@ -220,12 +244,26 @@ let v ~config ~opam () =
   in
 
   (* 7) Odoc compile and html-generate artifacts *)
-  let html, html_input_node =
-    let c, compile_node =
+  let html, html_input_node, package_pipeline_tree =
+    let compile_monitor =
       compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
+    in
+    let c, compile_node =
+      compile_monitor
+      |> List.map (fun (a, (b, _)) -> (a,b))
       |> compile_hierarchical_collapse ~input:prepped_input_node
     in
-    (c |> List.to_seq |> Package.Map.of_seq, compile_node)
+    (c |> List.to_seq |> Package.Map.of_seq, 
+    compile_node,
+    compile_monitor
+    |> List.map (fun (a, (_, b)) -> (a,b))
+    |> List.to_seq |> Package.Map.of_seq)
+  in
+
+  (* 7.b) Inform the monitor *)
+
+  let () =
+    Monitor.register monitor blessed package_pipeline_tree
   in
 
   (* 8) Update live folders *)

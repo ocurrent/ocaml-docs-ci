@@ -24,9 +24,10 @@ let main current_config github_auth mode config =
         exit 1
   in
   let repo_opam = Git.clone ~schedule:hourly "https://github.com/ocaml/opam-repository.git" in
+  let monitor = Docs_ci_lib.Monitor.make () in
   let engine =
     Current.Engine.create ~config:current_config (fun () ->
-        Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam () |> Current.ignore_value)
+        Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam ~monitor () |> Current.ignore_value)
   in
   let has_role = if github_auth = None then Current_web.Site.allow_all else has_role in
   let secure_cookies = github_auth <> None in
@@ -35,6 +36,7 @@ let main current_config github_auth mode config =
     let routes =
       Routes.((s "login" /? nil) @--> Current_github.Auth.login github_auth)
       :: Current_web.routes engine
+      @ Docs_ci_lib.Monitor.routes monitor engine
     in
     Current_web.Site.(v ?authn ~has_role ~secure_cookies) ~name:program_name routes
   in
