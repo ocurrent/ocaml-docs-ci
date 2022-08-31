@@ -26,7 +26,7 @@ end
 
 let compile ~generation ~config ~voodoo_gen ~voodoo_do
     ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
-    (preps : Prep.t Current.t Package.Map.t) =
+    (preps : (Prep.prep Current.t * Prep.t Current.t) Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
   let rec get_compilation_job package =
@@ -35,7 +35,7 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
     with Not_found ->
       let job =
         Package.Map.find_opt package preps
-        |> Option.map @@ fun prep ->
+        |> Option.map @@ fun (prep_node, prep) ->
            let dependencies = Package.universe package |> Package.Universe.deps 
            in
            let compile_dependencies_names =
@@ -60,7 +60,7 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
             Monitor.(
             Seq [
               ("do-deps", And
-                (("prep", Item prep) ::
+                (("prep", Item prep_node) ::
                 List.map (fun (pkg, compile) -> 
                   ("dep-compile " ^ Package.id pkg, Item compile)) 
                   compile_dependencies_names)
@@ -205,7 +205,9 @@ let v ~config ~opam ~monitor () =
   in
   let prepped' =
     prepped
-    |> List.map (fun (job, result) -> Prep.extract ~job result)
+    |> List.map (fun (job, result) -> 
+      Prep.extract ~job result
+      |> Package.Map.map (fun v -> result, v))
     |> List.fold_left
          (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
          Package.Map.empty
@@ -238,7 +240,7 @@ let v ~config ~opam ~monitor () =
     in
     let by_opam_package =
       Package.Map.fold
-        (fun package job opam_map ->
+        (fun package (_, job) opam_map ->
           let opam = Package.opam package in
           let job =
             let+ job = Current.state ~hidden:true job in
