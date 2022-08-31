@@ -82,15 +82,10 @@ module Peeker = Current_cache.Make(PeekerBody)
 module Image : sig
   val peek : Ocaml_version.t -> string Current.t
 end = struct
-  let images = ref []
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
   let real_peek ocaml_version =
-    try List.assoc ocaml_version !images
-    with Not_found ->
-      (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
-      let output = Peeker.get ~schedule:weekly () ocaml_version in
-      images := (ocaml_version, output) :: !images;
-      output
+    (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
+    Peeker.get ~schedule:weekly () ocaml_version
 
   let peek ocaml_version =
     let tag = tag ocaml_version in

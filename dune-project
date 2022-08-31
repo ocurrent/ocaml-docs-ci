@@ -22,6 +22,7 @@
    (>= 4.11.0))
   (current
    (>= 0.3))
+  (cstruct (< 6.1.0))
   current_web
   current_git
   current_github
