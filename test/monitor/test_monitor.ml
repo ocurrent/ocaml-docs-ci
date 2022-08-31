@@ -67,7 +67,7 @@ let pipeline monitor =
     |> List.to_seq
     |> Package.Map.of_seq
   in
-  Monitor.(register monitor blessing values);
+  Monitor.(register monitor OpamPackage.Map.empty blessing values);
 
   Current.all [
     step1 |> Current.map ignore;

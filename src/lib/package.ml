@@ -151,10 +151,7 @@ module Blessing = struct
       assert (Package.opam pkg = opam);
       of_bool (Universe.hash (Package.universe pkg) = universe)
     
-    let blessed t = 
-      match t.blessed with
-      | None -> failwith "Blessed package set is empty"
-      | Some v -> v
+    let blessed t = t.blessed
   end
 end
 

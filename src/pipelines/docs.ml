@@ -203,12 +203,23 @@ let v ~config ~opam ~monitor () =
              Prep.v ~config ~voodoo:v_prep ~spec job ))
     |> prep_hierarchical_collapse ~input:solver_result
   in
-  let prepped =
+  let prepped' =
     prepped
     |> List.map (fun (job, result) -> Prep.extract ~job result)
     |> List.fold_left
          (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
          Package.Map.empty
+  in
+  let prep_nodes = 
+    prepped
+    |> List.map (fun (job, result) -> 
+      job.Jobs.prep 
+      |> List.map (fun p -> 
+        OpamPackage.Map.singleton (Package.opam p) [p, result]))
+    |> List.flatten
+    |> List.fold_left
+         (OpamPackage.Map.union ( @ ))
+         OpamPackage.Map.empty
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
@@ -234,7 +245,7 @@ let v ~config ~opam ~monitor () =
             (package, job)
           in
           OpamPackage.Map.update opam (List.cons job) [] opam_map)
-        prepped OpamPackage.Map.empty
+        prepped' OpamPackage.Map.empty
     in
     by_opam_package
     |> OpamPackage.Map.mapi (fun opam preps ->
@@ -253,7 +264,7 @@ let v ~config ~opam ~monitor () =
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node, package_pipeline_tree =
     let compile_monitor =
-      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
+      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped'
     in
     let c, compile_node =
       compile_monitor
@@ -270,7 +281,7 @@ let v ~config ~opam ~monitor () =
   (* 7.b) Inform the monitor *)
 
   let () =
-    Monitor.register monitor blessed package_pipeline_tree
+    Monitor.register monitor prep_nodes blessed package_pipeline_tree
   in
 
   (* 8) Update live folders *)

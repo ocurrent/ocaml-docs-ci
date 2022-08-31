@@ -3,18 +3,24 @@ type pipeline_tree =
   | Item : 'a Current.t -> pipeline_tree
   | Seq of (string * pipeline_tree) list
   | And of (string * pipeline_tree) list 
+  | Or of (string * pipeline_tree) list 
+
+type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
 
 type t = {
+  mutable preps: preps;
   mutable blessing: Package.Blessing.Set.t Current.t OpamPackage.Map.t;
   mutable trees:  pipeline_tree Package.Map.t 
 }
 
 let make () = {
-  blessing=OpamPackage.Map.empty;
-  trees=Package.Map.empty;
+  preps = U OpamPackage.Map.empty;
+  blessing = OpamPackage.Map.empty;
+  trees = Package.Map.empty;
 }
 
-let register t blessing trees =
+let register t preps blessing trees =
+  t.preps <- U preps;
   t.blessing <- blessing;
   t.trees <- trees
 
@@ -76,6 +82,8 @@ let rec render ~level =
     render_list ~bullet:"decimal" ~level ~items ~render
   | And items -> 
     render_list ~bullet:"circle" ~level ~items ~render
+  | Or items -> 
+    render_list ~bullet:"|" ~level ~items ~render
 
 let get_package_info t name =
   let* opam_package = 
@@ -92,17 +100,24 @@ let get_package_info t name =
     | Ok v -> Ok v
     | Error _ -> Error "couldn't find blessing set"
   in
-  let blessed_package = 
-    Package.Blessing.Set.blessed blessing_set 
-  in
-  let blessed_pipeline =
-    Package.Map.find blessed_package t.trees
-  in
-  blessed_package, blessed_pipeline
+  match
+    Package.Blessing.Set.blessed blessing_set
+  with
+  | None -> 
+    let U preps = t.preps in
+    Or
+    (OpamPackage.Map.find opam_package preps
+    |> List.map (fun (package, current) ->
+      "prep " ^ Package.id package, Item current))
+  | Some blessed_package ->
+    let blessed_pipeline =
+      Package.Map.find blessed_package t.trees
+    in
+    blessed_pipeline
 
 
 let render_package_state t name =
-  let* (_, blessed_pipeline) = get_package_info t name
+  let* blessed_pipeline = get_package_info t name
   in
   let open Tyxml_html in
   Ok
@@ -149,7 +164,7 @@ let rec pipeline_state = function
     | Error (`Active _) -> Running
     | Error `Blocked -> Failed
     | Error (`Msg _) -> Failed)
-  | Seq lst | And lst -> 
+  | Seq lst | And lst | Or lst -> 
     List.fold_left 
       (fun acc (_, v) -> max (pipeline_state v) acc) 
       Done 
@@ -157,7 +172,7 @@ let rec pipeline_state = function
 
 let opam_package_state t name =
   match 
-    let+ (_, blessed_pipeline) = get_package_info t name
+    let+ blessed_pipeline = get_package_info t name
     in pipeline_state blessed_pipeline
   with
   | Ok v -> v
