@@ -36,10 +36,17 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
       let job =
         Package.Map.find_opt package preps
         |> Option.map @@ fun prep ->
-           let dependencies = Package.universe package |> Package.Universe.deps in
+           let dependencies = Package.universe package |> Package.Universe.deps 
+           in
+           let compile_dependencies_names =
+            List.filter_map (fun p -> 
+              get_compilation_job p
+              |> Option.map (fun (a, _) -> p, a)) 
+            dependencies
+           in
            let compile_dependencies =
-             List.filter_map get_compilation_job dependencies
-             |> List.map fst
+            compile_dependencies_names
+            |> List.map snd
            in
            let blessing =
              OpamPackage.Map.find (Package.opam package) blessed
@@ -54,9 +61,9 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
             Seq [
               ("do-deps", And
                 (("prep", Item prep) ::
-                List.map (fun compile -> 
-                  ("dep-compile", Item compile)) 
-                compile_dependencies)
+                List.map (fun (pkg, compile) -> 
+                  ("dep-compile " ^ Package.id pkg, Item compile)) 
+                  compile_dependencies_names)
               );
               ("do-compile", Item node)
             ]
