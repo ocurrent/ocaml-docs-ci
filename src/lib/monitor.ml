@@ -55,9 +55,7 @@ let rec render ~level =
   let open Tyxml_html in
   function
   | Item current ->
-    let result = 
-      Current.observe current 
-    in
+    let result = Current.observe current in
     let container =
       try 
         Current.Analysis.metadata current
@@ -162,7 +160,7 @@ let rec pipeline_state = function
     (match result with
     | Ok _ -> Done
     | Error (`Active _) -> Running
-    | Error `Blocked -> Failed
+    | Error `Blocked -> Running
     | Error (`Msg _) -> Failed)
   | Seq lst | And lst | Or lst -> 
     List.fold_left 
