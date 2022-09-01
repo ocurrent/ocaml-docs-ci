@@ -271,6 +271,7 @@ let v ~config ~opam ~monitor () =
     let compile_monitor =
       compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped'
     in
+    Log.info (fun f -> f ".. %d compilation nodes" (List.length compile_monitor));
     let c, compile_node =
       compile_monitor
       |> List.map (fun (a, (b, _)) -> (a,b))
