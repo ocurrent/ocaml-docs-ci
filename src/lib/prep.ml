@@ -92,6 +92,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          run "sudo mkdir /src";
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
+         run "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam update";
          run "opam repo remove default && opam repo add opam /src";
          copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Pre-install build tools *)
