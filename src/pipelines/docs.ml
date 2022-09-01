@@ -179,9 +179,11 @@ let v ~config ~opam ~monitor () =
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
   in
+  Log.info (fun f -> f "1) Tracked");
   (* 2) For each package.version, call the solver.  *)
   let solver_result_c = Solver.incremental ~config ~blacklist ~opam tracked in
   let* solver_result = solver_result_c in
+  Log.info (fun f -> f "2) Solver result");
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
   let all_packages_jobs =
     solver_result |> Solver.keys |> List.rev_map Solver.get
@@ -191,10 +193,12 @@ let v ~config ~opam ~monitor () =
     (* todo: add a append-only layer at this step *)
     all_packages_jobs |> List.rev_map Package.all_deps |> List.flatten |> Package.Set.of_list
   in
+  Log.info (fun f -> f "3) All packages");
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
   (* 4a) Decide on a docker tag for each job *)
   let jobs' = jobs |> List.map (fun job -> (job, Misc.spec_of_job job)) in
+  Log.info (fun f -> f "4) Jobs are scheduled");
   (* 5) Run the preparation step *)
   let prepped, prepped_input_node =
     jobs'
@@ -220,6 +224,7 @@ let v ~config ~opam ~monitor () =
         OpamPackage.Map.update opam (List.cons (package, prep_job)) [] opam_map)
       prepped' OpamPackage.Map.empty
   in
+  Log.info (fun f -> f "5) Prep nodes");
   (* 6) Promote packages to the main tree *)
   let blessed =
     let counts =
@@ -259,6 +264,7 @@ let v ~config ~opam ~monitor () =
                   | [] -> Package.Blessing.Set.empty opam
                   | list -> Package.Blessing.Set.v ~counts list))
   in
+  Log.info (fun f -> f "6) Blessed universes");
 
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node, package_pipeline_tree =
@@ -285,6 +291,7 @@ let v ~config ~opam ~monitor () =
     Monitor.register monitor 
       solver_failures prep_nodes blessed package_pipeline_tree
   in
+  Log.info (fun f -> f "7) Odoc compile nodes");
   
   (* 8) Update live folders *)
   let live_branch =
@@ -303,4 +310,5 @@ let v ~config ~opam ~monitor () =
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
     Current.all [ commits_raw |> Current.ignore_value; live_html; live_linked ]
   in
+  Log.info (fun f -> f "8) Pipeline ready");
   live_branch

@@ -8,7 +8,7 @@ let env (vars : Worker.Vars.t) =
     Opam_0install.Dir_context.std_env ~arch:vars.arch ~os:vars.os
       ~os_distribution:vars.os_distribution ~os_version:vars.os_version ~os_family:vars.os_family ()
   in
-  function "opam-version" -> Some (OpamTypes.S "2.1") | v -> env v
+  function "opam-version" -> Some (OpamTypes.S "2.1.0") | v -> env v
 
 let get_names = OpamFormula.fold_left (fun a (name, _) -> name :: a) []
 
