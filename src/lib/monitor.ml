@@ -151,6 +151,8 @@ let handle t ~engine:_ str =
   object
     inherit Current_web.Resource.t
 
+    val! can_get = `Viewer
+
     method! private get context =
       let response = 
         match render_package_state t str with
