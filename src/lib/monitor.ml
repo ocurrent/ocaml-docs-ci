@@ -205,6 +205,8 @@ let handle_root t ~engine:_ =
     inherit Current_web.Resource.t
     method! nav_link = Some "Packages"
 
+    val! can_get = `Viewer
+
     method! private get context =
       let response = render_package_root t
       in
