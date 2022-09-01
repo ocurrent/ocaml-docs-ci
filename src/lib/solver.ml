@@ -80,19 +80,59 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
 let solver_version = "v2"
 
 module Cache = struct
-  let id = "solver-cache-" ^ solver_version
 
-  type cache_value = (Package.t, string) result
-
-  let fname track =
+  let fname id track =
     let digest = Track.digest track in
     let name = Track.pkg track |> OpamPackage.name_to_string in
     let name_version = Track.pkg track |> OpamPackage.version_to_string in
     Fpath.(Current.state_dir id / name / name_version / digest)
+  
+  module V1 = struct
+    (* Migration from the old cached results *)
+    let id = "solver-cache-v1"
+
+    type cache_value = Package.t option
+
+    let fname = fname id
+
+    let mem track =
+      let fname = fname track in
+      match Bos.OS.Path.exists fname with 
+      | Ok true -> true 
+      | _ -> false
+    
+    let remove track =
+      let fname = fname track in
+      Bos.OS.Path.delete fname |> Result.get_ok
+
+    let read track : cache_value option =
+      let fname = fname track in
+      try
+        let file = open_in (Fpath.to_string fname) in
+        let result = Marshal.from_channel file in
+        close_in file;
+        Some result
+      with Failure _ -> None
+  end
+
+  let id = "solver-cache-" ^ solver_version
+
+  type cache_value = (Package.t, string) result
+
+  let fname = fname id
 
   let mem track =
     let fname = fname track in
-    match Bos.OS.Path.exists fname with Ok true -> true | _ -> false
+    match Bos.OS.Path.exists fname with 
+    | Ok true -> true 
+    | _ -> V1.mem track
+
+  let write ((track, value) : Track.t * cache_value) =
+    let fname = fname track in
+    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
+    let file = open_out (Fpath.to_string fname) in
+    Marshal.to_channel file value [];
+    close_out file
 
   let read track : cache_value option =
     let fname = fname track in
@@ -101,14 +141,17 @@ module Cache = struct
       let result = Marshal.from_channel file in
       close_in file;
       Some result
-    with Failure _ -> None
+    with Failure _ ->
+    match V1.read track with
+    | None -> None
+    | Some v ->
+      let result = 
+        Option.to_result ~none:"v1 solver did not record failure logs" v
+      in
+      write (track, result);
+      V1.remove track;
+      Some result
 
-  let write ((track, value) : Track.t * cache_value) =
-    let fname = fname track in
-    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
-    let file = open_out (Fpath.to_string fname) in
-    Marshal.to_channel file value [];
-    close_out file
 end
 
 type key = Track.t
