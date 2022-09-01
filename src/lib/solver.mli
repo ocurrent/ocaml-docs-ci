@@ -4,6 +4,7 @@ type t
 type key
 
 val keys : t -> key list
+val failures : t -> (OpamPackage.t * string) list
 val get : key -> Package.t
 
 val incremental :

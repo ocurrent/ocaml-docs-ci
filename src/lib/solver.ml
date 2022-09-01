@@ -77,12 +77,12 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
       perform_constrained_solve ~solver ~pool ~job ~platform ~opam
         (("ocaml-variants", `Eq, "4.12.0+domains") :: constraints)
 
-let solver_version = "v1"
+let solver_version = "v2"
 
 module Cache = struct
   let id = "solver-cache-" ^ solver_version
 
-  type cache_value = Package.t option
+  type cache_value = (Package.t, string) result
 
   let fname track =
     let digest = Track.digest track in
@@ -112,15 +112,25 @@ module Cache = struct
 end
 
 type key = Track.t
-type t = Track.t list
+type t = {
+  successes: Track.t list;
+  failures: Track.t list;
+}
 
-let keys t = t
-let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
+let keys t = t.successes
+let get key = Cache.read key |> Option.get (* is in cache ? *) |> Result.get_ok
+let failures t =
+  t.failures |> 
+  List.map (fun k -> 
+    Track.pkg k,
+    Cache.read k |> Option.get |> Result.get_error)
 
 (* is solved ? *)
 
 (* ------------------------- *)
 module Solver = struct
+  type outcome = t
+
   type t = Solver_api.Solver.t * unit Current.Pool.t
 
   let id = "incremental-solver-" ^ solver_version
@@ -147,7 +157,7 @@ module Solver = struct
   end
 
   module Outcome = struct
-    type t = Track.t list
+    type nonrec t = outcome
 
     let marshal t = Marshal.to_string t []
     let unmarshal t = Marshal.from_string t 0
@@ -164,21 +174,31 @@ module Solver = struct
           let root = Track.pkg pkg in
           let result =
             match res with
-            | Ok (packages, commit) -> Some (Package.make ~blacklist ~commit ~root packages)
+            | Ok (packages, commit) -> Ok (Package.make ~blacklist ~commit ~root packages)
             | Error (`Msg msg) ->
                 Current.Job.log job "Solving failed for %s: %s" (OpamPackage.to_string root) msg;
-                None
+                Error msg
           in
           Cache.write (pkg, result);
-          Option.is_some result)
+          Result.is_ok result)
         to_do
     in
     Current.Job.log job "Solved: %d / New: %d / Success: %d" (List.length packages)
       (List.length solved)
       (List.length (solved |> List.filter (fun x -> x)));
-    Lwt.return_ok
-      (packages
-      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false))
+
+    let successes, failures = 
+      List.partition (fun x -> 
+        match Cache.read x with
+        | Some (Ok _) -> true
+        | _ -> false)
+      packages
+    in
+    Lwt.return_ok 
+      {
+        successes;
+        failures
+      }
 end
 
 module SolverCache = Current_cache.Generic (Solver)
