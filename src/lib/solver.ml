@@ -2,7 +2,7 @@ module Git = Current_git
 
 (* -------------------------- *)
 
-let job_log job =
+let job_log job logs =
   let module X = Solver_api.Raw.Service.Log in
   X.local
   @@ object
@@ -12,6 +12,7 @@ let job_log job =
          let open X.Write in
          release_param_caps ();
          let msg = Params.msg_get params in
+         logs := msg :: !logs;
          Current.Job.write job msg;
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
@@ -43,11 +44,14 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam 
   Lwt.catch
     (fun () ->
       let* () = Current.Job.use_pool ~switch job pool in
-      Capnp_rpc_lwt.Capability.with_ref (job_log job) @@ fun log ->
-      let* res = Solver_api.Solver.solve solver request ~log in
+      let logs = ref [] in
+      let* res = 
+        Capnp_rpc_lwt.Capability.with_ref (job_log job logs) @@ fun log ->
+        Solver_api.Solver.solve solver request ~log 
+      in
       let+ () = Current.Switch.turn_off switch in
       match res with
-      | Ok [] -> Fmt.error_msg "no platform"
+      | Ok [] -> Fmt.error_msg "no platform:\n%s" (String.concat "\n" (List.rev !logs))
       | Ok [ x ] ->
           let solution =
             List.map
@@ -73,9 +77,11 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   match res with
   | Ok x -> Lwt.return (Ok x)
-  | Error _ ->
-      perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+  | Error (`Msg msg1) ->
+      let+ res = perform_constrained_solve ~solver ~pool ~job ~platform ~opam
         (("ocaml-variants", `Eq, "4.12.0+domains") :: constraints)
+      in
+      Result.map_error (fun (`Msg msg) -> `Msg (msg1 ^ "\n" ^ msg)) res
 
 let solver_version = "v2"
 
