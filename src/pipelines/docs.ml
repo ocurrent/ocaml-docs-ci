@@ -213,15 +213,11 @@ let v ~config ~opam ~monitor () =
          Package.Map.empty
   in
   let prep_nodes = 
-    prepped
-    |> List.map (fun (job, result) -> 
-      job.Jobs.prep 
-      |> List.map (fun p -> 
-        OpamPackage.Map.singleton (Package.opam p) [p, result]))
-    |> List.flatten
-    |> List.fold_left
-         (OpamPackage.Map.union ( @ ))
-         OpamPackage.Map.empty
+    Package.Map.fold
+      (fun package (prep_job, _) opam_map ->
+        let opam = Package.opam package in
+        OpamPackage.Map.update opam (List.cons (package, prep_job)) [] opam_map)
+      prepped' OpamPackage.Map.empty
   in
   (* 6) Promote packages to the main tree *)
   let blessed =
