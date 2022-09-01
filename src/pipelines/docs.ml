@@ -282,7 +282,7 @@ let v ~config ~opam ~monitor () =
     |> List.map (fun (a, (_, b)) -> (a,b))
     |> List.to_seq |> Package.Map.of_seq)
   in
-
+  Log.info (fun f -> f "7) Odoc compile nodes");
   (* 7.b) Inform the monitor *)
 
   let () =
@@ -291,7 +291,7 @@ let v ~config ~opam ~monitor () =
     Monitor.register monitor 
       solver_failures prep_nodes blessed package_pipeline_tree
   in
-  Log.info (fun f -> f "7) Odoc compile nodes");
+  Log.info (fun f -> f "7.b) Inform monitor");
   
   (* 8) Update live folders *)
   let live_branch =
