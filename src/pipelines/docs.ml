@@ -180,10 +180,11 @@ let v ~config ~opam ~monitor () =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
   in
   (* 2) For each package.version, call the solver.  *)
-  let solver_result = Solver.incremental ~config ~blacklist ~opam tracked in
+  let solver_result_c = Solver.incremental ~config ~blacklist ~opam tracked in
+  let* solver_result = solver_result_c in
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
-  let* all_packages_jobs =
-    solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get)
+  let all_packages_jobs =
+    solver_result |> Solver.keys |> List.rev_map Solver.get
   in
   (* 3.b) Expand that list to all the obtainable package.version.universe *)
   let all_packages =
@@ -201,7 +202,7 @@ let v ~config ~opam ~monitor () =
            ( job,
              let* spec = spec in
              Prep.v ~config ~voodoo:v_prep ~spec job ))
-    |> prep_hierarchical_collapse ~input:solver_result
+    |> prep_hierarchical_collapse ~input:solver_result_c
   in
   let prepped' =
     prepped
@@ -279,9 +280,12 @@ let v ~config ~opam ~monitor () =
   (* 7.b) Inform the monitor *)
 
   let () =
-    Monitor.register monitor prep_nodes blessed package_pipeline_tree
+    let solver_failures = Solver.failures solver_result
+    in
+    Monitor.register monitor 
+      solver_failures prep_nodes blessed package_pipeline_tree
   in
-
+  
   (* 8) Update live folders *)
   let live_branch =
     Current.collapse ~input:html_input_node ~key:"Update live folders" ~value:""

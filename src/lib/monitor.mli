@@ -14,6 +14,7 @@ type pipeline_tree =
 
 val register :
   t ->
+  (OpamPackage.t * string) list ->
   (Package.t * _ Current.t) list OpamPackage.Map.t ->
   Package.Blessing.Set.t Current.t OpamPackage.Map.t ->
   pipeline_tree Package.Map.t -> unit

@@ -8,18 +8,21 @@ type pipeline_tree =
 type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
 
 type t = {
+  mutable solve_failures : string OpamPackage.Map.t;
   mutable preps: preps;
   mutable blessing: Package.Blessing.Set.t Current.t OpamPackage.Map.t;
   mutable trees:  pipeline_tree Package.Map.t 
 }
 
 let make () = {
+  solve_failures = OpamPackage.Map.empty;
   preps = U OpamPackage.Map.empty;
   blessing = OpamPackage.Map.empty;
   trees = Package.Map.empty;
 }
 
-let register t preps blessing trees =
+let register t solve_failures preps blessing trees =
+  t.solve_failures <- OpamPackage.Map.of_list solve_failures;
   t.preps <- U preps;
   t.blessing <- blessing;
   t.trees <- trees
@@ -83,11 +86,7 @@ let rec render ~level =
   | Or items -> 
     render_list ~bullet:"|" ~level ~items ~render
 
-let get_package_info t name =
-  let* opam_package = 
-    OpamPackage.of_string_opt name 
-    |> Option.to_result ~none:"invalid package name"
-  in
+let get_opam_package_info t opam_package =
   let* blessing_current =
     OpamPackage.Map.find_opt opam_package t.blessing
     |> Option.to_result ~none:"couldn't find package"
@@ -114,15 +113,39 @@ let get_package_info t name =
     blessed_pipeline
 
 
-let render_package_state t name =
-  let* blessed_pipeline = get_package_info t name
+let get_package_info t name =
+  let* opam_package = 
+    OpamPackage.of_string_opt name 
+    |> Option.to_result ~none:"invalid package name"
   in
-  let open Tyxml_html in
-  Ok
-  [
-    h1 [txt ("Package " ^ name)];
-    (render ~level:1 (simplify blessed_pipeline))
-  ]
+  get_opam_package_info t opam_package
+
+let render_package_state t name =
+  let* opam_package = 
+    OpamPackage.of_string_opt name 
+    |> Option.to_result ~none:"invalid package name"
+  in
+  match OpamPackage.Map.find_opt opam_package t.solve_failures with
+  | Some reason ->
+    let open Tyxml_html in
+    Ok 
+    [
+      h1 [txt ("Package " ^ name)];
+      h2 [txt ("Failed to find a solution:")];
+      pre [
+        txt reason
+      ]
+    ]
+
+  | None ->
+    let* blessed_pipeline = get_opam_package_info t opam_package
+    in
+    let open Tyxml_html in
+    Ok
+    [
+      h1 [txt ("Package " ^ name)];
+      (render ~level:1 (simplify blessed_pipeline))
+    ]
 
 let handle t ~engine:_ str =
   object
@@ -198,6 +221,8 @@ let render_package_root t =
     ul (List.map render_link failed);
     h1 [txt "Running packages"];
     ul (List.map render_link pending);
+    h1 [txt "Solver failures"];
+    ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures))
   ]
 
 let handle_root t ~engine:_ =

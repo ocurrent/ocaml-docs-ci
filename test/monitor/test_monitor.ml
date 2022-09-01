@@ -67,7 +67,10 @@ let pipeline monitor =
     |> List.to_seq
     |> Package.Map.of_seq
   in
-  Monitor.(register monitor OpamPackage.Map.empty blessing values);
+  let solve_failure = 
+    [OpamPackage.of_string "mirage.4.0.0", "solver failed"]
+  in
+  Monitor.(register monitor solve_failure OpamPackage.Map.empty blessing values);
 
   Current.all [
     step1 |> Current.map ignore;
