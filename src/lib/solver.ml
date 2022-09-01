@@ -141,7 +141,7 @@ module Cache = struct
       let result = Marshal.from_channel file in
       close_in file;
       Some result
-    with Failure _ ->
+    with Failure _ | Sys_error _ ->
     match V1.read track with
     | None -> None
     | Some v ->
