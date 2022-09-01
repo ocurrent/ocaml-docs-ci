@@ -239,7 +239,9 @@ let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
 let v ~config ~voodoo ~spec (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
-  |> let> voodoo = voodoo in
+  |> let> voodoo = voodoo 
+     and> spec = spec 
+     in
      PrepCache.get No_context { job; voodoo; config; base = spec }
      |> Current.Primitive.map_result (Result.map (combine ~base:spec ~job))
 

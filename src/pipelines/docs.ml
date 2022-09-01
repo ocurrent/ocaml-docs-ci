@@ -203,9 +203,7 @@ let v ~config ~opam ~monitor () =
   let prepped, prepped_input_node =
     jobs'
     |> List.map (fun (job, spec) ->
-           ( job,
-             let* spec = spec in
-             Prep.v ~config ~voodoo:v_prep ~spec job ))
+           ( job, Prep.v ~config ~voodoo:v_prep ~spec job ))
     |> prep_hierarchical_collapse ~input:solver_result_c
   in
   let prepped' =
