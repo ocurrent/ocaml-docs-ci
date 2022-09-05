@@ -73,7 +73,8 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   let* res =
     perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-      (("ocaml-base-compiler", `Geq, "4.02.3") :: constraints)
+      (("ocaml-base-compiler", `Geq, "4.02.3") ::
+       ("ocaml-base-compiler", `Lt, "5.0.0") :: constraints)
   in
   match res with
   | Ok x -> Lwt.return (Ok x)
