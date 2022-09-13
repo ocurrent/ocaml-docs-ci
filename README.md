@@ -17,3 +17,7 @@ dune exec -- ocaml-docs-ci \
     --filter mirage \
     --limit 6
 ```
+
+## Documentation
+
+To understand better how it works under the hood, you can check the [pipeline](doc/pipeline-diagram.md) documentation.
