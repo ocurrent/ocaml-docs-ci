@@ -174,7 +174,7 @@ let to_obuilder_job build_spec = Fmt.to_to_string Obuilder_spec.pp (build_spec |
 
 let to_docker_job build_spec =
   let spec_str =
-    Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true (build_spec |> Spec.finish)
+    Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true ~os:`Unix (build_spec |> Spec.finish)
   in
   `Contents spec_str
 
