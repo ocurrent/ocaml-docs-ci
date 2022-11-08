@@ -33,7 +33,7 @@ let make base =
   let open Obuilder_spec in
   {
     base;
-    ops = [ user ~uid:1000 ~gid:1000; workdir "/home/opam"; run "sudo chown opam:opam /home/opam" ];
+    ops = [ user_unix ~uid:1000 ~gid:1000; workdir "/home/opam"; run "sudo chown opam:opam /home/opam" ];
     children = [];
   }
 
