@@ -12,13 +12,11 @@ COPY --chown=opam \
 	/src/vendor/ocurrent/
 WORKDIR /src
 RUN sudo mv /usr/bin/opam-2.1 /usr/bin/opam
-RUN opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_github.dev "./vendor/ocurrent" && \
+RUN opam pin add -yn current_github.dev "./vendor/ocurrent" && \
     opam pin add -yn current_git.dev "./vendor/ocurrent" && \
     opam pin add -yn current.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_rpc.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_slack.dev "./vendor/ocurrent" && \
     opam pin add -yn current_web.dev "./vendor/ocurrent"
+
 COPY --chown=opam ocaml-docs-ci.opam /src/
 RUN sudo apt-get update && sudo apt-get install -y capnproto graphviz libcapnp-dev libev-dev libffi-dev libgmp-dev libsqlite3-dev pkg-config
 RUN opam install --deps-only .

@@ -8,8 +8,8 @@ homepage: "https://github.com/ocurrent/ocaml-docs-ci"
 bug-reports: "https://github.com/ocurrent/ocaml-docs-ci/issues"
 depends: [
   "dune" {>= "2.8"}
-  "ocaml" {>= "4.11.0"}
-  "current" {>= "0.3"}
+  "ocaml" {>= "4.12.0"}
+  "current" {>= "0.6"}
   "cstruct" {< "6.1.0"}
   "current_web"
   "current_git"
@@ -23,6 +23,7 @@ depends: [
   "dockerfile"
   "conf-libev"
   "ocaml-version"
+  "obuilder-spec" {>= "0.5"}
   "docker_hub"
   "odoc" {with-doc}
 ]
@@ -41,6 +42,3 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocaml-docs-ci.git"
-pin-depends: [
-  ["obuilder-spec.dev" "git+https://github.com/ocurrent/obuilder#8dbe2dd66b344198c9709a3432ed55ba8a5cb113"]
-]
