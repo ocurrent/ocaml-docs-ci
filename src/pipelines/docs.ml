@@ -61,8 +61,14 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
             Seq [
               ("do-deps", And
                 (("prep", Item prep_node) ::
-                List.map (fun (pkg, compile) -> 
-                  ("dep-compile " ^ Package.id pkg, Item compile)) 
+                List.map (fun (pkg, compile) ->
+                  let dep_prep_node, _ =
+                    Package.Map.find pkg preps 
+                  in 
+                  ("dep-compile " ^ Package.id pkg, And [
+                    ("prep", Item dep_prep_node);
+                    ("compile", Item compile)
+                  ])) 
                   compile_dependencies_names)
               );
               ("do-compile", Item node)
