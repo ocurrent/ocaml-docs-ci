@@ -200,11 +200,10 @@ let v ~config ~opam ~monitor () =
   let jobs' = jobs |> List.map (fun job -> (job, Misc.spec_of_job job)) in
   Log.info (fun f -> f "4) Jobs are scheduled");
   (* 5) Run the preparation step *)
-  let prepped, prepped_input_node =
+  let prepped =
     jobs'
     |> List.map (fun (job, spec) ->
            ( job, Prep.v ~config ~voodoo:v_prep ~spec job ))
-    |> prep_hierarchical_collapse ~input:solver_result_c
   in
   let prepped' =
     prepped
@@ -273,7 +272,7 @@ let v ~config ~opam ~monitor () =
     let c, compile_node =
       compile_monitor
       |> List.map (fun (a, (b, _)) -> (a,b))
-      |> compile_hierarchical_collapse ~input:prepped_input_node
+      |> compile_hierarchical_collapse ~input:solver_result_c
     in
     (c |> List.to_seq |> Package.Map.of_seq, 
     compile_node,
