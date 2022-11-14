@@ -210,7 +210,54 @@ let render_link (pkg, _) =
     ]
   ]
 
+let render_pkg ~max_version (pkg_name, versions) =
+  let open Tyxml_html in
+  let name = OpamPackage.Name.to_string pkg_name in
+  li [
+    txt name;
+    ul 
+    (List.map (fun (v, _) ->
+      let name = OpamPackage.create pkg_name v |> OpamPackage.to_string in
+      li [
+        a ~a:[a_href ("/package/"^name)] [
+        if OpamPackage.Version.equal v max_version then
+          b [txt name]
+        else
+          txt name
+      ]]) versions)
+    ;
+  ]
+
+let group_by_pkg v =
+  let by_pkg = ref OpamPackage.Name.Map.empty in
+  List.iter (fun (p, v) ->
+    let name = OpamPackage.name p in  
+    let ver = OpamPackage.version p in  
+    match OpamPackage.Name.Map.find_opt name !by_pkg with
+    | None ->
+      by_pkg := OpamPackage.Name.Map.add name [(ver, v)] !by_pkg 
+    | Some lst ->
+      by_pkg := OpamPackage.Name.Map.add name ((ver, v)::lst) !by_pkg 
+    ) v;
+  !by_pkg 
+
+  
+let max_version versions =
+  List.fold_left (fun max_v (v, _) ->
+    if OpamPackage.Version.compare max_v v < 0 then
+      v
+    else
+      max_v
+    ) 
+  (List.hd versions |> fst) (List.tl versions)
+
 let render_package_root t =
+  let max_version =
+    OpamPackage.Map.keys t.blessing
+    |> List.map (fun k -> k, opam_package_state t (OpamPackage.to_string k))
+    |> group_by_pkg
+    |> OpamPackage.Name.Map.map max_version
+  in
   let failed, pending =
     OpamPackage.Map.keys t.blessing
     |> List.map (fun k -> k, opam_package_state t (OpamPackage.to_string k))
@@ -220,9 +267,11 @@ let render_package_root t =
   let open Tyxml_html in
   [
     h1 [txt "Failed packages"];
-    ul (List.map render_link failed);
+    ul 
+      (List.map (fun (n, v) -> render_pkg ~max_version:(OpamPackage.Name.Map.find n max_version) (n, v)) (group_by_pkg failed |> OpamPackage.Name.Map.bindings));
     h1 [txt "Running packages"];
-    ul (List.map render_link pending);
+    ul 
+      (List.map (fun (n, v) -> render_pkg ~max_version:(OpamPackage.Name.Map.find n max_version) (n, v)) (group_by_pkg pending |> OpamPackage.Name.Map.bindings));
     h1 [txt "Solver failures"];
     ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures))
   ]
