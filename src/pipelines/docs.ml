@@ -26,7 +26,7 @@ end
 
 let compile ~generation ~config ~voodoo_gen ~voodoo_do
     ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
-    (preps : Prep.t Current.t Package.Map.t) =
+    (preps : (Prep.prep Current.t * Prep.t Current.t) Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
   let rec get_compilation_job package =
@@ -35,29 +35,66 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
     with Not_found ->
       let job =
         Package.Map.find_opt package preps
-        |> Option.map @@ fun prep ->
-           let dependencies = Package.universe package |> Package.Universe.deps in
+        |> Option.map @@ fun (prep_node, prep) ->
+           let dependencies = Package.universe package |> Package.Universe.deps 
+           in
+           let compile_dependencies_names =
+            List.filter_map (fun p -> 
+              get_compilation_job p
+              |> Option.map (fun (a, _) -> p, a)) 
+            dependencies
+           in
            let compile_dependencies =
-             List.filter_map get_compilation_job dependencies |> Current.list_seq
+            compile_dependencies_names
+            |> List.map snd
            in
            let blessing =
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
-             ~deps:compile_dependencies prep
+           let node = 
+            Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
+              ~deps:(Current.list_seq compile_dependencies) prep
+           in
+           let monitor = 
+            Monitor.(
+            Seq [
+              ("do-deps", And
+                (("prep", Item prep_node) ::
+                List.map (fun (pkg, compile) ->
+                  let dep_prep_node, _ =
+                    Package.Map.find pkg preps 
+                  in 
+                  ("dep-compile " ^ Package.id pkg, And [
+                    ("prep", Item dep_prep_node);
+                    ("compile", Item compile)
+                  ])) 
+                  compile_dependencies_names)
+              );
+              ("do-compile", Item node)
+            ]
+            )
+           in
+           node, monitor
       in
       compilation_jobs := Package.Map.add package job !compilation_jobs;
       job
   in
   let get_compilation_node package _ =
-    match get_compilation_job package with
-    | None -> None
-    | Some compile ->
-        Some
-          (Html.v ~generation ~config
-             ~name:(package |> Package.opam |> OpamPackage.to_string)
-             ~voodoo:voodoo_gen compile)
+    get_compilation_job package
+    |> Option.map @@ fun (compile, monitor) ->
+    let node = 
+      Html.v ~generation ~config
+        ~name:(package |> Package.opam |> OpamPackage.to_string)
+        ~voodoo:voodoo_gen compile
+    in
+    let monitor =
+      match monitor with
+      | Monitor.Seq lst ->
+        Monitor.Seq (lst @ ["do-html", Item node])
+      | _ -> assert false
+    in
+    node, monitor
   in
   Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
@@ -133,7 +170,7 @@ let compile_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
-let v ~config ~opam () =
+let v ~config ~opam ~monitor () =
   let open Current.Syntax in
   let voodoo = Voodoo.v config in
   let ssh = Config.ssh config in
@@ -148,37 +185,49 @@ let v ~config ~opam () =
   let tracked =
     Track.v ~limit:(Config.take_n_last_versions config) ~filter:(Config.track_packages config) opam
   in
+  Log.info (fun f -> f "1) Tracked");
   (* 2) For each package.version, call the solver.  *)
-  let solver_result = Solver.incremental ~config ~blacklist ~opam tracked in
+  let solver_result_c = Solver.incremental ~config ~blacklist ~opam tracked in
+  let* solver_result = solver_result_c in
+  Log.info (fun f -> f "2) Solver result");
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
-  let* all_packages_jobs =
-    solver_result |> Current.map (fun r -> Solver.keys r |> List.rev_map Solver.get)
+  let all_packages_jobs =
+    solver_result |> Solver.keys |> List.rev_map Solver.get
   in
   (* 3.b) Expand that list to all the obtainable package.version.universe *)
   let all_packages =
     (* todo: add a append-only layer at this step *)
     all_packages_jobs |> List.rev_map Package.all_deps |> List.flatten |> Package.Set.of_list
   in
+  Log.info (fun f -> f "3) All packages");
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
   (* 4a) Decide on a docker tag for each job *)
   let jobs' = jobs |> List.map (fun job -> (job, Misc.spec_of_job job)) in
+  Log.info (fun f -> f "4) Jobs are scheduled");
   (* 5) Run the preparation step *)
-  let prepped, prepped_input_node =
+  let prepped =
     jobs'
     |> List.map (fun (job, spec) ->
-           ( job,
-             let* spec = spec in
-             Prep.v ~config ~voodoo:v_prep ~spec job ))
-    |> prep_hierarchical_collapse ~input:solver_result
+           ( job, Prep.v ~config ~voodoo:v_prep ~spec job ))
   in
-  let prepped =
+  let prepped' =
     prepped
-    |> List.map (fun (job, result) -> Prep.extract ~job result)
+    |> List.map (fun (job, result) -> 
+      Prep.extract ~job result
+      |> Package.Map.map (fun v -> result, v))
     |> List.fold_left
          (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
          Package.Map.empty
   in
+  let prep_nodes = 
+    Package.Map.fold
+      (fun package (prep_job, _) opam_map ->
+        let opam = Package.opam package in
+        OpamPackage.Map.update opam (List.cons (package, prep_job)) [] opam_map)
+      prepped' OpamPackage.Map.empty
+  in
+  Log.info (fun f -> f "5) Prep nodes");
   (* 6) Promote packages to the main tree *)
   let blessed =
     let counts =
@@ -196,14 +245,14 @@ let v ~config ~opam () =
     in
     let by_opam_package =
       Package.Map.fold
-        (fun package job opam_map ->
+        (fun package (_, job) opam_map ->
           let opam = Package.opam package in
           let job =
             let+ job = Current.state ~hidden:true job in
             (package, job)
           in
           OpamPackage.Map.update opam (List.cons job) [] opam_map)
-        prepped OpamPackage.Map.empty
+        prepped' OpamPackage.Map.empty
     in
     by_opam_package
     |> OpamPackage.Map.mapi (fun opam preps ->
@@ -218,16 +267,36 @@ let v ~config ~opam () =
                   | [] -> Package.Blessing.Set.empty opam
                   | list -> Package.Blessing.Set.v ~counts list))
   in
+  Log.info (fun f -> f "6) Blessed universes");
 
   (* 7) Odoc compile and html-generate artifacts *)
-  let html, html_input_node =
-    let c, compile_node =
-      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped
-      |> compile_hierarchical_collapse ~input:prepped_input_node
+  let html, html_input_node, package_pipeline_tree =
+    let compile_monitor =
+      compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed prepped'
     in
-    (c |> List.to_seq |> Package.Map.of_seq, compile_node)
+    Log.info (fun f -> f ".. %d compilation nodes" (List.length compile_monitor));
+    let c, compile_node =
+      compile_monitor
+      |> List.map (fun (a, (b, _)) -> (a,b))
+      |> compile_hierarchical_collapse ~input:solver_result_c
+    in
+    (c |> List.to_seq |> Package.Map.of_seq, 
+    compile_node,
+    compile_monitor
+    |> List.map (fun (a, (_, b)) -> (a,b))
+    |> List.to_seq |> Package.Map.of_seq)
   in
+  Log.info (fun f -> f "7) Odoc compile nodes");
+  (* 7.b) Inform the monitor *)
 
+  let () =
+    let solver_failures = Solver.failures solver_result
+    in
+    Monitor.register monitor 
+      solver_failures prep_nodes blessed package_pipeline_tree
+  in
+  Log.info (fun f -> f "7.b) Inform monitor");
+  
   (* 8) Update live folders *)
   let live_branch =
     Current.collapse ~input:html_input_node ~key:"Update live folders" ~value:""
@@ -245,4 +314,5 @@ let v ~config ~opam () =
     let live_linked = Live.set_to ~ssh "linked" `Linked generation in
     Current.all [ commits_raw |> Current.ignore_value; live_html; live_linked ]
   in
+  Log.info (fun f -> f "8) Pipeline ready");
   live_branch

@@ -183,8 +183,7 @@ module Gen = struct
     |> Spec.add
          [
            run ~network
-             "sudo apt-get update && sudo apt-get install -yy m4 && opam repo set-url default \
-              https://github.com/ocaml/opam-repository.git#c1ab98721ec2efc4c65d0c5a65a85c826925db6c";
+             "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network ~cache
              "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
              (Config.odoc t.config);

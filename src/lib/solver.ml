@@ -2,7 +2,7 @@ module Git = Current_git
 
 (* -------------------------- *)
 
-let job_log job =
+let job_log job logs =
   let module X = Solver_api.Raw.Service.Log in
   X.local
   @@ object
@@ -12,6 +12,7 @@ let job_log job =
          let open X.Write in
          release_param_caps ();
          let msg = Params.msg_get params in
+         logs := msg :: !logs;
          Current.Job.write job msg;
          Capnp_rpc_lwt.Service.(return (Response.create_empty ()))
      end
@@ -43,11 +44,14 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam 
   Lwt.catch
     (fun () ->
       let* () = Current.Job.use_pool ~switch job pool in
-      Capnp_rpc_lwt.Capability.with_ref (job_log job) @@ fun log ->
-      let* res = Solver_api.Solver.solve solver request ~log in
+      let logs = ref [] in
+      let* res = 
+        Capnp_rpc_lwt.Capability.with_ref (job_log job logs) @@ fun log ->
+        Solver_api.Solver.solve solver request ~log 
+      in
       let+ () = Current.Switch.turn_off switch in
       match res with
-      | Ok [] -> Fmt.error_msg "no platform"
+      | Ok [] -> Fmt.error_msg "no platform:\n%s" (String.concat "\n" (List.rev !logs))
       | Ok [ x ] ->
           let solution =
             List.map
@@ -73,26 +77,68 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   match res with
   | Ok x -> Lwt.return (Ok x)
-  | Error _ ->
-      perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+  | Error (`Msg msg1) ->
+      let+ res = perform_constrained_solve ~solver ~pool ~job ~platform ~opam
         (("ocaml-variants", `Eq, "4.12.0+domains") :: constraints)
+      in
+      Result.map_error (fun (`Msg msg) -> `Msg (msg1 ^ "\n" ^ msg)) res
 
-let solver_version = "v1"
+let solver_version = "v2"
 
 module Cache = struct
-  let id = "solver-cache-" ^ solver_version
 
-  type cache_value = Package.t option
-
-  let fname track =
+  let fname id track =
     let digest = Track.digest track in
     let name = Track.pkg track |> OpamPackage.name_to_string in
     let name_version = Track.pkg track |> OpamPackage.version_to_string in
     Fpath.(Current.state_dir id / name / name_version / digest)
+  
+  module V1 = struct
+    (* Migration from the old cached results *)
+    let id = "solver-cache-v1"
+
+    type cache_value = Package.t option
+
+    let fname = fname id
+
+    let mem track =
+      let fname = fname track in
+      match Bos.OS.Path.exists fname with 
+      | Ok true -> true 
+      | _ -> false
+    
+    let remove track =
+      let fname = fname track in
+      Bos.OS.Path.delete fname |> Result.get_ok
+
+    let read track : cache_value option =
+      let fname = fname track in
+      try
+        let file = open_in (Fpath.to_string fname) in
+        let result = Marshal.from_channel file in
+        close_in file;
+        Some result
+      with Failure _ -> None
+  end
+
+  let id = "solver-cache-" ^ solver_version
+
+  type cache_value = (Package.t, string) result
+
+  let fname = fname id
 
   let mem track =
     let fname = fname track in
-    match Bos.OS.Path.exists fname with Ok true -> true | _ -> false
+    match Bos.OS.Path.exists fname with 
+    | Ok true -> true 
+    | _ -> V1.mem track
+
+  let write ((track, value) : Track.t * cache_value) =
+    let fname = fname track in
+    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
+    let file = open_out (Fpath.to_string fname) in
+    Marshal.to_channel file value [];
+    close_out file
 
   let read track : cache_value option =
     let fname = fname track in
@@ -101,26 +147,39 @@ module Cache = struct
       let result = Marshal.from_channel file in
       close_in file;
       Some result
-    with Failure _ -> None
+    with Failure _ | Sys_error _ ->
+    match V1.read track with
+    | None -> None
+    | Some v ->
+      let result = 
+        Option.to_result ~none:"v1 solver did not record failure logs" v
+      in
+      write (track, result);
+      V1.remove track;
+      Some result
 
-  let write ((track, value) : Track.t * cache_value) =
-    let fname = fname track in
-    let _ = Bos.OS.Dir.create (fst (Fpath.split_base fname)) |> Result.get_ok in
-    let file = open_out (Fpath.to_string fname) in
-    Marshal.to_channel file value [];
-    close_out file
 end
 
 type key = Track.t
-type t = Track.t list
+type t = {
+  successes: Track.t list;
+  failures: Track.t list;
+}
 
-let keys t = t
-let get key = Cache.read key |> Option.get (* is in cache ? *) |> Option.get
+let keys t = t.successes
+let get key = Cache.read key |> Option.get (* is in cache ? *) |> Result.get_ok
+let failures t =
+  t.failures |> 
+  List.map (fun k -> 
+    Track.pkg k,
+    Cache.read k |> Option.get |> Result.get_error)
 
 (* is solved ? *)
 
 (* ------------------------- *)
 module Solver = struct
+  type outcome = t
+
   type t = Solver_api.Solver.t * unit Current.Pool.t
 
   let id = "incremental-solver-" ^ solver_version
@@ -147,7 +206,7 @@ module Solver = struct
   end
 
   module Outcome = struct
-    type t = Track.t list
+    type nonrec t = outcome
 
     let marshal t = Marshal.to_string t []
     let unmarshal t = Marshal.from_string t 0
@@ -164,21 +223,31 @@ module Solver = struct
           let root = Track.pkg pkg in
           let result =
             match res with
-            | Ok (packages, commit) -> Some (Package.make ~blacklist ~commit ~root packages)
+            | Ok (packages, commit) -> Ok (Package.make ~blacklist ~commit ~root packages)
             | Error (`Msg msg) ->
                 Current.Job.log job "Solving failed for %s: %s" (OpamPackage.to_string root) msg;
-                None
+                Error msg
           in
           Cache.write (pkg, result);
-          Option.is_some result)
+          Result.is_ok result)
         to_do
     in
     Current.Job.log job "Solved: %d / New: %d / Success: %d" (List.length packages)
       (List.length solved)
       (List.length (solved |> List.filter (fun x -> x)));
-    Lwt.return_ok
-      (packages
-      |> List.filter (fun x -> match Cache.read x with Some (Some _) -> true | _ -> false))
+
+    let successes, failures = 
+      List.partition (fun x -> 
+        match Cache.read x with
+        | Some (Ok _) -> true
+        | _ -> false)
+      packages
+    in
+    Lwt.return_ok 
+      {
+        successes;
+        failures
+      }
 end
 
 module SolverCache = Current_cache.Generic (Solver)

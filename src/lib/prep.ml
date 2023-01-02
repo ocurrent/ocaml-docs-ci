@@ -92,6 +92,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          run "sudo mkdir /src";
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
+         run "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam update";
          run "opam repo remove default && opam repo add opam /src";
          copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
          (* Pre-install build tools *)
@@ -238,7 +239,9 @@ let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
 let v ~config ~voodoo ~spec (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
-  |> let> voodoo = voodoo in
+  |> let> voodoo = voodoo 
+     and> spec = spec 
+     in
      PrepCache.get No_context { job; voodoo; config; base = spec }
      |> Current.Primitive.map_result (Result.map (combine ~base:spec ~job))
 

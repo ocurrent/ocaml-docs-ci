@@ -61,5 +61,9 @@ module Blessing : sig
     (** Compute which packages are blessed. *)
 
     val get : t -> Package.t -> b
+    
+    val blessed : t -> Package.t option
+    (** Obtain which package is blessed, 
+        or raise if the set is empty *)
   end
 end
