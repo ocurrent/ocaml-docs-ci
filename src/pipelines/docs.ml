@@ -36,12 +36,12 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
       let job =
         Package.Map.find_opt package preps
         |> Option.map @@ fun (prep_node, prep) ->
-           let dependencies = Package.universe package |> Package.Universe.deps 
+           let dependencies = Package.universe package |> Package.Universe.deps
            in
            let compile_dependencies_names =
-            List.filter_map (fun p -> 
+            List.filter_map (fun p ->
               get_compilation_job p
-              |> Option.map (fun (a, _) -> p, a)) 
+              |> Option.map (fun (a, _) -> p, a))
             dependencies
            in
            let compile_dependencies =
@@ -52,23 +52,23 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           let node = 
+           let node =
             Compile.v ~generation ~config ~name ~voodoo:voodoo_do ~blessing
               ~deps:(Current.list_seq compile_dependencies) prep
            in
-           let monitor = 
+           let monitor =
             Monitor.(
             Seq [
               ("do-deps", And
                 (("prep", Item prep_node) ::
                 List.map (fun (pkg, compile) ->
                   let dep_prep_node, _ =
-                    Package.Map.find pkg preps 
-                  in 
+                    Package.Map.find pkg preps
+                  in
                   ("dep-compile " ^ Package.id pkg, And [
                     ("prep", Item dep_prep_node);
                     ("compile", Item compile)
-                  ])) 
+                  ]))
                   compile_dependencies_names)
               );
               ("do-compile", Item node)
@@ -83,7 +83,7 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
   let get_compilation_node package _ =
     get_compilation_job package
     |> Option.map @@ fun (compile, monitor) ->
-    let node = 
+    let node =
       Html.v ~generation ~config
         ~name:(package |> Package.opam |> OpamPackage.to_string)
         ~voodoo:voodoo_gen compile
@@ -98,7 +98,12 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
   in
   Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
-let blacklist = [ "ocaml-secondary-compiler"; "ocamlfind-secondary" ]
+let blacklist = [
+  "ocaml-secondary-compiler";
+  "ocamlfind-secondary";
+  "ocaml-src";
+  "ocaml-freestanding"
+]
 
 let rec with_context_fold lst fn =
   match lst with
@@ -213,14 +218,14 @@ let v ~config ~opam ~monitor () =
   in
   let prepped' =
     prepped
-    |> List.map (fun (job, result) -> 
+    |> List.map (fun (job, result) ->
       Prep.extract ~job result
       |> Package.Map.map (fun v -> result, v))
     |> List.fold_left
          (Package.Map.union (fun _ _ _ -> failwith "Two jobs prepare the same package."))
          Package.Map.empty
   in
-  let prep_nodes = 
+  let prep_nodes =
     Package.Map.fold
       (fun package (prep_job, _) opam_map ->
         let opam = Package.opam package in
@@ -280,7 +285,7 @@ let v ~config ~opam ~monitor () =
       |> List.map (fun (a, (b, _)) -> (a,b))
       |> compile_hierarchical_collapse ~input:solver_result_c
     in
-    (c |> List.to_seq |> Package.Map.of_seq, 
+    (c |> List.to_seq |> Package.Map.of_seq,
     compile_node,
     compile_monitor
     |> List.map (fun (a, (_, b)) -> (a,b))
@@ -292,11 +297,11 @@ let v ~config ~opam ~monitor () =
   let () =
     let solver_failures = Solver.failures solver_result
     in
-    Monitor.register monitor 
+    Monitor.register monitor
       solver_failures prep_nodes blessed package_pipeline_tree
   in
   Log.info (fun f -> f "7.b) Inform monitor");
-  
+
   (* 8) Update live folders *)
   let live_branch =
     Current.collapse ~input:html_input_node ~key:"Update live folders" ~value:""
