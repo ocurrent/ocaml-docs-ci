@@ -28,9 +28,15 @@ end = struct
 end
 
 let tag ocaml_version =
-  Fmt.str "debian-11-ocaml-%d.%02d%s"
+  let minor =
+    if Ocaml_version.major ocaml_version >= 5 then
+      Fmt.str "%d" (Ocaml_version.minor ocaml_version)
+    else
+      Fmt.str "%02d" (Ocaml_version.minor ocaml_version)
+  in
+  Fmt.str "debian-11-ocaml-%d.%s%s"
     (Ocaml_version.major ocaml_version)
-    (Ocaml_version.minor ocaml_version)
+    minor
     (match Ocaml_version.extra ocaml_version with
     | None -> ""
     | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))

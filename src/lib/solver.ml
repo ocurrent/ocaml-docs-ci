@@ -73,13 +73,14 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   let* res =
     perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-      (("ocaml-base-compiler", `Geq, "4.02.3") :: constraints)
+      (("ocaml-base-compiler", `Geq, "4.04.1") ::
+       ("ocaml", `Lt, "5.0.0") :: constraints)
   in
   match res with
   | Ok x -> Lwt.return (Ok x)
   | Error (`Msg msg1) ->
       let+ res = perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-        (("ocaml-variants", `Eq, "4.12.0+domains") :: constraints)
+        (("ocaml-base-compiler", `Eq, "5.0.0~beta1") :: constraints)
       in
       Result.map_error (fun (`Msg msg) -> `Msg (msg1 ^ "\n" ^ msg)) res
 
