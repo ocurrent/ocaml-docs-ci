@@ -2,6 +2,14 @@
 
 Building docs using odoc.
 
+## Before building
+
+`ocurrent`, `ocluster` and `ocluster/obuilder` are included as git submodules. Make sure they are checked out:
+
+```
+git submodule update --init --recursive
+```
+
 ## Running
 
 ```

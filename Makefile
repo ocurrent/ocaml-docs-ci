@@ -6,7 +6,14 @@ all:
 
 .PHONY: deps
 deps: ## Install development dependencies
-	opam install -y dune-release ocamlformat utop ocaml-lsp-server
+	opam pin add -yn current_docker.dev "./vendor/ocurrent" && \
+	opam pin add -yn current_github.dev "./vendor/ocurrent" && \
+	opam pin add -yn current_git.dev "./vendor/ocurrent" && \
+	opam pin add -yn current.dev "./vendor/ocurrent" && \
+	opam pin add -yn current_rpc.dev "./vendor/ocurrent" && \
+	opam pin add -yn current_slack.dev "./vendor/ocurrent" && \
+	opam pin add -yn current_web.dev "./vendor/ocurrent"
+	opam install -y dune-release ocamlformat utop ocaml-lsp-server obuilder-spec
 	opam install --deps-only --with-test --with-doc -y .
 
 .PHONY: create_switch
