@@ -8,7 +8,7 @@ services:
       - --capnp-secret-key-file=/capnp-secrets/key.pem
       - --capnp-listen-address=tcp:0.0.0.0:9000
       - --capnp-public-address=tcp:scheduler:9000
-      - --pools=linux-x86_64,linux-arm64,linux-ppc64
+      - --pools=linux-x86_64
       - --state-dir=/var/lib/ocluster-scheduler
       - --default-clients=ocaml-docs-ci
     init: true
@@ -21,11 +21,13 @@ services:
   worker:
     image: ocurrent/ocluster-worker:live
     command:
-      - /capnp-secrets/pool-linux-x86_64.cap
+      - --connect=/capnp-secrets/pool-linux-x86_64.cap
       - --name=local
       - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
       - --capacity=1
       - --state-dir=/var/lib/ocluster
+      - --store=rsync:/var/cache/obuilder
+      - --rsync-mode=hardlink
     init: true
     restart: on-failure         # (wait for the scheduler to write the pool cap)
     volumes:
