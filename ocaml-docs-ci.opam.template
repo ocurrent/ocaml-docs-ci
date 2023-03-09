@@ -1,3 +1,0 @@
-pin-depends: [
-  ["obuilder-spec.dev" "git+https://github.com/ocurrent/obuilder#8dbe2dd66b344198c9709a3432ed55ba8a5cb113"]
-]

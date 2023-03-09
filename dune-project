@@ -19,9 +19,9 @@
  (description "A longer description")
  (depends
   (ocaml
-   (>= 4.11.0))
+   (>= 4.12.0))
   (current
-   (>= 0.3))
+   (>= 0.6))
   (cstruct (< 6.1.0))
   current_web
   current_git
@@ -35,4 +35,5 @@
   dockerfile
   conf-libev
   ocaml-version
+  (obuilder-spec (>= 0.5))
   docker_hub))
