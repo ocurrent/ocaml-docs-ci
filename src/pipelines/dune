@@ -19,7 +19,6 @@
   lwt
   lwt.unix
   obuilder-spec
-  opam-file-format
-  current_ocluster)
+  opam-file-format)
  (preprocess
   (pps ppx_deriving_yojson)))
