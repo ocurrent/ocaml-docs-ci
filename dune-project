@@ -36,4 +36,4 @@
   conf-libev
   ocaml-version
   (obuilder-spec (>= 0.5.1))
-  docker_hub))
+  (docker_hub (>= 0.1.1))))

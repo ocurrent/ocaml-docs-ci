@@ -4,6 +4,3 @@
 [submodule "vendor/ocurrent"]
 	path = vendor/ocurrent
 	url = https://github.com/ocurrent/ocurrent
-[submodule "vendor/ocaml-docker-hub"]
-	path = vendor/ocaml-docker-hub
-	url = https://github.com/kit-ty-kate/ocaml-docker-hub.git
