@@ -99,4 +99,8 @@ A [docker-compose.yml](docker-compose.yml) is provided to setup an entire `docs-
  * nginx webserver for generated docs
  * docs-ci built from the local git checkout
  
-Runnable as `docker-compose -f docker-compose.yml up`
+First we need to bootstrap an ocluster-worker
+``` shell
+docker build -t ocluster-worker -f vendor/ocluster/Dockerfile.worker.alpine vendor/ocluster
+```
+then create the environment using `docker-compose -f docker-compose.yml up`

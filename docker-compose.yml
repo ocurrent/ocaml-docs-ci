@@ -19,16 +19,22 @@ services:
       - 'capnp-secrets:/capnp-secrets'
 
   worker:
-    image: ocurrent/ocluster-worker:live
+    # image: ocurrent/ocluster-worker:live
+    build:
+      dockerfile: docker/worker/Dockerfile
+      context: .
     command:
       - --connect=/capnp-secrets/pool-linux-x86_64.cap
-      - --name=local
+      - --name=ocluster-worker
       - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
       - --capacity=1
       - --state-dir=/var/lib/ocluster
       - --store=rsync:/var/cache/obuilder
       - --rsync-mode=hardlink
+      - --obuilder-healthcheck=0
+      - --verbose
     init: true
+    privileged: true            # required for the Docker in Docker container to work
     restart: on-failure         # (wait for the scheduler to write the pool cap)
     volumes:
       - 'worker-data:/var/lib/ocluster'
@@ -84,6 +90,9 @@ services:
       - 'docs-data:/data/'
             
   ocaml-docs-ci:
+    # Use published docker container
+    # image: ocurrent/docs-ci:live
+    # Build from local sources
     build:
       dockerfile: Dockerfile
       context: .
@@ -103,8 +112,8 @@ services:
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
       - --jobs=6
-      - --limit=1
-      - --filter=uri
+      - --limit=1               # Only build the most recent version of each package
+      - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
     init: true
     restart: on-failure         # (wait for the scheduler to write the submission cap)
     ports:
@@ -114,6 +123,7 @@ services:
       - "capnp-secrets:/capnp-secrets"
       - 'ssh-credentials:/ssh/'
     environment:
+      - OCAMLRUNPARAM=b
       - CI_PROFILE=docker
 
 volumes:
