@@ -13,7 +13,11 @@ The server in charge of storing the data:
 
 The initialization program: it generates keys for the storage server
 
-## git-http
+## html-data-website
 
-Expose /data/git repository over http
+Expose docs-data volume over http using nginx.
+
+## docs-ci
+
+OCurrent pipeline for building ocaml docs for ocaml.org package index.
 
