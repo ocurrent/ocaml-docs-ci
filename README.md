@@ -46,16 +46,16 @@ For further details on how `docs-ci` works read the [pipeline diagram](doc/pipel
 
 Environments:
 
-| Environment | www                       | pipeline                          | git branch | data                            |
-|-------------|---------------------------|-----------------------------------|------------|---------------------------------|
-| Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | https://docs-data.ocaml.org/    |
-| Staging     | https://staging.ocaml.org | https://docs-staging.sw.ocaml.org | staging    | https://docs-data.ocamllabs.io/ |
+| Environment | www                       | pipeline                          | git branch | data                               |
+|-------------|---------------------------|-----------------------------------|------------|------------------------------------|
+| Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | http://docs-data.ocaml.org         |
+| Staging     | https://staging.ocaml.org | https://staging.docs.ci.ocaml.org | staging    | http://staging.docs-data.ocaml.org |
 
 OAuth integration provided by GitHub OAuth Apps hosted under the OCurrent organisation. 
 See https://github.com/organizations/ocurrent/settings/applications
 
 The infrastructure for `ocaml-docs-ci` is managed via Ansible. 
-Contact @tmcgilchrist or @mtelevers if you need access or have questions.
+Contact @tmcgilchrist or @mtelvers if you need access or have questions.
 
 To deploy a new version of `docs-ci`:
 
