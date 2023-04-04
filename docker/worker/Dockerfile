@@ -1,4 +1,4 @@
-FROM ocluster-worker AS build
+FROM ocurrent/ocluster-worker:alpine AS build
 
 ## Using a Docker in Docker container to run the worker
 ## See https://devopscube.com/run-docker-in-docker/

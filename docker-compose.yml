@@ -66,7 +66,7 @@ services:
       - 'docs-data:/data'
 
   http-raw-live-website:
-    restart: on-failure    
+    restart: on-failure
     image: nginx
     command: >
       bash -c "rm -rf /usr/share/nginx/html
@@ -78,7 +78,7 @@ services:
       - 'docs-data:/data/'
 
   http-raw-current-website:
-    restart: on-failure    
+    restart: on-failure
     image: nginx
     command: >
       bash -c "rm -rf /usr/share/nginx/html
@@ -88,7 +88,7 @@ services:
         - "8003:8000"
     volumes:
       - 'docs-data:/data/'
-            
+
   ocaml-docs-ci:
     # Use published docker container
     # image: ocurrent/docs-ci:live
@@ -103,8 +103,8 @@ services:
     command:
       - --confirm=above-average
       - --ocluster-submission=/capnp-secrets/submit-ocaml-docs-ci.cap
-      - --ssh-host=172.17.0.1 # ocluster jobs are spawned by the host's docker, so they don't have 
-                              # access to this docker-compose's network. therefore we have to get 
+      - --ssh-host=172.17.0.1 # ocluster jobs are spawned by the host's docker, so they don't have
+                              # access to this docker-compose's network. therefore we have to get
                               # to the storage server through the host network.
       - --ssh-port=2222
       - --ssh-user=root
