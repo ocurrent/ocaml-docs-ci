@@ -2,9 +2,9 @@
 
 [![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fci.ocamllabs.io%2Fbadge%2Focurrent%2Focaml-docs-ci%2Fmaster&logo=ocaml)](https://ci.ocamllabs.io/github/ocurrent/ocaml-docs-ci)
 
-OCaml Docs CI (aka docs-ci) is an OCurrent pipeline used for building the documentation for ocaml.org website. 
-It uses the metadata from opam-repository to work out how to build documentation for individual 
-packages using [voodoo](), the OCaml package documentation generator, and generates a HTML output 
+OCaml Docs CI (aka docs-ci) is an OCurrent pipeline used for building the documentation for ocaml.org website.
+It uses the metadata from opam-repository to work out how to build documentation for individual
+packages using [voodoo](), the OCaml package documentation generator, and generates a HTML output
 suitable for ocaml.org server to present.
 
 ## Installation
@@ -33,8 +33,8 @@ dune build @runtest
 
 ## Documentation
 
-At a high level `docs-ci` purpose is to compile the documentation of every package in the `opamverse`. To do this is generates 
-a dependency universe. For each package (along with the version), the documentation is generated for it plus all of its 
+At a high level `docs-ci` purpose is to compile the documentation of every package in the `opamverse`. To do this is generates
+a dependency universe. For each package (along with the version), the documentation is generated for it plus all of its
 dependencies. This documentation is then collected into a `documentation set` and provided to the ocaml.org service.
 The [voodoo]() tool defines the on disk format for the `documentation set`.
 
@@ -51,10 +51,10 @@ Environments:
 | Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | http://docs-data.ocaml.org         |
 | Staging     | https://staging.ocaml.org | https://staging.docs.ci.ocaml.org | staging    | http://staging.docs-data.ocaml.org |
 
-OAuth integration provided by GitHub OAuth Apps hosted under the OCurrent organisation. 
+OAuth integration provided by GitHub OAuth Apps hosted under the OCurrent organisation.
 See https://github.com/organizations/ocurrent/settings/applications
 
-The infrastructure for `ocaml-docs-ci` is managed via Ansible. 
+The infrastructure for `ocaml-docs-ci` is managed via Ansible.
 Contact @tmcgilchrist or @mtelvers if you need access or have questions.
 
 To deploy a new version of `docs-ci`:
@@ -65,8 +65,8 @@ To deploy a new version of `docs-ci`:
 
 Follow a similar process for `live` exercising extra caution as it could impact the live ocaml.org service.
 
-The git history on `live` and `staging` **MUST** be kept in sync with the default branch. 
-Those branches should be the same as `main` plus or minus some commits from a PR. 
+The git history on `live` and `staging` **MUST** be kept in sync with the default branch.
+Those branches should be the same as `main` plus or minus some commits from a PR.
 
 ## Remote API
 
@@ -98,9 +98,9 @@ A [docker-compose.yml](docker-compose.yml) is provided to setup an entire `docs-
  * ocluster Linux x86 worker
  * nginx webserver for generated docs
  * docs-ci built from the local git checkout
- 
-First we need to bootstrap an ocluster-worker
+
+Run this command to create an environment:
 ``` shell
-docker build -t ocluster-worker -f vendor/ocluster/Dockerfile.worker.alpine vendor/ocluster
+$ docker-compose -f docker-compose.yml up
 ```
-then create the environment using `docker-compose -f docker-compose.yml up`
+You should then be able to watch the pipeline in action at `http://localhost:8080`.
