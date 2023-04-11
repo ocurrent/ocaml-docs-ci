@@ -113,6 +113,8 @@ module Ssh = struct
 end
 
 type t = {
+  voodoo_branch : string;
+  voodoo_repo : string;
   jobs : int;
   track_packages : string list;
   take_n_last_versions : int option;
@@ -121,6 +123,16 @@ type t = {
   ocluster_connection_gen : Current_ocluster.Connection.t;
   ssh : Ssh.t;
 }
+
+let voodoo_branch =
+  Arg.value
+  @@ Arg.opt Arg.(string) "main"
+  @@ Arg.info ~doc:"Voodoo branch to watch" ~docv:"VOODOO_BRANCH" ["voodoo-branch"]
+
+let voodoo_repo =
+  Arg.value
+  @@ Arg.opt Arg.string "https://github.com/ocaml-doc/voodoo.git"
+  @@ Arg.info ~doc:"Voodoo repository to watch" ~docv:"VOODOO_REPO" ["voodoo-repo"]
 
 let cap_file =
   Arg.required
@@ -143,7 +155,7 @@ let take_n_last_versions =
   @@ Arg.opt Arg.(some int) None
   @@ Arg.info ~doc:"Limit the number of versions" ~docv:"LIMIT" [ "limit" ]
 
-let v cap_file jobs track_packages take_n_last_versions ssh =
+let v voodoo_branch voodoo_repo cap_file jobs track_packages take_n_last_versions ssh =
   let vat = Capnp_rpc_unix.client_only_vat () in
   let cap = Capnp_rpc_unix.Cap_file.load vat cap_file |> Result.get_ok in
 
@@ -152,6 +164,8 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
   let ocluster_connection_gen = Current_ocluster.Connection.create ~max_pipeline:100 cap in
 
   {
+    voodoo_branch;
+    voodoo_repo;
     jobs;
     track_packages;
     take_n_last_versions;
@@ -162,12 +176,14 @@ let v cap_file jobs track_packages take_n_last_versions ssh =
   }
 
 let cmdliner =
-  Term.(const v $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
+  Term.(const v $ voodoo_branch $ voodoo_repo $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
 
 (* odoc pinned to tag 2.2.0 *)
 let odoc _ = "https://github.com/ocaml/odoc.git#103dac4c370aa2ad5aca7ba54f02f8e06adb941b"
 let pool _ = "linux-x86_64"
 let jobs t = t.jobs
+let voodoo_branch t = t.voodoo_branch
+let voodoo_repo t = t.voodoo_repo
 let track_packages t = t.track_packages
 let take_n_last_versions t = t.take_n_last_versions
 let ocluster_connection_do t = t.ocluster_connection_do
