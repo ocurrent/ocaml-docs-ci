@@ -100,6 +100,7 @@ A [docker-compose.yml](docker-compose.yml) is provided to setup an entire `docs-
  * docs-ci built from the local git checkout
 
 Run this command to create an environment:
+
 ``` shell
 $ docker-compose -f docker-compose.yml up
 ```

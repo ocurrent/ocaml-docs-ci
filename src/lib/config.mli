@@ -24,6 +24,9 @@ val odoc : t -> string
 val pool : t -> string
 (** The ocluster pool to use *)
 
+val voodoo_repo : t -> string
+val voodoo_branch : t -> string
+
 val ocluster_connection_prep : t -> Current_ocluster.Connection.t
 (** Connection to the cluster for Prep *)
 

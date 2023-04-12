@@ -95,9 +95,9 @@ end
 
 module VoodooCache = Current_cache.Make (Op)
 
-let v () =
+let v ~gref ~repo () =
   let daily = Current_cache.Schedule.v ~valid_for:(Duration.of_day 1) () in
-  let git = Git.clone ~schedule:daily ~gref:"main" "https://github.com/ocaml-doc/voodoo.git" in
+  let git = Git.clone ~schedule:daily ~gref repo in
   let open Current.Syntax in
   Current.component "voodoo"
   |> let> git = git in
@@ -112,7 +112,7 @@ type t = {
 
 let v config =
   let open Current.Syntax in
-  let+ { voodoo_do; voodoo_prep; voodoo_gen } = v () in
+  let+ { voodoo_do; voodoo_prep; voodoo_gen } = v ~gref:(Config.voodoo_branch config) ~repo:(Config.voodoo_repo config) () in
   { voodoo_do; voodoo_prep; voodoo_gen; config }
 
 let remote_uri commit =
