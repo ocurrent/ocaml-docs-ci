@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 let prep_version = "v3"
 let network = Misc.network
 let cache = Voodoo.cache
@@ -175,27 +177,62 @@ module Prep = struct
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let** _ = Current_ocluster.Connection.run_job ~job build_job in
     (* extract result from logs *)
-    let extract_hashes (git_hashes, failed) line =
+    let extract_hashes (git_hashes, failed, retriable_errors) line =
+      let retry_conditions log_line =
+        let retry_on = [
+          "Temporary failure";
+          "Could not resolve host";
+          "rsync: connection unexpectedly closed"
+        ] in
+        List.fold_left
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
+      in
       match Storage.parse_hash ~prefix:"HASHES" line with
-      | Some value -> (value :: git_hashes, failed)
+      | Some value -> (value :: git_hashes, failed, retriable_errors)
       | None -> (
           match String.split_on_char ':' line with
           | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
               Current.Job.log job "Failed: %s" branch;
-              (git_hashes, branch :: failed)
-          | _ -> (git_hashes, failed))
+              (git_hashes, branch :: failed, retriable_errors)
+          | [ prev; branch ] when retry_conditions prev ->
+              (git_hashes, failed, branch :: retriable_errors)
+          | _ -> (git_hashes, failed, retriable_errors))
     in
 
-    let** git_hashes, failed = Misc.fold_logs build_job extract_hashes ([], []) in
-    Lwt.return_ok
-      ( List.map
-          (fun (r : Storage.id_hash) ->
-            Current.Job.log job "%s -> %s" r.id r.hash;
-            r)
-          git_hashes,
-        failed )
+
+    let number_of_attempts = ref 0 in
+    let max_number_of_attempts = 2 in
+    let sleep_duration =
+      let base_sleep_time = 30 + (Random.int 20) in
+      let backoff = Float.pow 30.0 (Int.to_float !number_of_attempts) in
+      Int.to_float base_sleep_time +. backoff
+    in
+    let rec retry_loop () =
+      let* x = Current_ocluster.Connection.run_job ~job build_job in
+      number_of_attempts := !number_of_attempts + 1;
+
+      if Result.is_error x then (* treating errors on run_job as retriable failures *)
+        Lwt_unix.sleep sleep_duration >>= fun () ->
+          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) !number_of_attempts);
+          retry_loop ()
+      else
+        let** git_hashes, failed, retriable_errors = Misc.fold_logs build_job extract_hashes ([], [], []) in
+        if retriable_errors = [] || !number_of_attempts > max_number_of_attempts
+          then
+            Lwt.return_ok
+              ( List.map
+                  (fun (r : Storage.id_hash) ->
+                    Current.Job.log job "%s -> %s" r.id r.hash;
+                    r)
+                  git_hashes,
+                failed )
+          else (* retry *)
+            Lwt_unix.sleep sleep_duration >>= fun () ->
+              Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) !number_of_attempts);
+              retry_loop ()
+    in
+    retry_loop ()
 end
 
 module PrepCache = Current_cache.Make (Prep)
@@ -239,8 +276,8 @@ let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
 let v ~config ~voodoo ~spec (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
-  |> let> voodoo = voodoo 
-     and> spec = spec 
+  |> let> voodoo = voodoo
+     and> spec = spec
      in
      PrepCache.get No_context { job; voodoo; config; base = spec }
      |> Current.Primitive.map_result (Result.map (combine ~base:spec ~job))
