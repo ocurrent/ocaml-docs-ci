@@ -69,7 +69,6 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam
       raise exn)
 
 let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
-  let open Lwt.Syntax in
   let package = Track.pkg track in
   let constraints =
     [

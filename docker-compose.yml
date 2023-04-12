@@ -42,6 +42,7 @@ services:
       - 'capnp-secrets:/capnp-secrets:ro'
     environment:
       - DOCKER_BUILDKIT=1
+      - DOCKER_CLI_EXPERIMENTAL=enabled
 
   init:
     build:
@@ -111,6 +112,8 @@ services:
       - --ssh-privkey=/ssh/id_ed25519
       - --ssh-pubkey=/ssh/id_ed25519.pub
       - --ssh-folder=/data
+      # - --voodoo-repo=""      # Voodoo repository to use
+      # - --voodoo-branch=""    # Git branch from the voodoo repository
       - --jobs=6
       - --limit=1               # Only build the most recent version of each package
       - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
