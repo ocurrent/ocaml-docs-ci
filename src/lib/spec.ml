@@ -41,3 +41,6 @@ let to_ocluster_spec build_spec =
   let spec_str = Fmt.to_to_string Obuilder_spec.pp (build_spec |> finish) in
   let open Cluster_api.Obuilder_job.Spec in
   { spec = `Contents spec_str }
+
+let to_spec build_spec =
+  Fmt.to_to_string Obuilder_spec.pp (build_spec |> finish)
