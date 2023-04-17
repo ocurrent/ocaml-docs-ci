@@ -18,14 +18,16 @@ services:
       - 'scheduler-data:/var/lib/ocluster-scheduler'
       - 'capnp-secrets:/capnp-secrets'
 
-  worker:
-    # image: ocurrent/ocluster-worker:live
+  # Single ocluster worker to run builds.
+  # Additional workers can be added by copying this block and giving
+  # the new worker a unique "--name"
+  worker_a:
     build:
       dockerfile: docker/worker/Dockerfile
       context: .
     command:
       - --connect=/capnp-secrets/pool-linux-x86_64.cap
-      - --name=ocluster-worker
+      - --name=ocluster-worker-a
       - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
       - --capacity=1
       - --state-dir=/var/lib/ocluster
@@ -37,7 +39,32 @@ services:
     privileged: true            # required for the Docker in Docker container to work
     restart: on-failure         # (wait for the scheduler to write the pool cap)
     volumes:
-      - 'worker-data:/var/lib/ocluster'
+      - 'worker-data-a:/var/lib/ocluster'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - 'capnp-secrets:/capnp-secrets:ro'
+    environment:
+      - DOCKER_BUILDKIT=1
+      - DOCKER_CLI_EXPERIMENTAL=enabled
+
+  worker_b:
+    build:
+      dockerfile: docker/worker/Dockerfile
+      context: .
+    command:
+      - --connect=/capnp-secrets/pool-linux-x86_64.cap
+      - --name=ocluster-worker-b
+      - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
+      - --capacity=1
+      - --state-dir=/var/lib/ocluster
+      - --store=rsync:/var/cache/obuilder
+      - --rsync-mode=hardlink
+      - --obuilder-healthcheck=0
+      - --verbose
+    init: true
+    privileged: true            # required for the Docker in Docker container to work
+    restart: on-failure         # (wait for the scheduler to write the pool cap)
+    volumes:
+      - 'worker-data-b:/var/lib/ocluster'
       - '/var/run/docker.sock:/var/run/docker.sock'
       - 'capnp-secrets:/capnp-secrets:ro'
     environment:
@@ -127,11 +154,12 @@ services:
       - 'ssh-credentials:/ssh/'
     environment:
       - OCAMLRUNPARAM=b
-      - CI_PROFILE=docker
+      - CI_PROFILE=dev
 
 volumes:
   ocaml-docs-ci-data:
-  worker-data:
+  worker-data-a:
+  worker-data-b:
   scheduler-data:
   capnp-secrets:
   docs-data:
