@@ -1,8 +1,13 @@
 type t
-(** The type for the ci monitor*)
+(** The type for the ci monitor. *)
+
+type state =
+  | Done
+  | Running
+  | Failed  (** The state of a package in the pipeline *)
 
 val make : unit -> t
-(** Create a monitor *)
+(** Create a monitor. *)
 
 type pipeline_tree =
   | Item : 'a Current.t -> pipeline_tree
@@ -11,6 +16,10 @@ type pipeline_tree =
   | Or of (string * pipeline_tree) list
       (** The pipeline dependency tree to produces artifacts for a given
           package. *)
+
+val get_blessing : t -> Package.Blessing.Set.t Current.t OpamPackage.Map.t
+(** Temporarily access the blessing set for fetching package information to
+    return over capnp. *)
 
 val register :
   t ->
@@ -23,3 +32,13 @@ val register :
 
 val routes : t -> Current.Engine.t -> Current_web.Resource.t Routes.route list
 (** Routes for the renderer *)
+
+val map_versions :
+  t -> (OpamPackage.Version.t * state) list OpamPackage.Name.Map.t
+(** Map of package name to versions *)
+
+val lookup_known_projects : t -> string list
+(** Get a list of the names of known projects *)
+
+val lookup_status : t -> name:string -> (string * string * state) list
+(** Get a list of version and status tuples for a project *)

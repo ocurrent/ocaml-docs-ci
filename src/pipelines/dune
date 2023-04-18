@@ -11,6 +11,9 @@
   current_git
   current_web
   current_docker
+  current_rpc
+  capnp-rpc-unix
+  pipeline_api
   astring
   dockerfile
   cmdliner
