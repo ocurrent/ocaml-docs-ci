@@ -159,11 +159,9 @@ module Blessing = struct
           (first_package, first_universe)
           (List.tl packages)
       in
-      {
-        opam;
+      { opam;
         universe = Universe.hash best_universe.universe;
-        blessed = Some best_package;
-      }
+        blessed = Some best_package }
 
     let get { opam; universe; _ } pkg =
       assert (Package.opam pkg = opam);

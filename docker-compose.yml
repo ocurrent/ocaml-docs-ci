@@ -114,9 +114,12 @@ services:
       - --jobs=6
       - --limit=1               # Only build the most recent version of each package
       - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
+      - --capnp-listen-address=tcp:0.0.0.0:9080
+      - --capnp-public-address=tcp:localhost:9080
     init: true
     restart: on-failure         # (wait for the scheduler to write the submission cap)
     ports:
+      - 9080:9080
       - 8080:8080 # HTTP UI
     volumes:
       - 'ocaml-docs-ci-data:/var/lib/ocurrent'
@@ -125,6 +128,10 @@ services:
     environment:
       - OCAMLRUNPARAM=b
       - CI_PROFILE=dev
+    x-develop:
+      watch:
+        - action: rebuild
+          path: ./src
 
 volumes:
   ocaml-docs-ci-data:

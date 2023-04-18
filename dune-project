@@ -44,3 +44,16 @@
   (memtrace (>= 0.1.1)) ; required for memory profiling
   (alcotest (and (>= 1.7.0) :with-test))
   (alcotest-lwt (and (>= 1.7.0) :with-test))))
+  (docker_hub (>= 0.1.1))))
+
+(package
+ (name ocaml-docs-ci-client)
+ (synopsis "Command-line client for ocaml-docs-ci")
+ (depends
+  (ocaml (>= 4.14))
+  (logs (>= 0.7.0))
+  (fmt (>= 0.8.9))
+  current_rpc
+  (capnp-rpc-unix (>= 1.2))
+  dockerfile
+  (timedesc (>= 0.9.0))))

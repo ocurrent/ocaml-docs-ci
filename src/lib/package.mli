@@ -57,6 +57,7 @@ module Blessing : sig
         package is a package aimed to be built for the main documentation pages. *)
 
     val empty : OpamPackage.t -> t
+    (** Construct [t] with an [OpamPackage.t] *)
 
     val v : counts:int Map.t -> Package.t list -> t
     (** Compute which packages are blessed. *)

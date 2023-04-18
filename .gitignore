@@ -9,3 +9,4 @@ config.json
 key.ml
 opam-repository/
 run.sh
+/capnp-secrets
