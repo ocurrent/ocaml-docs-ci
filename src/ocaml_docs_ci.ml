@@ -12,7 +12,7 @@ let has_role user = function
       | Some
           ( "github:talex5" | "github:avsm" | "github:kit-ty-kate" | "github:samoht"
           | "github:tmcgilchrist" | "github:dra27" | "github:jonludlam" | "github:TheLortex"
-          | "github:sabine" ) ->
+          | "github:sabine" | "github:novemberkilo" ) ->
           true
       | _ -> false)
 
@@ -57,7 +57,7 @@ open Cmdliner
 let cmd =
   let doc = "an OCurrent pipeline" in
   let info = Cmd.info program_name ~doc in
-  Cmd.v info 
+  Cmd.v info
     Term.( const main $ Current.Config.cmdliner $ Current_github.Auth.cmdliner $
              Current_web.cmdliner $ Docs_ci_lib.Config.cmdliner)
 
