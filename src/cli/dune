@@ -1,0 +1,13 @@
+(executable
+ (public_name ocaml-docs-ci-client)
+ (package ocaml-docs-ci-client)
+ (name main)
+ (libraries
+   ocaml-docs-ci.pipeline_api
+   current_rpc
+   capnp-rpc-unix
+   logs.cli
+   logs.fmt
+   fmt.cli
+   fmt.tty
+   timedesc))

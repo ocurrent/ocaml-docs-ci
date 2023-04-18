@@ -39,3 +39,15 @@
   (ocaml-version (>= 3.6.1))
   (obuilder-spec (>= 0.5.1))
   (docker_hub (>= 0.1.1))))
+
+(package
+ (name ocaml-docs-ci-client)
+ (synopsis "Command-line client for ocaml-docs-ci")
+ (depends
+  (ocaml (>= 4.14))
+  (logs (>= 0.7.0))
+  (fmt (>= 0.8.9))
+  current_rpc
+  (capnp-rpc-unix (>= 1.2))
+  dockerfile
+  (timedesc (>= 0.9.0))))
