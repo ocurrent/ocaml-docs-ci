@@ -78,7 +78,7 @@ module PeekerBody  = struct
     | Error (`Msg _) as e -> e
     | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
-  
+
   let pp = Ocaml_version.pp
 
   let auto_cancel = true
@@ -128,7 +128,7 @@ let network = [ "host" ]
 let docs_cache_folder = "/home/opam/docs-cache/"
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
-(** Obuilder operation to locally pull the selected folders. The [digests] option 
+(** Obuilder operation to locally pull the selected folders. The [digests] option
 is used to invalidate the operation if the expected value changes. *)
 let rsync_pull ~ssh ?(digest = "") folders =
   let sources =
@@ -223,4 +223,55 @@ module Cmd = struct
   let list =
     let open Fmt in
     to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
+end
+
+module Retry : sig
+
+  val retry_loop :
+    number_of_attempts:int ->
+    job:Current.Job.t ->
+    build_job:Cluster_api.Raw.Client.Job.t Capnp_rpc_lwt.Capability.t ->
+    extract_results:('a * 'b * string list -> string -> 'a * 'b * string list) ->
+    initial_values_results:('a * 'b * string list) ->
+    on_success:('a -> 'b -> ('c, [> `Msg of string] as 'd) Lwt_result.t) ->
+    ('c, 'd) Lwt_result.t
+end = struct
+
+  open Lwt.Infix
+  let ( let* ) = Lwt.bind
+  let ( let** ) = Lwt_result.bind
+
+  let max_number_of_attempts = 2
+  let sleep_duration n =
+    (* backoff is based on n *. 30. *. (Float.pow 1.5 n)
+      This gives the sequence 0s -> 45s -> 135s -> 300s -> 600s -> 1100s
+    *)
+    let base_sleep_time = 30 + (Random.int 20) in
+    let backoff = (n *. 30.0 *. Float.pow 1.5 n) in
+    Int.to_float base_sleep_time +. backoff
+
+  let rec retry_loop
+    ~number_of_attempts
+    ~job
+    ~build_job
+    ~extract_results
+    ~initial_values_results
+    ~on_success
+  =
+    let* x = Current_ocluster.Connection.run_job ~job build_job in
+
+    if Result.is_error x && number_of_attempts <= max_number_of_attempts then
+      (* treating errors on run_job as retriable failures *)
+      Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+        Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+        retry_loop ~number_of_attempts:(number_of_attempts + 1) ~job ~build_job ~extract_results ~initial_values_results ~on_success
+    else
+      let** x, y, retriable_errors = fold_logs build_job extract_results initial_values_results in
+      if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
+        (* retry *)
+        Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+          retry_loop ~number_of_attempts:(number_of_attempts + 1) ~job ~build_job ~extract_results ~initial_values_results ~on_success
+      else
+        on_success x y
 end

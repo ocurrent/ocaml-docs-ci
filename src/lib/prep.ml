@@ -1,5 +1,3 @@
-open Lwt.Infix
-
 let prep_version = "v3"
 let network = Misc.network
 let cache = Voodoo.cache
@@ -158,7 +156,6 @@ module Prep = struct
 
   let build No_context job Key.{ job = { install; prep }; base; voodoo; config } =
     let open Lwt.Syntax in
-    let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
        Should be fixed by adding the oldest opam-repository commit in the universe hash, but that
        requires changes in the solver.
@@ -178,7 +175,7 @@ module Prep = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     (* extract result from logs *)
-    let extract_results (git_hashes, failed, retriable_errors) line =
+    let extract_hashes (git_hashes, failed, retriable_errors) line =
       let retry_conditions log_line =
         let retry_on = [
           "Temporary failure";
@@ -201,42 +198,23 @@ module Prep = struct
           | _ -> (git_hashes, failed, retriable_errors))
     in
 
-    let max_number_of_attempts = 2 in
-    let sleep_duration n =
-      (* backoff is based on n *. 30. *. (Float.pow 1.5 n)
-        This gives the sequence 0s -> 45s -> 135s -> 300s -> 600s -> 1100s
-      *)
-      let base_sleep_time = 30 + (Random.int 20) in
-      let backoff = (n *. 30.0 *. Float.pow 1.5 n) in
-      Int.to_float base_sleep_time +. backoff
+    let on_success (git_hashes: Storage.id_hash list) (failed: string list) =
+      Lwt.return_ok
+        ( List.map
+            (fun (r : Storage.id_hash) ->
+              Current.Job.log job "%s -> %s" r.id r.hash;
+              r)
+            git_hashes,
+          failed )
     in
-    let rec retry_loop ~number_of_attempts =
-      let* x = Current_ocluster.Connection.run_job ~job build_job in
-      (* number_of_attempts := !number_of_attempts + 1; *)
+    Misc.Retry.retry_loop
+      ~number_of_attempts:0
+      ~job
+      ~build_job
+      ~extract_results:extract_hashes
+      ~initial_values_results:([], [], [])
+      ~on_success
 
-      if Result.is_error x && number_of_attempts <= max_number_of_attempts then
-        (* treating errors on run_job as retriable failures *)
-        Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
-          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
-          retry_loop ~number_of_attempts:(number_of_attempts + 1)
-      else
-        let** git_hashes, failed, retriable_errors = Misc.fold_logs build_job extract_results ([], [], []) in
-        if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
-          (* retry *)
-          Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
-            Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
-            retry_loop ~number_of_attempts:(number_of_attempts + 1)
-        else
-          (* exit *)
-          Lwt.return_ok
-            ( List.map
-                (fun (r : Storage.id_hash) ->
-                  Current.Job.log job "%s -> %s" r.id r.hash;
-                  r)
-                git_hashes,
-              failed )
-    in
-    retry_loop ~number_of_attempts:0
 end
 
 module PrepCache = Current_cache.Make (Prep)
