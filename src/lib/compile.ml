@@ -1,3 +1,5 @@
+open Lwt.Infix
+
 type hashes = { compile_hash : string; linked_hash : string } [@@deriving yojson]
 type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
 
@@ -208,20 +210,58 @@ module Compile = struct
     in
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let** _ = Current_ocluster.Connection.run_job ~job build_job in
-    let extract_hashes (v_compile, v_linked) line =
+    let extract_hashes (v_compile, v_linked, retriable_errors) line =
+      let retry_conditions log_line =
+        let retry_on = [
+          "Temporary failure";
+          "Could not resolve host";
+          "rsync: connection unexpectedly closed"
+        ] in
+        List.fold_left
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
+      in
       (* some early stopping could be done here *)
       let compile = Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile in
       let linked = Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked in
-      (compile, linked)
+      if retry_conditions line then
+        (compile, linked, line :: retriable_errors)
+      else
+        (compile, linked, retriable_errors)
     in
-    let** compile, linked = Misc.fold_logs build_job extract_hashes (None, None) in
-    try
-      let compile = Option.get compile in
-      let linked = Option.get linked in
-      Lwt.return_ok { compile_hash = compile.hash; linked_hash = linked.hash }
-    with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
+    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
+    let max_number_of_attempts = 2 in
+    let sleep_duration n =
+      (* backoff is based on n *. 30. *. (Float.pow 1.5 n)
+        This gives the sequence 0s -> 45s -> 135s -> 300s -> 600s -> 1100s
+      *)
+      let base_sleep_time = 30 + (Random.int 20) in
+      let backoff = (n *. 30.0 *. Float.pow 1.5 n) in
+      Int.to_float base_sleep_time +. backoff
+    in
+    let rec retry_loop ~number_of_attempts =
+      let* x = Current_ocluster.Connection.run_job ~job build_job in
+      (* number_of_attempts := !number_of_attempts + 1; *)
+
+      if Result.is_error x && number_of_attempts <= max_number_of_attempts then
+        (* treating errors on run_job as retriable failures *)
+        Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+          retry_loop ~number_of_attempts:(number_of_attempts + 1)
+      else
+        let** compile, linked, retriable_errors = Misc.fold_logs build_job extract_hashes (None, None, []) in
+        if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
+          (* retry *)
+          Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+            Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+            retry_loop ~number_of_attempts:(number_of_attempts + 1)
+        else
+          try
+            let compile = Option.get compile in
+            let linked = Option.get linked in
+            Lwt.return_ok { compile_hash = compile.hash; linked_hash = linked.hash }
+          with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
+    in
+    retry_loop ~number_of_attempts: 0
 end
 
 module CompileCache = Current_cache.Make (Compile)

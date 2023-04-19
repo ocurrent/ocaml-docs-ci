@@ -178,7 +178,7 @@ module Prep = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     (* extract result from logs *)
-    let extract_hashes (git_hashes, failed, retriable_errors) line =
+    let extract_results (git_hashes, failed, retriable_errors) line =
       let retry_conditions log_line =
         let retry_on = [
           "Temporary failure";
@@ -191,48 +191,52 @@ module Prep = struct
       match Storage.parse_hash ~prefix:"HASHES" line with
       | Some value -> (value :: git_hashes, failed, retriable_errors)
       | None -> (
+        if retry_conditions line then
+          (git_hashes, failed, line :: retriable_errors)
+        else
           match String.split_on_char ':' line with
           | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
               Current.Job.log job "Failed: %s" branch;
               (git_hashes, branch :: failed, retriable_errors)
-          | [ prev; branch ] when retry_conditions prev ->
-              (git_hashes, failed, branch :: retriable_errors)
           | _ -> (git_hashes, failed, retriable_errors))
     in
 
-
-    let number_of_attempts = ref 0 in
     let max_number_of_attempts = 2 in
-    let sleep_duration =
+    let sleep_duration n =
+      (* backoff is based on n *. 30. *. (Float.pow 1.5 n)
+        This gives the sequence 0s -> 45s -> 135s -> 300s -> 600s -> 1100s
+      *)
       let base_sleep_time = 30 + (Random.int 20) in
-      let backoff = Float.pow 30.0 (Int.to_float !number_of_attempts) in
+      let backoff = (n *. 30.0 *. Float.pow 1.5 n) in
       Int.to_float base_sleep_time +. backoff
     in
-    let rec retry_loop () =
+    let rec retry_loop ~number_of_attempts =
       let* x = Current_ocluster.Connection.run_job ~job build_job in
-      number_of_attempts := !number_of_attempts + 1;
+      (* number_of_attempts := !number_of_attempts + 1; *)
 
-      if Result.is_error x then (* treating errors on run_job as retriable failures *)
-        Lwt_unix.sleep sleep_duration >>= fun () ->
-          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) !number_of_attempts);
-          retry_loop ()
+      if Result.is_error x && number_of_attempts <= max_number_of_attempts then
+        (* treating errors on run_job as retriable failures *)
+        Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+          retry_loop ~number_of_attempts:(number_of_attempts + 1)
       else
-        let** git_hashes, failed, retriable_errors = Misc.fold_logs build_job extract_hashes ([], [], []) in
-        if retriable_errors = [] || !number_of_attempts > max_number_of_attempts
-          then
-            Lwt.return_ok
-              ( List.map
-                  (fun (r : Storage.id_hash) ->
-                    Current.Job.log job "%s -> %s" r.id r.hash;
-                    r)
-                  git_hashes,
-                failed )
-          else (* retry *)
-            Lwt_unix.sleep sleep_duration >>= fun () ->
-              Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) !number_of_attempts);
-              retry_loop ()
+        let** git_hashes, failed, retriable_errors = Misc.fold_logs build_job extract_results ([], [], []) in
+        if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
+          (* retry *)
+          Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
+            Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
+            retry_loop ~number_of_attempts:(number_of_attempts + 1)
+        else
+          (* exit *)
+          Lwt.return_ok
+            ( List.map
+                (fun (r : Storage.id_hash) ->
+                  Current.Job.log job "%s -> %s" r.id r.hash;
+                  r)
+                git_hashes,
+              failed )
     in
-    retry_loop ()
+    retry_loop ~number_of_attempts:0
 end
 
 module PrepCache = Current_cache.Make (Prep)
