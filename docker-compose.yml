@@ -124,7 +124,7 @@ services:
       - 'ssh-credentials:/ssh/'
     environment:
       - OCAMLRUNPARAM=b
-      - CI_PROFILE=docker
+      - CI_PROFILE=dev
 
 volumes:
   ocaml-docs-ci-data:
