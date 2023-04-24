@@ -208,7 +208,7 @@ module Compile = struct
     in
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    let extract_hashes (v_compile, v_linked, retriable_errors) line =
+    let extract_hashes ((v_compile, v_linked), retriable_errors) line =
       let retry_conditions log_line =
         let retry_on = [
           "Temporary failure";
@@ -222,25 +222,25 @@ module Compile = struct
       let compile = Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile in
       let linked = Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked in
       if retry_conditions line then
-        (compile, linked, line :: retriable_errors)
+        ((compile, linked), line :: retriable_errors)
       else
-        (compile, linked, retriable_errors)
+        ((compile, linked), retriable_errors)
     in
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let on_success (compile: Storage.id_hash option) (linked: Storage.id_hash option) =
-      try
-        let compile = Option.get compile in
-        let linked = Option.get linked in
-        Lwt.return_ok { compile_hash = compile.hash; linked_hash = linked.hash }
-      with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
+    let fn () =
+      let* result = Current_ocluster.Connection.run_job ~job build_job in
+      let result = match result with Error _ -> Error () | Ok _ -> Ok((None, None), []) in
+      let** x = Misc.fold_logs build_job (Misc.with_error_check extract_hashes) result in
+      match x with
+      | Ok x -> Lwt.return_ok x
+      | Error () -> Lwt.return_error (`Msg "")
     in
-    Misc.Retry.retry_loop
-      ~number_of_attempts:0
-      ~job
-      ~build_job
-      ~extract_results:extract_hashes
-      ~initial_values_results:(None, None, [])
-      ~on_success
+    let** (compile, linked) = Misc.Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    try
+      let compile = Option.get compile in
+      let linked = Option.get linked in
+      Lwt.return_ok { compile_hash = compile.hash; linked_hash = linked.hash }
+    with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
 end
 
 module CompileCache = Current_cache.Make (Compile)

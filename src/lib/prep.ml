@@ -156,6 +156,7 @@ module Prep = struct
 
   let build No_context job Key.{ job = { install; prep }; base; voodoo; config } =
     let open Lwt.Syntax in
+    let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
        Should be fixed by adding the oldest opam-repository commit in the universe hash, but that
        requires changes in the solver.
@@ -175,7 +176,7 @@ module Prep = struct
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     (* extract result from logs *)
-    let extract_hashes (git_hashes, failed, retriable_errors) line =
+    let extract_hashes ((git_hashes, failed), retriable_errors) line =
       let retry_conditions log_line =
         let retry_on = [
           "Temporary failure";
@@ -186,34 +187,44 @@ module Prep = struct
           (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
       in
       match Storage.parse_hash ~prefix:"HASHES" line with
-      | Some value -> (value :: git_hashes, failed, retriable_errors)
+      | Some value -> ((value :: git_hashes, failed), retriable_errors)
       | None -> (
         if retry_conditions line then
-          (git_hashes, failed, line :: retriable_errors)
+          ((git_hashes, failed), line :: retriable_errors)
         else
           match String.split_on_char ':' line with
           | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
               Current.Job.log job "Failed: %s" branch;
-              (git_hashes, branch :: failed, retriable_errors)
-          | _ -> (git_hashes, failed, retriable_errors))
+              ((git_hashes, branch :: failed), retriable_errors)
+          | _ -> ((git_hashes, failed), retriable_errors))
     in
 
-    let on_success (git_hashes: Storage.id_hash list) (failed: string list) =
-      Lwt.return_ok
+    (* (unit -> (('a * 'c list), 'e) Lwt_result.t) *)
+    let fn () =
+      let* result = Current_ocluster.Connection.run_job ~job build_job in
+      let result = match result with Error _ -> Error() | Ok _ -> Ok(([], []), []) in
+      let** x = Misc.fold_logs build_job (Misc.with_error_check extract_hashes) result in
+      match x with
+      | Ok x -> Lwt.return_ok x
+      | Error () -> Lwt.return_error (`Msg "")
+
+    in
+
+    let** (git_hashes, failed) = Misc.Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    Lwt.return_ok
         ( List.map
             (fun (r : Storage.id_hash) ->
               Current.Job.log job "%s -> %s" r.id r.hash;
               r)
             git_hashes,
           failed )
-    in
-    Misc.Retry.retry_loop
+    (* Misc.Retry.retry_loop
       ~number_of_attempts:0
       ~job
       ~build_job
       ~extract_results:extract_hashes
       ~initial_values_results:([], [], [])
-      ~on_success
+      ~on_success *)
 
 end
 

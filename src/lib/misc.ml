@@ -189,6 +189,12 @@ let to_ocluster_submission spec =
   | `Production | `Dev -> to_obuilder_job spec |> Cluster_api.Submission.obuilder_build
   | `Docker -> to_docker_job spec |> Cluster_api.Submission.docker_build
 
+let with_error_check fn:('a -> string -> 'a) =
+  fun x s ->
+    match x with
+    | Ok y -> Ok ((fn y) s)
+    | Error _ -> Error ()
+
 let fold_logs build_job fn =
   (* TODO: what if we encounter an infinitely long line ? *)
   let open Lwt.Syntax in
@@ -227,51 +233,53 @@ end
 
 module Retry : sig
 
-  val retry_loop :
-    number_of_attempts:int ->
-    job:Current.Job.t ->
-    build_job:Cluster_api.Raw.Client.Job.t Capnp_rpc_lwt.Capability.t ->
-    extract_results:('a * 'b * string list -> string -> 'a * 'b * string list) ->
-    initial_values_results:('a * 'b * string list) ->
-    on_success:('a -> 'b -> ('c, [> `Msg of string] as 'd) Lwt_result.t) ->
-    ('c, 'd) Lwt_result.t
+    (* extends [fn] to check if the line has an error message *)
+  val retry_loop:
+    ?sleep_duration:(int -> float) ->
+    ?log_string: string ->
+    ?number_of_attempts:int ->
+    ?max_number_of_attempts:int ->
+    (unit -> (('a * 'c list), 'e) Lwt_result.t) ->
+    ('a, 'e) Lwt_result.t
+
 end = struct
 
   open Lwt.Infix
   let ( let* ) = Lwt.bind
-  let ( let** ) = Lwt_result.bind
 
-  let max_number_of_attempts = 2
-  let sleep_duration n =
+  let base_sleep_time = 30
+
+  let sleep_duration n' =
     (* backoff is based on n *. 30. *. (Float.pow 1.5 n)
       This gives the sequence 0s -> 45s -> 135s -> 300s -> 600s -> 1100s
     *)
-    let base_sleep_time = 30 + (Random.int 20) in
-    let backoff = (n *. 30.0 *. Float.pow 1.5 n) in
-    Int.to_float base_sleep_time +. backoff
+    let n = Int.to_float n' in
+    let randomised_sleep_time = base_sleep_time + (Random.int 20) in
+    let backoff = (n *. Int.to_float base_sleep_time *. Float.pow 1.5 n) in
+    Int.to_float randomised_sleep_time +. backoff
 
   let rec retry_loop
-    ~number_of_attempts
-    ~job
-    ~build_job
-    ~extract_results
-    ~initial_values_results
-    ~on_success
-  =
-    let* x = Current_ocluster.Connection.run_job ~job build_job in
+    ?(sleep_duration=sleep_duration)
+    ?(log_string="")
+    ?(number_of_attempts=0)
+    ?(max_number_of_attempts=2)
+    fn_returning_results_and_retriable_errors =
 
-    if Result.is_error x && number_of_attempts <= max_number_of_attempts then
-      (* treating errors on run_job as retriable failures *)
-      Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
-        Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
-        retry_loop ~number_of_attempts:(number_of_attempts + 1) ~job ~build_job ~extract_results ~initial_values_results ~on_success
-    else
-      let** x, y, retriable_errors = fold_logs build_job extract_results initial_values_results in
-      if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
-        (* retry *)
-        Lwt_unix.sleep (sleep_duration @@ Int.to_float number_of_attempts) >>= fun () ->
-          Log.info (fun f -> f "RETRYING: %s. Number of retries: %d" (Current.Job.id job) number_of_attempts);
-          retry_loop ~number_of_attempts:(number_of_attempts + 1) ~job ~build_job ~extract_results ~initial_values_results ~on_success
+    let log_line = Printf.sprintf "RETRYING: %s Number of retries: %d" (log_string) number_of_attempts in
+    let* x = fn_returning_results_and_retriable_errors () in
+    match x with
+    | Error e ->
+      if number_of_attempts <= max_number_of_attempts then
+        Lwt_unix.sleep (sleep_duration @@ number_of_attempts) >>= fun () ->
+          Log.info (fun f -> f "%s" log_line);
+          retry_loop ~sleep_duration ~log_string ~number_of_attempts:(number_of_attempts + 1) ~max_number_of_attempts fn_returning_results_and_retriable_errors
       else
-        on_success x y
+        Lwt.return_error e
+    | Ok (results, retriable_errors) ->
+      if retriable_errors != [] && number_of_attempts <= max_number_of_attempts then
+        Lwt_unix.sleep (sleep_duration @@ number_of_attempts) >>= fun () ->
+          Log.info (fun f -> f "%s" log_line);
+          retry_loop ~sleep_duration ~log_string ~number_of_attempts:(number_of_attempts + 1) ~max_number_of_attempts fn_returning_results_and_retriable_errors
+      else
+        Lwt.return_ok results
 end

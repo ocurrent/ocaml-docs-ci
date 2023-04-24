@@ -1,0 +1,8 @@
+(executable
+ (name test_lib)
+ (libraries docs_ci_lib current alcotest alcotest-lwt))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_lib.exe -e)))
