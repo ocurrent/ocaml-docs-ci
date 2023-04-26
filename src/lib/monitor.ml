@@ -1,9 +1,8 @@
-
 type pipeline_tree =
   | Item : 'a Current.t -> pipeline_tree
   | Seq of (string * pipeline_tree) list
-  | And of (string * pipeline_tree) list 
-  | Or of (string * pipeline_tree) list 
+  | And of (string * pipeline_tree) list
+  | Or of (string * pipeline_tree) list
 
 type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
 
@@ -11,8 +10,10 @@ type t = {
   mutable solve_failures : string OpamPackage.Map.t;
   mutable preps: preps;
   mutable blessing: Package.Blessing.Set.t Current.t OpamPackage.Map.t;
-  mutable trees:  pipeline_tree Package.Map.t 
+  mutable trees:  pipeline_tree Package.Map.t
 }
+
+let get_blessing t = t.blessing
 
 let make () = {
   solve_failures = OpamPackage.Map.empty;
@@ -30,12 +31,12 @@ let register t solve_failures preps blessing trees =
 let (let*) = Result.bind
 let (let+) a f = Result.map f a
 
-let rec simplify = 
+let rec simplify =
   function
   | And [(_, a)] -> simplify a
-  | v -> v 
+  | v -> v
 
-let render_level = 
+let render_level =
   let open Tyxml_html in
   function
   | 0 -> h1
@@ -48,25 +49,25 @@ let render_level =
 let render_list ~bullet ~level ~items ~render =
   let open Tyxml_html in
   ul(
-    List.map (fun (name, item) -> 
+    List.map (fun (name, item) ->
       li ~a:[a_style ("list-style-type: " ^ bullet)]  [
       (render_level level) [ txt name ];
       render ~level:(level+1) item
     ]) items)
 
-let rec render ~level = 
+let rec render ~level =
   let open Tyxml_html in
   function
   | Item current ->
     let result = Current.observe current in
     let container =
-      try 
+      try
         Current.Analysis.metadata current
         |> Current.observe
         |> Result.to_option
         |> Option.join
         |> function
-        | Some {job_id = Some job_id; _} -> 
+        | Some {job_id = Some job_id; _} ->
           fun v -> a ~a:[a_href ("/job/" ^ job_id)] [txt v]
         | _ -> txt
       with (* if current is not a primitive term *)
@@ -79,11 +80,11 @@ let rec render ~level =
     | Error `Blocked -> container "blocked"
     | Ok _ -> container "OK"
     end
-  | Seq items -> 
+  | Seq items ->
     render_list ~bullet:"decimal" ~level ~items ~render
-  | And items -> 
+  | And items ->
     render_list ~bullet:"circle" ~level ~items ~render
-  | Or items -> 
+  | Or items ->
     render_list ~bullet:"|" ~level ~items ~render
 
 let get_opam_package_info t opam_package =
@@ -91,7 +92,7 @@ let get_opam_package_info t opam_package =
     OpamPackage.Map.find_opt opam_package t.blessing
     |> Option.to_result ~none:"couldn't find package"
   in
-  let+ blessing_set = 
+  let+ blessing_set =
     Current.observe blessing_current
     |> function
     | Ok v -> Ok v
@@ -100,7 +101,7 @@ let get_opam_package_info t opam_package =
   match
     Package.Blessing.Set.blessed blessing_set
   with
-  | None -> 
+  | None ->
     let U preps = t.preps in
     Or
     (OpamPackage.Map.find opam_package preps
@@ -114,21 +115,21 @@ let get_opam_package_info t opam_package =
 
 
 let get_package_info t name =
-  let* opam_package = 
-    OpamPackage.of_string_opt name 
+  let* opam_package =
+    OpamPackage.of_string_opt name
     |> Option.to_result ~none:"invalid package name"
   in
   get_opam_package_info t opam_package
 
 let render_package_state t name =
-  let* opam_package = 
-    OpamPackage.of_string_opt name 
+  let* opam_package =
+    OpamPackage.of_string_opt name
     |> Option.to_result ~none:"invalid package name"
   in
   match OpamPackage.Map.find_opt opam_package t.solve_failures with
   | Some reason ->
     let open Tyxml_html in
-    Ok 
+    Ok
     [
       h1 [txt ("Package " ^ name)];
       h2 [txt ("Failed to find a solution:")];
@@ -154,12 +155,12 @@ let handle t ~engine:_ str =
     val! can_get = `Viewer
 
     method! private get context =
-      let response = 
+      let response =
         match render_package_state t str with
         | Ok page -> page
         | Error msg -> Tyxml_html.[
             txt ("An error occured:");
-            br ();  
+            br ();
             i [
               txt msg
             ]
@@ -187,19 +188,19 @@ let rec pipeline_state = function
     | Error (`Active _) -> Running
     | Error `Blocked -> Running
     | Error (`Msg _) -> Failed)
-  | Seq lst | And lst | Or lst -> 
-    List.fold_left 
-      (fun acc (_, v) -> max (pipeline_state v) acc) 
-      Done 
+  | Seq lst | And lst | Or lst ->
+    List.fold_left
+      (fun acc (_, v) -> max (pipeline_state v) acc)
+      Done
       lst
 
 let opam_package_state t name =
-  match 
+  match
     let+ blessed_pipeline = get_package_info t name
     in pipeline_state blessed_pipeline
   with
   | Ok v -> v
-  | _ -> Failed
+  | Error _ -> Failed
 
 let render_link (pkg, _) =
   let open Tyxml_html in
@@ -215,7 +216,7 @@ let render_pkg ~max_version (pkg_name, versions) =
   let name = OpamPackage.Name.to_string pkg_name in
   li [
     txt name;
-    ul 
+    ul
     (List.map (fun (v, _) ->
       let name = OpamPackage.create pkg_name v |> OpamPackage.to_string in
       li [
@@ -231,24 +232,23 @@ let render_pkg ~max_version (pkg_name, versions) =
 let group_by_pkg v =
   let by_pkg = ref OpamPackage.Name.Map.empty in
   List.iter (fun (p, v) ->
-    let name = OpamPackage.name p in  
-    let ver = OpamPackage.version p in  
+    let name = OpamPackage.name p in
+    let ver = OpamPackage.version p in
     match OpamPackage.Name.Map.find_opt name !by_pkg with
     | None ->
-      by_pkg := OpamPackage.Name.Map.add name [(ver, v)] !by_pkg 
+      by_pkg := OpamPackage.Name.Map.add name [(ver, v)] !by_pkg
     | Some lst ->
-      by_pkg := OpamPackage.Name.Map.add name ((ver, v)::lst) !by_pkg 
+      by_pkg := OpamPackage.Name.Map.add name ((ver, v)::lst) !by_pkg
     ) v;
-  !by_pkg 
+  !by_pkg
 
-  
 let max_version versions =
   List.fold_left (fun max_v (v, _) ->
     if OpamPackage.Version.compare max_v v < 0 then
       v
     else
       max_v
-    ) 
+    )
   (List.hd versions |> fst) (List.tl versions)
 
 let render_package_root t =
@@ -267,10 +267,10 @@ let render_package_root t =
   let open Tyxml_html in
   [
     h1 [txt "Failed packages"];
-    ul 
+    ul
       (List.map (fun (n, v) -> render_pkg ~max_version:(OpamPackage.Name.Map.find n max_version) (n, v)) (group_by_pkg failed |> OpamPackage.Name.Map.bindings));
     h1 [txt "Running packages"];
-    ul 
+    ul
       (List.map (fun (n, v) -> render_pkg ~max_version:(OpamPackage.Name.Map.find n max_version) (n, v)) (group_by_pkg pending |> OpamPackage.Name.Map.bindings));
     h1 [txt "Solver failures"];
     ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures))
@@ -289,7 +289,7 @@ let handle_root t ~engine:_ =
       Current_web.Context.respond_ok context response
 
   end
-      
+
 let routes t engine =
   Routes.
     [

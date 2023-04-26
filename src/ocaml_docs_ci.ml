@@ -55,7 +55,7 @@ let main current_config github_auth mode config =
 open Cmdliner
 
 let cmd =
-  let doc = "an OCurrent pipeline" in
+  let doc = "An OCurrent pipeline" in
   let info = Cmd.info program_name ~doc in
   Cmd.v info
     Term.( const main $ Current.Config.cmdliner $ Current_github.Auth.cmdliner $

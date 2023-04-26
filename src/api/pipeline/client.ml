@@ -31,6 +31,23 @@ module Build_status = struct
     | Undefined x -> Fmt.pf f "unknown:%d" x
 end
 
+module Project = struct
+  type t = Raw.Client.Project.t Capability.t
+
+  type project_info = {
+      name: string;
+      version: string;
+    }
+
+  let versions t () =
+    let open Raw.Client.Project.Versions in
+    let request = Capability.Request.create_no_args () in
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map (fun x -> x |> Results.versions_get_list
+                                |> List.map (fun x -> { name = Raw.Reader.ProjectInfo.name_get x
+                                                      ; version = Raw.Reader.ProjectInfo.version_get x}))
+end
+
 module Pipeline = struct
   type t = Raw.Client.Pipeline.t Capability.t
 

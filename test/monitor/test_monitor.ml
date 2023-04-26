@@ -1,15 +1,15 @@
-let step1 = Current_git.clone 
+let step1 = Current_git.clone
   ~schedule:(Current_cache.Schedule.v ())
   ~gref:"main"
   "https://github.com/ocurrent/ocaml-docs-ci.git"
 
-let step2 = Current_git.clone 
+let step2 = Current_git.clone
   ~schedule:(Current_cache.Schedule.v ())
   "https://google.com/"
 
 let step3: unit Current.t = Current.fail "oh no"
 
-let running = 
+let running =
   Current_docker.Default.build ~level:Current.Level.Dangerous
   ~pull:false
   `No_context
@@ -17,14 +17,14 @@ let running =
 let fakepkg ~blessing name =
   let open Docs_ci_lib in
   let root = OpamPackage.of_string name in
-  let pkg = Package.make 
+  let pkg = Package.make
     ~blacklist:[]
     ~commit:"0"
     ~root
     []
   in
   let blessing =
-    let set = 
+    let set =
       Package.Blessing.Set.v
         ~counts:(Package.Map.singleton pkg 0)
         [pkg]
@@ -67,7 +67,7 @@ let pipeline monitor =
     |> List.to_seq
     |> Package.Map.of_seq
   in
-  let solve_failure = 
+  let solve_failure =
     [OpamPackage.of_string "mirage.4.0.0", "solver failed"]
   in
   Monitor.(register monitor solve_failure OpamPackage.Map.empty blessing values);
@@ -87,8 +87,8 @@ let () =
 let main mode =
   let monitor = Docs_ci_lib.Monitor.make () in
   let engine =
-    Current.Engine.create 
-      ~config:(Current.Config.v ~confirm:Current.Level.Average ()) 
+    Current.Engine.create
+      ~config:(Current.Config.v ~confirm:Current.Level.Average ())
       (fun () -> pipeline monitor)
   in
   let has_role = Current_web.Site.allow_all in
@@ -114,8 +114,7 @@ open Cmdliner
 
 let cmd =
   let info = Cmd.info "test_monitor" in
-  Cmd.v info 
+  Cmd.v info
     Term.( const main $ Current_web.cmdliner)
 
 let () = exit @@ Cmd.eval cmd
-       

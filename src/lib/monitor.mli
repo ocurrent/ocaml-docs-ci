@@ -1,16 +1,19 @@
 type t
-(** The type for the ci monitor*)
+(** The type for the ci monitor. *)
 
 val make : unit -> t
-(** Create a monitor *)
+(** Create a monitor. *)
 
 type pipeline_tree =
   | Item : 'a Current.t -> pipeline_tree
   | Seq of (string * pipeline_tree) list
-  | And of (string * pipeline_tree) list 
-  | Or of (string * pipeline_tree) list 
+  | And of (string * pipeline_tree) list
+  | Or of (string * pipeline_tree) list
 (** The pipeline dependency tree to produces artifacts for
     a given package. *)
+
+val get_blessing : t -> Package.Blessing.Set.t Current.t OpamPackage.Map.t
+(** Temporarily access the blessing set for fetching package information to return over capnp. *)
 
 val register :
   t ->

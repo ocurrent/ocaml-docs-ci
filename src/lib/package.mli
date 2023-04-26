@@ -14,8 +14,7 @@ end
 
 and Package : sig
   type t
-  (** A package in the ocaml-docs-ci sense: it's composed of the package name, version, 
-  and its dependency universe. *)
+  (** A package in the ocaml-docs-ci sense: it's composed of the package name, version, and its dependency universe. *)
 end
 
 type t = Package.t
@@ -52,18 +51,17 @@ module Blessing : sig
     type b = t
 
     type t
-    (** The structure containing which packages are blessed or not. A blessed package is a package
-    aimed to be built for the main documentation pages. *)
+    (** The structure containing which packages are blessed or not. A blessed package is a package aimed to be built for the main documentation pages. *)
 
     val empty : OpamPackage.t -> t
+    (** Construct [t] with an [OpamPackage.t] *)
 
     val v : counts:int Map.t -> Package.t list -> t
     (** Compute which packages are blessed. *)
 
     val get : t -> Package.t -> b
-    
+
     val blessed : t -> Package.t option
-    (** Obtain which package is blessed, 
-        or raise if the set is empty *)
+    (** Obtain which package is blessed. *)
   end
 end
