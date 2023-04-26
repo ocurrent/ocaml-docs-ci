@@ -200,16 +200,11 @@ module Prep = struct
     in
 
     let fn () =
-      let* result = Current_ocluster.Connection.run_job ~job build_job in
-      let* x = result
-        |> Result.fold ~error:(fun _ -> Error ()) ~ok:(fun _ -> Ok(([], []), []))
-        |> Misc.fold_logs build_job (Misc.with_error_check extract_hashes)
+      let** _ = Current_ocluster.Connection.run_job ~job build_job in
+      let* x =
+        Misc.fold_logs build_job extract_hashes (([],[]), [])
       in
-      match x with
-      | Ok (Ok x) -> Lwt.return_ok x
-      | Ok (Error ()) -> Lwt.return_error (`Msg "Compile: failed to run job")
-      | Error s -> Lwt.return_error s
-
+      Lwt_result.lift x
     in
 
     let** (git_hashes, failed) = Retry.retry_loop ~log_string:(Current.Job.id job) fn in

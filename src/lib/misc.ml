@@ -189,12 +189,6 @@ let to_ocluster_submission spec =
   | `Production | `Dev -> to_obuilder_job spec |> Cluster_api.Submission.obuilder_build
   | `Docker -> to_docker_job spec |> Cluster_api.Submission.docker_build
 
-let with_error_check fn:('a -> string -> 'a) =
-  fun x s ->
-    match x with
-    | Ok y -> Ok ((fn y) s)
-    | Error _ -> Error ()
-
 let fold_logs build_job fn =
   (* TODO: what if we encounter an infinitely long line ? *)
   let open Lwt.Syntax in

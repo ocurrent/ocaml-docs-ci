@@ -21,13 +21,8 @@ let rec retry_loop ?(sleep_duration = sleep_duration) ?(log_string = "")
   let* x = fn_returning_results_and_retriable_errors () in
   match x with
   | Error e ->
-      if number_of_attempts < max_number_of_attempts then (
-        Lwt_unix.sleep (sleep_duration @@ number_of_attempts) >>= fun () ->
-        Log.info (fun f -> f "%s (error condition)" log_line);
-        retry_loop ~sleep_duration ~log_string
-          ~number_of_attempts:(number_of_attempts + 1) ~max_number_of_attempts
-          fn_returning_results_and_retriable_errors)
-      else Lwt.return_error e
+      (* Error signals no recovery *)
+      Lwt.return_error e
   | Ok (results, retriable_errors) ->
       if retriable_errors != [] && number_of_attempts < max_number_of_attempts
       then (
