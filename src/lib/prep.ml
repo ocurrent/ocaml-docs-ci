@@ -199,18 +199,20 @@ module Prep = struct
           | _ -> ((git_hashes, failed), retriable_errors))
     in
 
-    (* (unit -> (('a * 'c list), 'e) Lwt_result.t) *)
     let fn () =
       let* result = Current_ocluster.Connection.run_job ~job build_job in
-      let result = match result with Error _ -> Error() | Ok _ -> Ok(([], []), []) in
-      let** x = Misc.fold_logs build_job (Misc.with_error_check extract_hashes) result in
+      let* x = result
+        |> Result.fold ~error:(fun _ -> Error ()) ~ok:(fun _ -> Ok(([], []), []))
+        |> Misc.fold_logs build_job (Misc.with_error_check extract_hashes)
+      in
       match x with
-      | Ok x -> Lwt.return_ok x
-      | Error () -> Lwt.return_error (`Msg "")
+      | Ok (Ok x) -> Lwt.return_ok x
+      | Ok (Error ()) -> Lwt.return_error (`Msg "Compile: failed to run job")
+      | Error s -> Lwt.return_error s
 
     in
 
-    let** (git_hashes, failed) = Misc.Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    let** (git_hashes, failed) = Retry.retry_loop ~log_string:(Current.Job.id job) fn in
     Lwt.return_ok
         ( List.map
             (fun (r : Storage.id_hash) ->
@@ -218,14 +220,6 @@ module Prep = struct
               r)
             git_hashes,
           failed )
-    (* Misc.Retry.retry_loop
-      ~number_of_attempts:0
-      ~job
-      ~build_job
-      ~extract_results:extract_hashes
-      ~initial_values_results:([], [], [])
-      ~on_success *)
-
 end
 
 module PrepCache = Current_cache.Make (Prep)

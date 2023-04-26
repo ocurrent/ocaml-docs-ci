@@ -229,13 +229,16 @@ module Compile = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let fn () =
       let* result = Current_ocluster.Connection.run_job ~job build_job in
-      let result = match result with Error _ -> Error () | Ok _ -> Ok((None, None), []) in
-      let** x = Misc.fold_logs build_job (Misc.with_error_check extract_hashes) result in
+      let* x = result
+        |> Result.fold ~error:(fun _ -> Error ()) ~ok:(fun _ -> Ok((None, None), []))
+        |> Misc.fold_logs build_job (Misc.with_error_check extract_hashes)
+      in
       match x with
-      | Ok x -> Lwt.return_ok x
-      | Error () -> Lwt.return_error (`Msg "")
+      | Ok (Ok x) -> Lwt.return_ok x
+      | Ok (Error ()) -> Lwt.return_error (`Msg "Compile: failed to run job")
+      | Error s -> Lwt.return_error s
     in
-    let** (compile, linked) = Misc.Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    let** (compile, linked) = Retry.retry_loop ~log_string:(Current.Job.id job) fn in
     try
       let compile = Option.get compile in
       let linked = Option.get linked in
