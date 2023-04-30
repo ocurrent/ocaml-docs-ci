@@ -229,12 +229,9 @@ module Compile = struct
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let fn () =
       let** _ = Current_ocluster.Connection.run_job ~job build_job in
-      let* x =
         Misc.fold_logs build_job extract_hashes ((None, None), [])
-      in
-      Lwt_result.lift x
     in
-    let** (compile, linked) = Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    let** (compile, linked) = Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn in
     try
       let compile = Option.get compile in
       let linked = Option.get linked in

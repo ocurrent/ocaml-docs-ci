@@ -1,8 +1,6 @@
 module Retry = Docs_ci_lib.Retry
 open Lwt.Infix
 
-let ( let** ) = Lwt_result.bind
-
 let test_simple_success_no_retry _switch () =
   let fn () = Lwt.return_ok (42, []) in
   let expected = 42 in
@@ -16,11 +14,13 @@ let test_retry _switch () =
     Lwt.return_ok (!counter, [ true ])
   in
   let max_number_of_attempts = 5 in
-  let expected = max_number_of_attempts in
+  let expected = "maximum attempts reached" in
   Retry.retry_loop
     ~sleep_duration:(fun _ -> 0.)
     ~log_string:"" ~number_of_attempts:0 ~max_number_of_attempts fn
-  >>= fun r -> Alcotest.(check int) "" expected (Result.get_ok r) |> Lwt.return
+  >>= fun r ->
+  let (`Msg result) = Result.get_error r in
+  Alcotest.(check string) "" expected result |> Lwt.return
 
 let test_no_retry _switch () =
   let counter = ref (-1) in

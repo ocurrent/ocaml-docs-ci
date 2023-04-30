@@ -201,13 +201,10 @@ module Prep = struct
 
     let fn () =
       let** _ = Current_ocluster.Connection.run_job ~job build_job in
-      let* x =
         Misc.fold_logs build_job extract_hashes (([],[]), [])
-      in
-      Lwt_result.lift x
     in
 
-    let** (git_hashes, failed) = Retry.retry_loop ~log_string:(Current.Job.id job) fn in
+    let** (git_hashes, failed) = Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn in
     Lwt.return_ok
         ( List.map
             (fun (r : Storage.id_hash) ->
