@@ -19,6 +19,8 @@
  (depends
   (ocaml
    (>= 4.14.0))
+  (alcotest (and (>= 1.7.0) :with-test))
+  (alcotest-lwt (and (>= 1.7.0) :with-test))
   (current
    (>= 0.6))
   (cstruct (< 6.1.0))

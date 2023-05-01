@@ -78,7 +78,7 @@ module PeekerBody  = struct
     | Error (`Msg _) as e -> e
     | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
-  
+
   let pp = Ocaml_version.pp
 
   let auto_cancel = true
@@ -128,7 +128,7 @@ let network = [ "host" ]
 let docs_cache_folder = "/home/opam/docs-cache/"
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
-(** Obuilder operation to locally pull the selected folders. The [digests] option 
+(** Obuilder operation to locally pull the selected folders. The [digests] option
 is used to invalidate the operation if the expected value changes. *)
 let rsync_pull ~ssh ?(digest = "") folders =
   let sources =
@@ -224,3 +224,4 @@ module Cmd = struct
     let open Fmt in
     to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
 end
+

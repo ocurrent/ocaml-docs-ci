@@ -208,15 +208,30 @@ module Compile = struct
     in
     let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
-    let** _ = Current_ocluster.Connection.run_job ~job build_job in
-    let extract_hashes (v_compile, v_linked) line =
+    let extract_hashes ((v_compile, v_linked), retriable_errors) line =
+      let retry_conditions log_line =
+        let retry_on = [
+          "Temporary failure";
+          "Could not resolve host";
+          "rsync: connection unexpectedly closed"
+        ] in
+        List.fold_left
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
+      in
       (* some early stopping could be done here *)
       let compile = Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile in
       let linked = Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked in
-      (compile, linked)
+      if retry_conditions line then
+        ((compile, linked), line :: retriable_errors)
+      else
+        ((compile, linked), retriable_errors)
     in
-    let** compile, linked = Misc.fold_logs build_job extract_hashes (None, None) in
+    Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
+    let fn () =
+      let** _ = Current_ocluster.Connection.run_job ~job build_job in
+        Misc.fold_logs build_job extract_hashes ((None, None), [])
+    in
+    let** (compile, linked) = Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn in
     try
       let compile = Option.get compile in
       let linked = Option.get linked in
