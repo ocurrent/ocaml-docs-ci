@@ -71,10 +71,11 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   let constraints =
     [ (OpamPackage.name_to_string package, `Eq, OpamPackage.version_to_string package) ]
   in
+  let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
   let* res =
     perform_constrained_solve ~solver ~pool ~job ~platform ~opam
       (("ocaml-base-compiler", `Geq, "4.04.1") ::
-       ("ocaml", `Lt, "5.0.0") :: constraints)
+       ("ocaml", `Leq, latest) :: constraints)
   in
   match res with
   | Ok x -> Lwt.return (Ok x)
