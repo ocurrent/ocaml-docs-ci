@@ -36,6 +36,6 @@
   git-unix
   dockerfile
   conf-libev
-  ocaml-version
+  (ocaml-version (>= 3.6.1))
   (obuilder-spec (>= 0.5.1))
   (docker_hub (>= 0.1.1))))
