@@ -8,7 +8,9 @@
 
 `ocaml-docs-ci status <project_name> <version> jobs` show the build status of a single job
 
-`ocaml-docs-ci logs <job-id>` - Display logs for an individual job
+`ocaml-docs-ci logs <job-id>` display logs for an individual job
+
+`ocaml-docs-ci rebuild <job-id>` rebuild a specific job
 
 ## Reference
 https://github.com/ocaml/infrastructure/wiki/Using-the-opam-ci-tool
