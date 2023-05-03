@@ -47,9 +47,21 @@ let run_capnp capnp_public_address capnp_listen_address =
         "Public address for Cap'n Proto RPC can't be set without setting a \
          capnp-listen-address to listen on."
   | Some _, Some _ | None, Some _ ->
+      let ci_profile =
+        match Sys.getenv_opt "CI_PROFILE" with
+        | Some "production" | None -> `Production
+        | Some "dev" -> `Dev
+        | Some x -> Fmt.failwith "Unknown $CI_PROFILE setting %S." x
+      in
+      let cap_secrets =
+        match ci_profile with
+        | `Production -> "/capnp-secrets"
+        | `Dev -> "./capnp-secrets"
+      in
+      let secret_key = cap_secrets ^ "/secret-key.pem" in
+      let cap_file = cap_secrets ^ "/ocaml-docs-ci.cap" in
       let internal_port = 9000 in
-      let cap_secrets = "" in
-      let secret_key = "" in
+
       let listen_address =
         match capnp_listen_address with
         | Some listen_address -> listen_address
@@ -57,7 +69,6 @@ let run_capnp capnp_public_address capnp_listen_address =
             Capnp_rpc_unix.Network.Location.tcp ~host:"0.0.0.0"
               ~port:internal_port
       in
-      let cap_file = "blah" in
       let public_address =
         match capnp_public_address with
         | None -> listen_address
@@ -102,7 +113,8 @@ let main current_config github_auth mode capnp_public_address
         in
         rpc_engine_resolver
         |> Option.iter (fun r ->
-               Capability.resolve_ok r (Docs_ci_pipelines.Api_impl.make ~monitor));
+               Capability.resolve_ok r
+                 (Docs_ci_pipelines.Api_impl.make ~monitor));
 
         let has_role =
           if github_auth = None then Current_web.Site.allow_all else has_role
