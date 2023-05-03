@@ -21,6 +21,9 @@ let import_ci_ref ~vat = function
           if Sys.file_exists path then Capnp_rpc_unix.Cap_file.load vat path
           else errorf "Default cap file %S not found!" path)
 
+let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
+  Fmt.pf f "%s" (Pipeline_api.Raw.Reader.ProjectInfo.name_get pi)
+
 let list_projects ci =
   Client.Pipeline.projects ci
   |> Lwt_result.map @@ function
@@ -30,14 +33,14 @@ let list_projects ci =
      | orgs ->
          Fmt.pr
            "@[<v>No project name given. Try one of these:@,@,%a@]@."
-           Fmt.(list string)
+           Fmt.(list pp_project_info)
            orgs
 
-let list_versions project =
+let list_versions project_name project =
   Client.Project.versions project ()
   |> Lwt_result.map (fun list ->
-         let project_version f ({ name; version} : Client.Project.project_info) =
-           Fmt.pf f "%s/%s" name version
+         let project_version f ({ version} : Client.Project.project_version) =
+           Fmt.pf f "%s/%s" project_name version
          in
          Fmt.pr "@[<v>No repository given. Try one of these:@,@,%a@]@."
            Fmt.(list project_version)
@@ -52,7 +55,7 @@ let main ~ci_uri ~project_name =
       match project_name with
       | None -> list_projects ci
       | Some repo -> (
-        with_ref (Client.Pipeline.project ci repo) (list_versions)))
+        with_ref (Client.Pipeline.project ci repo) (list_versions repo)))
 
 (* Command-line parsing *)
 

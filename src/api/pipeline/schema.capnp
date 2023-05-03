@@ -70,17 +70,35 @@ struct JobInfo {
     none       @11 :Void;
   }
 }
+
+enum StepType {
+  prep @0;
+  depCompilePrep @1;
+  depCompileCompile @2;
+  compile @3;
+  buildHtml @4;
+}
+
+struct Step {
+  type @0 :StepType;
+  # TODO This needs to link to a Job somehow? Use the job_id
+  jobId @1 :Text;
+}
+
+struct ProjectVersion {
+  version @0 :Text;
+}
+
 struct ProjectInfo {
   name @0 :Text;
-  version @1 :Text;
 }
 
 interface Project {
-  versions @0 () -> (versions :List(ProjectInfo));
+  versions @0 () -> (versions :List(ProjectVersion));
 }
 
 interface Pipeline {
   project @0 (project_name :Text) -> (project : Project);
 
-  projects @1 () -> (projects :List(Text));
+  projects @1 () -> (projects :List(ProjectInfo));
 }
