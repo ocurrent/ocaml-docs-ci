@@ -122,9 +122,9 @@ let remote_uri commit =
 
 let digest t =
   let key =
-    Fmt.str "%s\n%s\n%s\n"
+    Fmt.str "%s\n%s\n%s\n%s\n"
       (Git.Commit_id.hash t.voodoo_prep)
-      (Git.Commit_id.hash t.voodoo_do) (Git.Commit_id.hash t.voodoo_gen)
+      (Git.Commit_id.hash t.voodoo_do) (Git.Commit_id.hash t.voodoo_gen) (Config.odoc t.config)
   in
   Digest.(string key |> to_hex)
 
@@ -160,11 +160,14 @@ module Do = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
+           run ~network ~cache
+             "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
+             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do" (remote_uri t.commit);
            run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do /home/opam";
          ]
 
-  let digest t = Git.Commit_id.hash t.commit
+  let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
   let commit t = t.commit
 end
 
@@ -181,11 +184,14 @@ module Gen = struct
          [
            run ~network
              "sudo apt-get update && sudo apt-get install -yy m4";
+           run ~network ~cache
+             "opam pin -ny odoc %s && opam depext -iy odoc &&  opam exec -- odoc --version"
+             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-gen"
              (remote_uri t.commit);
            run "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-gen /home/opam";
          ]
 
-  let digest t = Git.Commit_id.hash t.commit
+  let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
   let commit t = t.commit
 end

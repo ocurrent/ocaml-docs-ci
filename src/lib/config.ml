@@ -178,6 +178,8 @@ let v voodoo_branch voodoo_repo cap_file jobs track_packages take_n_last_version
 let cmdliner =
   Term.(const v $ voodoo_branch $ voodoo_repo $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
 
+(* odoc pinned to tag 2.2.0 *)
+let odoc _ = "https://github.com/ocaml/odoc.git#103dac4c370aa2ad5aca7ba54f02f8e06adb941b"
 let pool _ = "linux-x86_64"
 let jobs t = t.jobs
 let voodoo_branch t = t.voodoo_branch
