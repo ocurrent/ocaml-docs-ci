@@ -16,16 +16,17 @@ end
 type t
 
 val cmdliner : t Cmdliner.Term.t
-val ssh : t -> Ssh.t
 
-val odoc : t -> string
-(** Odoc version pin to use. *)
+val ssh : t -> Ssh.t
 
 val pool : t -> string
 (** The ocluster pool to use *)
 
 val voodoo_repo : t -> string
+(** Voodoo repo to fetch from *)
+
 val voodoo_branch : t -> string
+(** Voodoo repo branch to use *)
 
 val ocluster_connection_prep : t -> Current_ocluster.Connection.t
 (** Connection to the cluster for Prep *)

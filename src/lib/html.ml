@@ -72,10 +72,10 @@ module Gen = struct
   module Key = struct
     type t = { config : Config.t; compile : Compile.t; voodoo : Voodoo.Gen.t; base : Spec.t }
 
-    let key { config; compile; voodoo; base = _ } =
-      Fmt.str "v6-%s-%s-%s-%s"
+    let key { config = _; compile; voodoo; base = _ } =
+      Fmt.str "v7-%s-%s-%s"
         (Compile.package compile |> Package.digest)
-        (Compile.hashes compile).linked_hash (Voodoo.Gen.digest voodoo) (Config.odoc config)
+        (Compile.hashes compile).linked_hash (Voodoo.Gen.digest voodoo)
 
     let digest t = key t |> Digest.string |> Digest.to_hex
   end

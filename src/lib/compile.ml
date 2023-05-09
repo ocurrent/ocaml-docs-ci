@@ -171,13 +171,13 @@ module Compile = struct
       voodoo : Voodoo.Do.t;
     }
 
-    let key { config; deps; prep; blessing; voodoo; base = _ } =
-      Fmt.str "v9-%s-%s-%s-%a-%s-%s"
+    let key { config = _; deps; prep; blessing; voodoo; base = _ } =
+      Fmt.str "v10-%s-%s-%s-%a-%s"
         (Package.Blessing.to_string blessing)
         (Prep.package prep |> Package.digest)
         (Prep.hash prep)
         Fmt.(list (fun f { hashes = { compile_hash; _ }; _ } -> Fmt.pf f "%s" compile_hash))
-        deps (Voodoo.Do.digest voodoo) (Config.odoc config)
+        deps (Voodoo.Do.digest voodoo)
 
     let digest t = key t |> Digest.string |> Digest.to_hex
   end
