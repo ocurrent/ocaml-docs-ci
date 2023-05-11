@@ -24,29 +24,36 @@ let import_ci_ref ~vat = function
 let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
   Fmt.pf f "%s" (Pipeline_api.Raw.Reader.ProjectInfo.name_get pi)
 
+let pp_project_build_status f
+    (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
+  Client.Build_status.pp f
+  @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps
+
 let list_projects ci =
   Client.Pipeline.projects ci
   |> Lwt_result.map @@ function
-     | [] ->
-         Fmt.pr
-           "@[<v>No project name given and no suggestions available."
+     | [] -> Fmt.pr "@[<v>No project name given and no suggestions available."
      | orgs ->
-         Fmt.pr
-           "@[<v>No project name given. Try one of these:@,@,%a@]@."
+         Fmt.pr "@[<v>No project name given. Try one of these:@,@,%a@]@."
            Fmt.(list pp_project_info)
            orgs
+
+let show_status ci project_name project_version =
+  Client.Pipeline.status ci project_name project_version
+  |> Lwt_result.map @@ fun status ->
+     Fmt.pr "@[<v> @,@,%a@]@." pp_project_build_status status
 
 let list_versions project_name project =
   Client.Project.versions project ()
   |> Lwt_result.map (fun list ->
-         let project_version f ({ version} : Client.Project.project_version) =
+         let project_version f ({ version } : Client.Project.project_version) =
            Fmt.pf f "%s/%s" project_name version
          in
          Fmt.pr "@[<v>No repository given. Try one of these:@,@,%a@]@."
            Fmt.(list project_version)
            list)
 
-let main ~ci_uri ~project_name =
+let main ~ci_uri ~project_name ~project_version =
   let vat = Capnp_rpc_unix.client_only_vat () in
   match import_ci_ref ~vat ci_uri with
   | Error _ as e -> Lwt.return e
@@ -55,7 +62,10 @@ let main ~ci_uri ~project_name =
       match project_name with
       | None -> list_projects ci
       | Some repo -> (
-        with_ref (Client.Pipeline.project ci repo) (list_versions repo)))
+          match project_version with
+          | None ->
+              with_ref (Client.Pipeline.project ci repo) (list_versions repo)
+          | Some version -> show_status ci repo version))
 
 (* Command-line parsing *)
 
@@ -76,12 +86,18 @@ let cap =
 let project_name =
   Arg.value
   @@ Arg.opt Arg.(some string) None
-  @@ Arg.info ~doc:"The Opam Project name." ~docv:"PROJECT" ["project"; "p"]
+  @@ Arg.info ~doc:"The Opam Project name." ~docv:"PROJECT" [ "project"; "p" ]
+
+let project_version =
+  Arg.value
+  @@ Arg.opt Arg.(some string) None
+  @@ Arg.info ~doc:"The Opam Project version." ~docv:"VERSION"
+       [ "version"; "n" ]
 
 let cmd =
   let doc = "Client for ocaml-docs-ci" in
-  let main () ci_uri project_name =
-    match Lwt_main.run (main ~ci_uri ~project_name) with
+  let main () ci_uri project_name project_version =
+    match Lwt_main.run (main ~ci_uri ~project_name ~project_version) with
     | Ok () -> ()
     | Error (`Capnp ex) ->
         Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
@@ -92,6 +108,6 @@ let cmd =
   in
   let info = Cmd.info "ocaml-docs-ci" ~doc in
   Cmd.v info
-    Term.(const main $ setup_log $ cap $ project_name)
+    Term.(const main $ setup_log $ cap $ project_name $ project_version)
 
 let () = exit @@ Cmd.eval cmd

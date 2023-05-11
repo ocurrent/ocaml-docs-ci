@@ -33,18 +33,17 @@ end
 
 module Project = struct
   type t = Raw.Client.Project.t Capability.t
-
-  type project_version = {
-      version: string;
-    }
+  type project_version = { version : string }
 
   let versions t () =
     let open Raw.Client.Project.Versions in
     let request = Capability.Request.create_no_args () in
     Capability.call_for_value t method_id request
-    |> Lwt_result.map (fun x -> x
-                                |> Results.versions_get_list
-                                |> List.map (fun x -> { version = Raw.Reader.ProjectVersion.version_get x}))
+    |> Lwt_result.map (fun x ->
+           x
+           |> Results.versions_get_list
+           |> List.map (fun x ->
+                  { version = Raw.Reader.ProjectVersion.version_get x }))
 end
 
 module Pipeline = struct
@@ -61,4 +60,12 @@ module Pipeline = struct
     let request = Capability.Request.create_no_args () in
     Capability.call_for_value t method_id request
     |> Lwt_result.map Results.projects_get_list
+
+  let status t name version =
+    let open Raw.Client.Pipeline.Status in
+    let request, params = Capability.Request.create Params.init_pointer in
+    Params.project_name_set params name;
+    Params.version_set params version;
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map Results.status_get
 end

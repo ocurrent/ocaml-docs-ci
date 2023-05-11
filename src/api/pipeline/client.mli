@@ -15,12 +15,12 @@ end
 
 module Project : sig
   type t = Raw.Client.Project.t Capability.t
+  type project_version = { version : string }
 
-  type project_version = {
-      version: string;
-    }
-
-  val versions : t -> unit -> (project_version list, [> `Capnp of Capnp_rpc.Error.t]) Lwt_result.t
+  val versions :
+    t ->
+    unit ->
+    (project_version list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 end
 
 module Pipeline : sig
@@ -29,6 +29,17 @@ module Pipeline : sig
 
   val project : t -> string -> Raw.Reader.Project.t Capability.t
 
-  val projects : t -> (Raw.Reader.ProjectInfo.t list, [> `Capnp of Capnp_rpc.Error.t]) Lwt_result.t
+  val projects :
+    t ->
+    ( Raw.Reader.ProjectInfo.t list,
+      [> `Capnp of Capnp_rpc.Error.t ] )
+    Lwt_result.t
 
+  val status :
+    t ->
+    string ->
+    string ->
+    ( Raw.Reader.ProjectBuildStatus.t,
+      [> `Capnp of Capnp_rpc.Error.t ] )
+    Lwt_result.t
 end

@@ -93,6 +93,10 @@ struct ProjectInfo {
   name @0 :Text;
 }
 
+struct ProjectBuildStatus {
+  status @0 :BuildStatus;
+}
+
 interface Project {
   versions @0 () -> (versions :List(ProjectVersion));
 }
@@ -101,4 +105,6 @@ interface Pipeline {
   project @0 (project_name :Text) -> (project : Project);
 
   projects @1 () -> (projects :List(ProjectInfo));
+
+  status @2 (project_name :Text, version :Text) -> (status : ProjectBuildStatus);
 }

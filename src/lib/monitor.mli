@@ -26,3 +26,5 @@ val register :
 val routes :
   t -> Current.Engine.t -> Current_web.Resource.t Routes.route list
 (** Routes for the renderer *)
+
+val lookup_solve_failures : t -> string -> string option
