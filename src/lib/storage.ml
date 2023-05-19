@@ -1,11 +1,14 @@
 module Base = struct
   type repository = HtmlRaw of Epoch.t | Linked of Epoch.t | Compile | Prep
 
-  let generation_folder stage generation = Fpath.(v ("epoch-" ^ Epoch.digest stage generation))
+  let generation_folder stage generation =
+    Fpath.(v ("epoch-" ^ Epoch.digest stage generation))
 
   let folder = function
-    | HtmlRaw generation -> Fpath.(generation_folder `Html generation / "html-raw")
-    | Linked generation -> Fpath.(generation_folder `Linked generation / "linked")
+    | HtmlRaw generation ->
+        Fpath.(generation_folder `Html generation / "html-raw")
+    | Linked generation ->
+        Fpath.(generation_folder `Linked generation / "linked")
     | Compile -> Fpath.v "compile"
     | Prep -> Fpath.v "prep"
 end
@@ -33,11 +36,14 @@ let base_folder ~blessed ~prep package =
 
 let folder repository package =
   let blessed =
-    match repository with HtmlRaw (_, b) | Linked (_, b) | Compile b -> b | Prep -> Universe
+    match repository with
+    | HtmlRaw (_, b) | Linked (_, b) | Compile b -> b
+    | Prep -> Universe
   in
   let blessed = blessed = Blessed in
   Fpath.(
-    Base.folder (to_base_repo repository) // base_folder ~blessed ~prep:(repository = Prep) package)
+    Base.folder (to_base_repo repository)
+    // base_folder ~blessed ~prep:(repository = Prep) package)
 
 let for_all packages command =
   let data =
@@ -57,23 +63,26 @@ module Tar = struct
     match extra_files with
     | [] ->
         Fmt.str
-          "HASH=$((sha256sum $1/content.tar | cut -d \" \" -f 1)  || echo -n 'empty'); printf \
-           \"%s:$2:$HASH\\n\";"
+          "HASH=$((sha256sum $1/content.tar | cut -d \" \" -f 1)  || echo -n \
+           'empty'); printf \"%s:$2:$HASH\\n\";"
           prefix
     | extra_files ->
         Fmt.str
-          "HASH=$((sha256sum $1/content.tar %s | sort | sha256sum | cut -d \" \" -f 1)  || echo -n \
-           'empty'); printf \"%s:$2:$HASH\\n\";"
-          (List.map (fun f -> "\"$1/" ^ f ^ "\"") extra_files |> String.concat " ")
+          "HASH=$((sha256sum $1/content.tar %s | sort | sha256sum | cut -d \" \
+           \" -f 1)  || echo -n 'empty'); printf \"%s:$2:$HASH\\n\";"
+          (List.map (fun f -> "\"$1/" ^ f ^ "\"") extra_files
+          |> String.concat " ")
           prefix
 end
 
 let hash_command ~prefix =
   Fmt.str
-    "HASH=$(find $1 -type f -exec sha256sum {} \\; | sort | sha256sum); printf \"%s:$2:$HASH\\n\";"
+    "HASH=$(find $1 -type f -exec sha256sum {} \\; | sort | sha256sum); printf \
+     \"%s:$2:$HASH\\n\";"
     prefix
 
 let parse_hash ~prefix line =
   match String.split_on_char ':' line with
-  | [ prev; id; hash ] when Astring.String.is_suffix ~affix:prefix prev -> Some { id; hash }
+  | [ prev; id; hash ] when Astring.String.is_suffix ~affix:prefix prev ->
+      Some { id; hash }
   | _ -> None

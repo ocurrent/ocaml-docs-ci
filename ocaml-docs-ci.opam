@@ -11,11 +11,11 @@ depends: [
   "dune" {>= "3.6"}
   "ocaml" {>= "4.14.1"}
   "current" {>= "0.6"}
-  "cstruct" {< "6.1.0"}
   "current_web"
   "current_git"
   "current_github"
   "current_ocluster"
+  "cstruct" {< "6.1.0"}
   "opam-0install"
   "capnp-rpc-unix" {>= "1.2"}
   "lwt" {>= "5.6.1"}

@@ -5,7 +5,8 @@ let sync_pool = Current.Pool.create ~label:"ssh" 1
 let sync ~job t =
   let open Lwt.Syntax in
   let remote_folder =
-    Fmt.str "%s@@%s:%s/" (Config.Ssh.user t) (Config.Ssh.host t) (Config.Ssh.storage_folder t)
+    Fmt.str "%s@@%s:%s/" (Config.Ssh.user t) (Config.Ssh.host t)
+      (Config.Ssh.storage_folder t)
   in
   let switch = Current.Switch.create ~label:"ssh" () in
   Lwt.finalize
@@ -20,7 +21,8 @@ let sync ~job t =
               "-avzR";
               "--delete";
               "-e";
-              Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a" (Config.Ssh.port t) Fpath.pp
+              Fmt.str "ssh -o StrictHostKeyChecking=no -p %d -i %a"
+                (Config.Ssh.port t) Fpath.pp
                 (Config.Ssh.priv_key_file t);
               remote_folder ^ "/cache/./";
               Fpath.to_string state_dir;
@@ -45,7 +47,10 @@ let pp f = function
   | Some (_, Failed) -> Fmt.pf f "failed"
   | Some (_, Ok digest) -> Fmt.pf f "ok -> %s" digest
 
-let folder_digest_exn = function Some (_, Ok digest) -> digest | _ -> raise Not_found
+let folder_digest_exn = function
+  | Some (_, Ok digest) -> digest
+  | _ -> raise Not_found
+
 let key_file path = Fpath.(state_dir // add_ext ".key" path)
 let digest_file path = Fpath.(state_dir // add_ext ".sha256" path)
 
@@ -60,22 +65,23 @@ let get _ path =
 
 let cmd_write_key key paths =
   let pp_write_key f folder =
-    Fmt.pf f "mkdir -p cache/%a && echo '%s' > cache/%a.key" Fpath.pp (Fpath.parent folder) key
-      Fpath.pp folder
+    Fmt.pf f "mkdir -p cache/%a && echo '%s' > cache/%a.key" Fpath.pp
+      (Fpath.parent folder) key Fpath.pp folder
   in
   Fmt.(str "%a" (list ~sep:(any " && ") pp_write_key) paths)
 
 let cmd_compute_sha256 paths =
   let pp_compute_digest f folder =
     Fmt.pf f
-      "(mkdir -p cache/%a && (find %a/ -type f -exec sha256sum {} \\;) | sort -k 2 | sha256sum > \
-       cache/%a.sha256)"
+      "(mkdir -p cache/%a && (find %a/ -type f -exec sha256sum {} \\;) | sort \
+       -k 2 | sha256sum > cache/%a.sha256)"
       Fpath.pp (Fpath.parent folder) Fpath.pp folder Fpath.pp folder
   in
   Fmt.(str "%a" (list ~sep:(any " && ") pp_compute_digest) paths)
 
 let cmd_sync_folder t =
-  Fmt.str "rsync -avz cache %s:%s/" (Config.Ssh.host t) (Config.Ssh.storage_folder t)
+  Fmt.str "rsync -avz cache %s:%s/" (Config.Ssh.host t)
+    (Config.Ssh.storage_folder t)
 
 module Op = struct
   type t = No_context

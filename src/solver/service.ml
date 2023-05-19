@@ -16,7 +16,12 @@ module Epoch : sig
     Store.Hash.t ->
     t Lwt.t
 
-  val handle : log:Solver_api.Solver.Log.t -> Worker.Solve_request.t -> t -> Selection.t list Lwt.t
+  val handle :
+    log:Solver_api.Solver.Log.t ->
+    Worker.Solve_request.t ->
+    t ->
+    Selection.t list Lwt.t
+
   val dispose : t -> unit Lwt.t
 end = struct
   type t = Lwt_process.process Lwt_pool.t
@@ -26,8 +31,8 @@ end = struct
     | Lwt.Sleep -> Lwt.return true
     | Lwt.Fail ex -> Lwt.fail ex
     | Lwt.Return status ->
-        Format.eprintf "Worker %d is dead (%a) - removing from pool@." worker#pid Process.pp_status
-          status;
+        Format.eprintf "Worker %d is dead (%a) - removing from pool@."
+          worker#pid Process.pp_status status;
         Lwt.return false
 
   let dispose (worker : Lwt_process.process) =
@@ -41,21 +46,27 @@ end = struct
       Store.mem store hash >>= function
       | true -> Lwt.return_unit
       | false -> (
-          Fmt.pr "Need to update opam-repository to get new commit %a@." Store.Hash.pp hash;
+          Fmt.pr "Need to update opam-repository to get new commit %a@."
+            Store.Hash.pp hash;
           Opam_repository.fetch () >>= fun () ->
           Opam_repository.open_store () >>= fun new_store ->
           Store.mem new_store hash >>= function
           | false -> Fmt.failwith "Still missing commit after update!"
           | true -> Lwt.return_unit) )
     >|= fun () ->
-    Lwt_pool.create n_workers ~validate ~dispose (fun () -> Lwt.return (create_worker hash))
+    Lwt_pool.create n_workers ~validate ~dispose (fun () ->
+        Lwt.return (create_worker hash))
 
   let dispose = Lwt_pool.clear
 
   (* Send [request] to [worker] and read the reply. *)
   let process ~log ~id request worker =
-    let request_str = Worker.Solve_request.to_yojson request |> Yojson.Safe.to_string in
-    let request_str = Printf.sprintf "%d\n%s" (String.length request_str) request_str in
+    let request_str =
+      Worker.Solve_request.to_yojson request |> Yojson.Safe.to_string
+    in
+    let request_str =
+      Printf.sprintf "%d\n%s" (String.length request_str) request_str
+    in
     Lwt_io.write worker#stdin request_str >>= fun () ->
     Lwt_io.read_line worker#stdout >>= fun time ->
     Lwt_io.read_line worker#stdout >>= fun len ->
@@ -69,7 +80,8 @@ end = struct
         | '+' ->
             Log.info log "%s: found solution in %s s" id time;
             Astring.String.with_range ~first:1 results
-            |> Yojson.Safe.from_string |> Solver.solve_result_of_yojson
+            |> Yojson.Safe.from_string
+            |> Solver.solve_result_of_yojson
         | '-' ->
             Log.info log "%s: eliminated all possibilities in %s s" id time;
             let msg = results |> Astring.String.with_range ~first:1 in
@@ -80,7 +92,9 @@ end = struct
         | _ -> Fmt.failwith "BUG: bad output: %s" results)
 
   let handle ~log request t =
-    let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } = request in
+    let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } =
+      request
+    in
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
     Log.info log "Solving for %a" Fmt.(list ~sep:comma string) pkgs;
     platforms
@@ -90,9 +104,13 @@ end = struct
            Lwt_pool.use t (process ~log ~id slice) >>= function
            | Error _ as e -> Lwt.return (id, e)
            | Ok packages ->
-               let repo_packages = List.map (fun (pkg, _) -> OpamPackage.of_string pkg) packages in
-               Opam_repository.oldest_commit_with repo_packages ~from:opam_repository_commit
-               >|= fun commit -> (id, Ok { Worker.Selection.id; packages; commit }))
+               let repo_packages =
+                 List.map (fun (pkg, _) -> OpamPackage.of_string pkg) packages
+               in
+               Opam_repository.oldest_commit_with repo_packages
+                 ~from:opam_repository_commit
+               >|= fun commit ->
+               (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
             Log.info log "= %s =" id;
             match result with
@@ -100,7 +118,8 @@ end = struct
                 Log.info log "-> @[<hov>%a@]"
                   Fmt.(list ~sep:sp string)
                   (List.map fst result.Selection.packages);
-                Log.info log "(valid since opam-repository commit %s)" result.Selection.commit;
+                Log.info log "(valid since opam-repository commit %s)"
+                  result.Selection.commit;
                 Some result
             | Error msg ->
                 Log.info log "%s" msg;
@@ -109,11 +128,14 @@ end
 
 (* Handle a request by distributing it among the worker processes and then aggregating their responses. *)
 let handle t ~log (request : Worker.Solve_request.t) =
-  Epoch_lock.with_epoch t request.opam_repository_commit (Epoch.handle ~log request)
+  Epoch_lock.with_epoch t request.opam_repository_commit
+    (Epoch.handle ~log request)
 
 let v ~n_workers ~create_worker =
   Opam_repository.clone () >|= fun () ->
-  let create hash = Epoch.create ~n_workers ~create_worker (Store.Hash.of_hex hash) in
+  let create hash =
+    Epoch.create ~n_workers ~create_worker (Store.Hash.of_hex hash)
+  in
   let t = Epoch_lock.v ~create ~dispose:Epoch.dispose () in
   let module X = Solver_api.Raw.Service.Solver in
   X.local
@@ -130,9 +152,12 @@ let v ~n_workers ~create_worker =
          | Some log -> (
              Capnp_rpc_lwt.Service.return_lwt @@ fun () ->
              Capability.with_ref log @@ fun log ->
-             match Worker.Solve_request.of_yojson (Yojson.Safe.from_string request) with
+             match
+               Worker.Solve_request.of_yojson (Yojson.Safe.from_string request)
+             with
              | Error msg ->
-                 Lwt_result.fail (`Capnp (Capnp_rpc.Error.exn "Bad JSON in request: %s" msg))
+                 Lwt_result.fail
+                   (`Capnp (Capnp_rpc.Error.exn "Bad JSON in request: %s" msg))
              | Ok request ->
                  Lwt.catch
                    (fun () -> handle t ~log request >|= Result.ok)
@@ -140,7 +165,10 @@ let v ~n_workers ~create_worker =
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))
                  >|= fun selections ->
-                 let json = Yojson.Safe.to_string (Worker.Solve_response.to_yojson selections) in
+                 let json =
+                   Yojson.Safe.to_string
+                     (Worker.Solve_response.to_yojson selections)
+                 in
                  let response, results =
                    Capnp_rpc_lwt.Service.Response.create Results.init_pointer
                  in

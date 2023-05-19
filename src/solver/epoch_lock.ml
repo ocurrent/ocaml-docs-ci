@@ -30,7 +30,8 @@ let rec with_epoch t epoch fn =
           t.users <- t.users - 1;
           (match t.current with
           | `Active _ -> ()
-          | `Draining (_, cond) -> if t.users = 0 then Lwt_condition.broadcast cond ()
+          | `Draining (_, cond) ->
+              if t.users = 0 then Lwt_condition.broadcast cond ()
           | `Idle | `Activating _ -> assert false);
           Lwt.return_unit)
   | `Active (_, old_v) ->
@@ -39,12 +40,14 @@ let rec with_epoch t epoch fn =
       t.current <- `Draining (ready, cond);
       (* After this point, no new users can start. *)
       let rec drain () =
-        if t.users = 0 then Lwt.return_unit else Lwt_condition.wait cond >>= drain
+        if t.users = 0 then Lwt.return_unit
+        else Lwt_condition.wait cond >>= drain
       in
       drain () >>= fun () ->
       t.dispose old_v >>= fun () ->
       activate t epoch ~ready ~set_ready >>= fun () -> with_epoch t epoch fn
-  | `Draining (ready, _) | `Activating ready -> ready >>= fun () -> with_epoch t epoch fn
+  | `Draining (ready, _) | `Activating ready ->
+      ready >>= fun () -> with_epoch t epoch fn
   | `Idle ->
       let ready, set_ready = Lwt.wait () in
       activate t epoch ~ready ~set_ready >>= fun () -> with_epoch t epoch fn

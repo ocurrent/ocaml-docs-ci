@@ -8,7 +8,8 @@ let open_store () =
   let path = Fpath.v clone_path in
   Git_unix.Store.v ~dotgit:path path >|= function
   | Ok x -> x
-  | Error e -> Fmt.failwith "Failed to open opam-repository: %a" Store.pp_error e
+  | Error e ->
+      Fmt.failwith "Failed to open opam-repository: %a" Store.pp_error e
 
 let clone () =
   match Unix.lstat clone_path with
@@ -17,8 +18,13 @@ let clone () =
   | exception Unix.Unix_error (Unix.ENOENT, _, "opam-repository") ->
       Process.exec
         ( "",
-          [| "git"; "clone"; "--bare"; "https://github.com/ocaml/opam-repository.git"; clone_path |]
-        )
+          [|
+            "git";
+            "clone";
+            "--bare";
+            "https://github.com/ocaml/opam-repository.git";
+            clone_path;
+          |] )
 
 let oldest_commit_with ~from pkgs =
   let from = Store.Hash.to_hex from in
@@ -30,10 +36,19 @@ let oldest_commit_with ~from pkgs =
            Printf.sprintf "packages/%s/%s.%s" name name version)
   in
   let cmd =
-    "git" :: "-C" :: clone_path :: "log" :: "-n" :: "1" :: "--format=format:%H" :: from :: "--"
+    "git"
+    :: "-C"
+    :: clone_path
+    :: "log"
+    :: "-n"
+    :: "1"
+    :: "--format=format:%H"
+    :: from
+    :: "--"
     :: paths
   in
   let cmd = ("", Array.of_list cmd) in
   Process.pread cmd >|= String.trim
 
-let fetch () = Process.exec ("", [| "git"; "-C"; clone_path; "fetch"; "origin" |])
+let fetch () =
+  Process.exec ("", [| "git"; "-C"; clone_path; "fetch"; "origin" |])

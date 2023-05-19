@@ -28,7 +28,8 @@ let filter_deps t pkg f =
   let test = OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
   f
   |> OpamFilter.partial_filter_formula (env t pkg)
-  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev ~default:false
+  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev
+       ~default:false
 
 let candidates t name =
   match OpamPackage.Name.Map.find_opt name t.pins with
@@ -36,30 +37,37 @@ let candidates t name =
   | None -> (
       match OpamPackage.Name.Map.find_opt name t.packages with
       | None ->
-          OpamConsole.log "opam-0install" "Package %S not found!" (OpamPackage.Name.to_string name);
+          OpamConsole.log "opam-0install" "Package %S not found!"
+            (OpamPackage.Name.to_string name);
           []
       | Some versions ->
           let user_constraints = user_restrictions t name in
           OpamPackage.Version.Map.bindings versions
           |> List.rev_map (fun (v, opam) ->
                  match user_constraints with
-                 | Some test when not (OpamFormula.check_version_formula (OpamFormula.Atom test) v)
-                   ->
+                 | Some test
+                   when not
+                          (OpamFormula.check_version_formula
+                             (OpamFormula.Atom test) v) ->
                      (v, Error (UserConstraint (name, Some test)))
                  | _ -> (
                      let pkg = OpamPackage.create name v in
                      let available = OpamFile.OPAM.available opam in
-                     match OpamFilter.eval ~default:(B false) (env t pkg) available with
+                     match
+                       OpamFilter.eval ~default:(B false) (env t pkg) available
+                     with
                      | B true -> (v, Ok opam)
                      | B false -> (v, Error Unavailable)
                      | _ ->
-                         OpamConsole.error "Available expression not a boolean: %s"
+                         OpamConsole.error
+                           "Available expression not a boolean: %s"
                            (OpamFilter.to_string available);
                          (v, Error Unavailable))))
 
 let pp_rejection f = function
   | UserConstraint x ->
-      Fmt.pf f "Rejected by user-specified constraint %s" (OpamFormula.string_of_atom x)
+      Fmt.pf f "Rejected by user-specified constraint %s"
+        (OpamFormula.string_of_atom x)
   | Unavailable -> Fmt.string f "Availability condition not satisfied"
 
 let read_dir store hash =
@@ -70,11 +78,15 @@ let read_dir store hash =
 
 let read_package store pkg hash =
   Search.find store hash (`Path [ "opam" ]) >>= function
-  | None -> Fmt.failwith "opam file not found for %s" (OpamPackage.to_string pkg)
+  | None ->
+      Fmt.failwith "opam file not found for %s" (OpamPackage.to_string pkg)
   | Some hash -> (
       Store.read store hash >|= function
-      | Ok (Git.Value.Blob blob) -> OpamFile.OPAM.read_from_string (Store.Value.Blob.to_string blob)
-      | _ -> Fmt.failwith "Bad Git object type for %s!" (OpamPackage.to_string pkg))
+      | Ok (Git.Value.Blob blob) ->
+          OpamFile.OPAM.read_from_string (Store.Value.Blob.to_string blob)
+      | _ ->
+          Fmt.failwith "Bad Git object type for %s!" (OpamPackage.to_string pkg)
+      )
 
 (* Get a map of the versions inside [entry] (an entry under "packages") *)
 let read_versions store (entry : Store.Value.Tree.entry) =
@@ -89,7 +101,8 @@ let read_versions store (entry : Store.Value.Tree.entry) =
                  read_package store pkg entry.node >|= fun opam ->
                  OpamPackage.Version.Map.add pkg.version opam acc
              | None ->
-                 OpamConsole.log "opam-0install" "Invalid package name %S" entry.name;
+                 OpamConsole.log "opam-0install" "Invalid package name %S"
+                   entry.name;
                  Lwt.return acc)
            OpamPackage.Version.Map.empty
       >|= fun versions -> Some versions
@@ -106,15 +119,17 @@ let read_packages store commit =
                (fun acc (entry : Store.Value.Tree.entry) ->
                  match OpamPackage.Name.of_string entry.name with
                  | exception ex ->
-                     OpamConsole.log "opam-0install" "Invalid package name %S: %s" entry.name
+                     OpamConsole.log "opam-0install"
+                       "Invalid package name %S: %s" entry.name
                        (Printexc.to_string ex);
                      Lwt.return acc
                  | name -> (
                      read_versions store entry >|= function
                      | None -> acc
-                     | Some versions -> OpamPackage.Name.Map.add name versions acc))
+                     | Some versions ->
+                         OpamPackage.Name.Map.add name versions acc))
                OpamPackage.Name.Map.empty)
 
-let create ?(test = OpamPackage.Name.Set.empty) ?(pins = OpamPackage.Name.Map.empty) ~constraints
-    ~env ~packages () =
+let create ?(test = OpamPackage.Name.Set.empty)
+    ?(pins = OpamPackage.Name.Map.empty) ~constraints ~env ~packages () =
   { env; packages; pins; constraints; test }

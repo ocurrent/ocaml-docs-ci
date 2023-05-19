@@ -14,15 +14,13 @@
  (synopsis "OCurrent pipeline for building documentation")
  (description "OCurrent pipeline for building HTML documentation for the ocaml.org website.")
  (depends
-  (alcotest (and (>= 1.7.0) :with-test))
-  (alcotest-lwt (and (>= 1.7.0) :with-test))
   (ocaml (>= 4.14.1))
   (current (>= 0.6))
+   current_web
+   current_git
+   current_github
+   current_ocluster
   (cstruct (< 6.1.0))
-  current_web
-  current_git
-  current_github
-  current_ocluster
   opam-0install
   (capnp-rpc-unix (>= 1.2))
   (lwt (>= 5.6.1))

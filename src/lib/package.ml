@@ -14,8 +14,12 @@ end = struct
 
   let v deps =
     let str =
-      deps |> List.map Package.opam |> List.sort OpamPackage.compare
-      |> List.fold_left (fun acc p -> Format.asprintf "%s\n%s" acc (OpamPackage.to_string p)) ""
+      deps
+      |> List.map Package.opam
+      |> List.sort OpamPackage.compare
+      |> List.fold_left
+           (fun acc p -> Format.asprintf "%s\n%s" acc (OpamPackage.to_string p))
+           ""
     in
     let hash = Digest.to_hex (Digest.string str) in
     { hash; deps }
@@ -43,7 +47,8 @@ and Package : sig
     (OpamPackage.t * OpamPackage.t list) list ->
     t
 end = struct
-  type t = { opam : O.OpamPackage.t; universe : Universe.t; commit : string } [@@deriving yojson]
+  type t = { opam : O.OpamPackage.t; universe : Universe.t; commit : string }
+  [@@deriving yojson]
 
   let universe t = t.universe
   let opam t = t.opam
@@ -63,7 +68,9 @@ end = struct
   let remove_blacklisted_packages ~blacklist deps =
     let module StringSet = Set.Make (String) in
     let blacklist = StringSet.of_list blacklist in
-    let filter pkg = not (StringSet.mem (OpamPackage.name_to_string pkg) blacklist) in
+    let filter pkg =
+      not (StringSet.mem (OpamPackage.name_to_string pkg) blacklist)
+    in
     deps
     |> List.filter (fun (pkg, _) -> filter pkg)
     |> List.map (fun (pkg, deps) -> (pkg, List.filter filter deps))
@@ -79,7 +86,8 @@ end = struct
           memo := OpamPackage.Map.add package None !memo;
           let deps_pkg =
             OpamPackage.Map.find_opt package package_deps
-            |> Option.value ~default:[] |> List.filter_map obtain
+            |> Option.value ~default:[]
+            |> List.filter_map obtain
           in
           let pkg = Some (Package.v package deps_pkg commit) in
           memo := OpamPackage.Map.add package pkg !memo;
@@ -107,10 +115,16 @@ module Blessing = struct
 
     module StringSet = Set.Make (String)
 
-    type t = { opam : OpamPackage.t; universe : string; blessed: Package.t option }
+    type t = {
+      opam : OpamPackage.t;
+      universe : string;
+      blessed : Package.t option;
+    }
 
     let universe_size u = Universe.deps u |> List.length
-    let empty (opam : OpamPackage.t) : t = { opam; universe = ""; blessed = None }
+
+    let empty (opam : OpamPackage.t) : t =
+      { opam; universe = ""; blessed = None }
 
     module Universe_info = struct
       type t = { universe : Universe.t; deps_count : int; revdeps_count : int }
@@ -139,18 +153,22 @@ module Blessing = struct
           (fun (best_package, best_universe) new_package ->
             assert (Package.opam new_package = opam);
             let new_universe = Universe_info.make ~counts new_package in
-            if Universe_info.compare new_universe best_universe > 0 then new_package, new_universe
+            if Universe_info.compare new_universe best_universe > 0 then
+              (new_package, new_universe)
             else (best_package, best_universe))
-          (first_package, first_universe) (List.tl packages)
+          (first_package, first_universe)
+          (List.tl packages)
       in
-      { opam; 
-        universe = Universe.hash best_universe.universe; 
-        blessed = Some best_package }
+      {
+        opam;
+        universe = Universe.hash best_universe.universe;
+        blessed = Some best_package;
+      }
 
     let get { opam; universe; _ } pkg =
       assert (Package.opam pkg = opam);
       of_bool (Universe.hash (Package.universe pkg) = universe)
-    
+
     let blessed t = t.blessed
   end
 end

@@ -13,9 +13,14 @@ type prep
 
 val extract : job:Jobs.t -> prep Current.t -> t Current.t Package.Map.t
 
-val v : config:Config.t -> voodoo:Voodoo.Prep.t Current.t -> 
-        spec:Spec.t Current.t -> Jobs.t -> prep Current.t
-(** Install a package universe, extract useful files and push obtained universes on git. *)
+val v :
+  config:Config.t ->
+  voodoo:Voodoo.Prep.t Current.t ->
+  spec:Spec.t Current.t ->
+  Jobs.t ->
+  prep Current.t
+(** Install a package universe, extract useful files and push obtained universes
+    on git. *)
 
 val pp : t Fmt.t
 val compare : t -> t -> int

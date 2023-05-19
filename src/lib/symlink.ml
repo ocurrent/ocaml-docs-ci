@@ -22,18 +22,22 @@ module Op = struct
     let date_format = {|+"%Y-%m-%d %T"|} in
     let command =
       Bos.Cmd.(
-        v "ssh" % "-p"
+        v "ssh"
+        % "-p"
         % Int.to_string (Ssh.port ssh)
         % "-i"
         % p (Ssh.priv_key_file ssh)
         % (Ssh.user ssh ^ "@" ^ Ssh.host ssh)
-        % Fmt.str "ln -sfT %a %a && echo `date %s` '%a' >> %a" Fpath.pp target_folder Fpath.pp name
-            date_format Fpath.pp target_folder Fpath.pp live_file)
+        % Fmt.str "ln -sfT %a %a && echo `date %s` '%a' >> %a" Fpath.pp
+            target_folder Fpath.pp name date_format Fpath.pp target_folder
+            Fpath.pp live_file)
     in
-    Current.Process.exec ~cancellable:true ~job ("", Bos.Cmd.to_list command |> Array.of_list)
+    Current.Process.exec ~cancellable:true ~job
+      ("", Bos.Cmd.to_list command |> Array.of_list)
 end
 
 module Publish = Current_cache.Output (Op)
 
-let remote_symbolic_link ?(level = Current.Level.Dangerous) ~ssh ~target ~name () =
+let remote_symbolic_link ?(level = Current.Level.Dangerous) ~ssh ~target ~name
+    () =
   Publish.set (ssh, level) name target

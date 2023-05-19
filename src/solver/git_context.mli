@@ -4,7 +4,8 @@ val read_packages :
   Git_unix.Store.t ->
   Git_unix.Store.Hash.t ->
   OpamFile.OPAM.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t Lwt.t
-(** [read_packages store commit] is an index of the opam files in [store] at [commit]. *)
+(** [read_packages store commit] is an index of the opam files in [store] at
+    [commit]. *)
 
 val create :
   ?test:OpamPackage.Name.Set.t ->
