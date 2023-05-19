@@ -1,6 +1,6 @@
 # Docs CI
 
-[![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fci.ocamllabs.io%2Fbadge%2Focurrent%2Focaml-docs-ci%2Fmaster&logo=ocaml)](https://ci.ocamllabs.io/github/ocurrent/ocaml-docs-ci)
+[![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Focaml.ci.dev%2Fbadge%2Focurrent%2Focaml-docs-ci%2Fmaster&logo=ocaml)](https://ocaml.ci.dev/github/ocurrent/ocaml-docs-ci)
 
 OCaml Docs CI (aka docs-ci) is an OCurrent pipeline used for building the documentation for ocaml.org website.
 It uses the metadata from opam-repository to work out how to build documentation for individual
