@@ -3,15 +3,13 @@ opam-version: "2.0"
 synopsis: "OCurrent pipeline for building documentation"
 description:
   "OCurrent pipeline for building HTML documentation for the ocaml.org website."
-maintainer: ["lucas@tarides.com"]
+maintainer: ["navin@tarides.com" "timmcgil@gmail.com"]
 authors: ["lucas@tarides.com"]
 homepage: "https://github.com/ocurrent/ocaml-docs-ci"
 bug-reports: "https://github.com/ocurrent/ocaml-docs-ci/issues"
 depends: [
   "dune" {>= "3.6"}
-  "ocaml" {>= "4.14.0"}
-  "alcotest" {>= "1.7.0" & with-test}
-  "alcotest-lwt" {>= "1.7.0" & with-test}
+  "ocaml" {>= "4.14.1"}
   "current" {>= "0.6"}
   "cstruct" {< "6.1.0"}
   "current_web"
@@ -29,6 +27,9 @@ depends: [
   "ocaml-version" {>= "3.6.1"}
   "obuilder-spec" {>= "0.5.1"}
   "docker_hub" {>= "0.1.1"}
+  "memtrace" {>= "0.1.1"}
+  "alcotest" {>= "1.7.0" & with-test}
+  "alcotest-lwt" {>= "1.7.0" & with-test}
   "odoc" {with-doc}
 ]
 build: [

@@ -16,6 +16,7 @@
   logs.fmt
   lwt
   lwt.unix
+  memtrace
   obuilder-spec
   opam-file-format
   docs_ci_pipelines

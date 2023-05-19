@@ -1,6 +1,9 @@
 module Git = Current_git
 
-let () = Logging.init ()
+let () =
+  Logging.init ();
+  Memtrace.trace_if_requested ~context:"ocaml-docs-ci" ()
+
 let hourly = Current_cache.Schedule.v ~valid_for:(Duration.of_hour 1) ()
 let program_name = "ocaml-docs-ci"
 
