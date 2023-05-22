@@ -26,6 +26,7 @@ let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
 
 let pp_project_build_status f
     (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
+
   Client.Build_status.pp f
   @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps
 

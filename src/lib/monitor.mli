@@ -1,6 +1,9 @@
 type t
 (** The type for the ci monitor. *)
 
+type state = Done | Running | Failed
+(** The state of a package in the pipeline *)
+
 val make : unit -> t
 (** Create a monitor. *)
 
@@ -27,4 +30,5 @@ val routes :
   t -> Current.Engine.t -> Current_web.Resource.t Routes.route list
 (** Routes for the renderer *)
 
-val lookup_solve_failures : t -> string -> string option
+val lookup_status : t -> name:string -> version:string -> state option
+(** Lookup the state of a package in the pipeline *)

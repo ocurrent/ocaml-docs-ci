@@ -44,14 +44,16 @@ let make ~monitor =
 
        method status_impl params release_param_caps =
          let open Api.Status in
-         let project_name = Params.project_name_get params in
-         let _version = Params.version_get params in
+         let name = Params.project_name_get params in
+         let version = Params.version_get params in
          release_param_caps ();
          let response, results = Service.Response.create Results.init_pointer in
          let slot = Results.status_init results in
-         let status = Monitor.lookup_solve_failures monitor project_name in
-         (match status with
-         | None -> Raw.Builder.ProjectBuildStatus.status_set slot Passed
-         | Some _ -> Raw.Builder.ProjectBuildStatus.status_set slot Failed);
+         (match Monitor.lookup_status monitor ~name ~version with
+         | None ->
+            Raw.Builder.ProjectBuildStatus.status_set slot NotStarted; (* TODO: This is wrong *)
+         | Some Done -> Raw.Builder.ProjectBuildStatus.status_set slot Passed
+         | Some Running -> Raw.Builder.ProjectBuildStatus.status_set slot Pending
+         | Some Failed -> Raw.Builder.ProjectBuildStatus.status_set slot Failed);
          Service.return response
      end

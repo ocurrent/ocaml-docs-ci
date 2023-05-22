@@ -15,12 +15,6 @@ type t = {
 
 let ( let* ) = Result.bind
 let ( let+ ) a f = Result.map f a
-
-let lookup_solve_failures t name =
-  let ( >>= ) = Option.bind in
-  OpamPackage.of_string_opt name >>= fun opam_package ->
-    OpamPackage.Map.find_opt opam_package t.solve_failures
-
 let get_blessing t = t.blessing
 
 let make () =
@@ -175,6 +169,22 @@ let opam_package_state t name =
   | Ok v -> v
   | Error _ -> Failed
 
+let lookup_done t =
+  OpamPackage.Map.keys t.blessing
+  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> List.filter (fun (_, st) -> st = Done)
+
+let lookup_failed_pending t =
+  OpamPackage.Map.keys t.blessing
+  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> List.filter (fun (_, st) -> st != Done)
+  |> List.partition (fun (_, st) -> st == Failed)
+
+let lookup_solve_failures t name =
+  let ( >>= ) = Option.bind in
+  OpamPackage.of_string_opt name >>= fun opam_package ->
+  OpamPackage.Map.find_opt opam_package t.solve_failures
+
 let render_link (pkg, _) =
   let open Tyxml_html in
   let name = OpamPackage.to_string pkg in
@@ -225,19 +235,15 @@ let max_version versions =
     (List.hd versions |> fst)
     (List.tl versions)
 
+let map_max_versions t =
+  OpamPackage.Map.keys t.blessing
+  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> group_by_pkg
+  |> OpamPackage.Name.Map.map max_version
+
 let render_package_root t =
-  let max_version =
-    OpamPackage.Map.keys t.blessing
-    |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
-    |> group_by_pkg
-    |> OpamPackage.Name.Map.map max_version
-  in
-  let failed, pending =
-    OpamPackage.Map.keys t.blessing
-    |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
-    |> List.filter (fun (_, st) -> st != Done)
-    |> List.partition (fun (_, st) -> st == Failed)
-  in
+  let max_version = map_max_versions t in
+  let failed, pending = lookup_failed_pending t in
   let open Tyxml_html in
   [
     h1 [ txt "Failed packages" ];
@@ -259,6 +265,52 @@ let render_package_root t =
     h1 [ txt "Solver failures" ];
     ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures));
   ]
+
+let find_in_results
+    (l : (OpamPackage.Name.t * (OpamPackage.Version.t * state) list) list)
+    (name : string) (version : string) =
+  match List.find_opt (fun (n, _) -> n = OpamPackage.Name.of_string name) l with
+  | None -> false
+  | Some (_, versions) -> (
+      match
+        List.find_opt
+          (fun (v, _) -> v = OpamPackage.Version.of_string version)
+          versions
+      with
+      | None -> false
+      | Some _ -> true)
+
+let lookup_status t ~name ~version =
+  let blessings = get_blessing t |> OpamPackage.Map.keys in
+  let known_projects =
+    List.map (fun blessing -> OpamPackage.name_to_string blessing) blessings
+  in
+  if not (List.exists (fun x -> x = name) known_projects) then None
+    (* we don't know this project *)
+  else
+    let passed = lookup_done t in
+    match
+      List.find_opt
+        (fun (package, _) ->
+          OpamPackage.name_to_string package = name
+          && OpamPackage.version_to_string package = version)
+        passed
+    with
+    | Some _ -> Some Done
+    | None -> (
+        let failed, pending = lookup_failed_pending t in
+        let failed_packages =
+          group_by_pkg failed |> OpamPackage.Name.Map.bindings
+        in
+        if find_in_results failed_packages name version then Some Failed
+        else
+          let pending_packages =
+            group_by_pkg pending |> OpamPackage.Name.Map.bindings
+          in
+          if find_in_results pending_packages name version then Some Running
+          else
+            let solve_failures = lookup_solve_failures t name in
+            match solve_failures with Some _ -> Some Failed | None -> None)
 
 let handle_root t ~engine:_ =
   object
