@@ -61,11 +61,11 @@ module Pipeline = struct
     Capability.call_for_value t method_id request
     |> Lwt_result.map Results.projects_get_list
 
-  let status t name version =
-    let open Raw.Client.Pipeline.Status in
-    let request, params = Capability.Request.create Params.init_pointer in
-    Params.project_name_set params name;
-    Params.version_set params version;
-    Capability.call_for_value t method_id request
-    |> Lwt_result.map Results.status_get
+  (* let status t name version =
+     let open Raw.Client.Pipeline.Status in
+     let request, params = Capability.Request.create Params.init_pointer in
+     Params.project_name_set params name;
+     Params.version_set params version;
+     Capability.call_for_value t method_id request
+     |> Lwt_result.map Results.status_get *)
 end

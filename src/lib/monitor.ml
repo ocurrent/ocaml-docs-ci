@@ -169,6 +169,10 @@ let opam_package_state t name =
   | Ok v -> v
   | Error _ -> Failed
 
+let lookup_known_projects t =
+  let blessings = get_blessing t |> OpamPackage.Map.keys in
+  List.map (fun blessing -> OpamPackage.name_to_string blessing) blessings
+
 let lookup_done t =
   OpamPackage.Map.keys t.blessing
   |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
@@ -235,11 +239,12 @@ let max_version versions =
     (List.hd versions |> fst)
     (List.tl versions)
 
-let map_max_versions t =
+let map_versions t =
   OpamPackage.Map.keys t.blessing
   |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
   |> group_by_pkg
-  |> OpamPackage.Name.Map.map max_version
+
+let map_max_versions t = map_versions t |> OpamPackage.Name.Map.map max_version
 
 let render_package_root t =
   let max_version = map_max_versions t in

@@ -24,11 +24,10 @@ let import_ci_ref ~vat = function
 let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
   Fmt.pf f "%s" (Pipeline_api.Raw.Reader.ProjectInfo.name_get pi)
 
-let pp_project_build_status f
+(* let pp_project_build_status f
     (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
-
   Client.Build_status.pp f
-  @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps
+  @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps *)
 
 let list_projects ci =
   Client.Pipeline.projects ci
@@ -39,20 +38,19 @@ let list_projects ci =
            Fmt.(list pp_project_info)
            orgs
 
-let show_status ci project_name project_version =
-  Client.Pipeline.status ci project_name project_version
-  |> Lwt_result.map @@ fun status ->
-     Fmt.pr "@[<v> @,@,%a@]@." pp_project_build_status status
+(* let show_status ci project_name project_version =
+   Client.Pipeline.status ci project_name project_version
+   |> Lwt_result.map @@ fun status ->
+      Fmt.pr "@[<v> @,@,%a@]@." pp_project_build_status status *)
 
 let list_versions project_name project =
+  Printf.printf "\n";
   Client.Project.versions project ()
   |> Lwt_result.map (fun list ->
          let project_version f ({ version } : Client.Project.project_version) =
            Fmt.pf f "%s/%s" project_name version
          in
-         Fmt.pr "@[<v>No repository given. Try one of these:@,@,%a@]@."
-           Fmt.(list project_version)
-           list)
+         Fmt.pr "%a." Fmt.(list project_version) list)
 
 let main ~ci_uri ~project_name ~project_version =
   let vat = Capnp_rpc_unix.client_only_vat () in
@@ -66,7 +64,7 @@ let main ~ci_uri ~project_name ~project_version =
           match project_version with
           | None ->
               with_ref (Client.Pipeline.project ci repo) (list_versions repo)
-          | Some version -> show_status ci repo version))
+          | Some _version -> Lwt_result.fail (`Msg "unimplemented")))
 
 (* Command-line parsing *)
 

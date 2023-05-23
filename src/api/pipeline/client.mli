@@ -21,6 +21,13 @@ module Project : sig
     t ->
     unit ->
     (project_version list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+  (* val status :
+    t ->
+    string ->
+    string ->
+    ( Raw.Reader.ProjectBuildStatus.t,
+      [> `Capnp of Capnp_rpc.Error.t ] )
+    Lwt_result.t *)
 end
 
 module Pipeline : sig
@@ -35,11 +42,4 @@ module Pipeline : sig
       [> `Capnp of Capnp_rpc.Error.t ] )
     Lwt_result.t
 
-  val status :
-    t ->
-    string ->
-    string ->
-    ( Raw.Reader.ProjectBuildStatus.t,
-      [> `Capnp of Capnp_rpc.Error.t ] )
-    Lwt_result.t
 end
