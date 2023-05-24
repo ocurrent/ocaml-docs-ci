@@ -94,12 +94,14 @@ struct ProjectInfo {
 }
 
 struct ProjectBuildStatus {
-  status @0 :BuildStatus;
+  version @0: Text;
+  status @1 :BuildStatus;
 }
 
 interface Project {
   versions @0 () -> (versions :List(ProjectVersion));
 
+  status @1 () -> (status :List(ProjectBuildStatus));
 }
 
 interface Pipeline {

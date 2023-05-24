@@ -285,37 +285,58 @@ let find_in_results
       | None -> false
       | Some _ -> true)
 
-let lookup_status t ~name ~version =
+let filter_by_name (name : string) :
+    (OpamPackage.Name.t * 's) list -> (OpamPackage.Name.t * 's) list =
+  List.filter (fun (package_name, _) ->
+      OpamPackage.Name.to_string package_name = name)
+
+let lookup_status t ~name =
   let blessings = get_blessing t |> OpamPackage.Map.keys in
   let known_projects =
     List.map (fun blessing -> OpamPackage.name_to_string blessing) blessings
   in
-  if not (List.exists (fun x -> x = name) known_projects) then None
+  if not (List.exists (fun x -> x = name) known_projects) then []
     (* we don't know this project *)
   else
     let passed = lookup_done t in
-    match
-      List.find_opt
-        (fun (package, _) ->
-          OpamPackage.name_to_string package = name
-          && OpamPackage.version_to_string package = version)
-        passed
-    with
-    | Some _ -> Some Done
-    | None -> (
-        let failed, pending = lookup_failed_pending t in
-        let failed_packages =
-          group_by_pkg failed |> OpamPackage.Name.Map.bindings
-        in
-        if find_in_results failed_packages name version then Some Failed
-        else
-          let pending_packages =
-            group_by_pkg pending |> OpamPackage.Name.Map.bindings
-          in
-          if find_in_results pending_packages name version then Some Running
-          else
-            let solve_failures = lookup_solve_failures t name in
-            match solve_failures with Some _ -> Some Failed | None -> None)
+    let passed_packages =
+      passed
+      |> List.map (fun (package, s) ->
+             (OpamPackage.name package, (OpamPackage.version package, s)))
+      |> filter_by_name name
+      |> List.map (fun (package_name, (package_version, _)) ->
+             ( OpamPackage.Name.to_string package_name,
+               OpamPackage.Version.to_string package_version,
+               Done ))
+    in
+    let failed, pending = lookup_failed_pending t in
+    let failed_packages =
+      group_by_pkg failed
+      |> OpamPackage.Name.Map.bindings
+      |> filter_by_name name
+      |> List.map (fun (package_name, l) ->
+             List.map
+               (fun (package_version, _) ->
+                 ( OpamPackage.Name.to_string package_name,
+                   OpamPackage.Version.to_string package_version,
+                   Failed ))
+               l)
+      |> List.flatten
+    in
+    let pending_packages =
+      group_by_pkg pending
+      |> OpamPackage.Name.Map.bindings
+      |> filter_by_name name
+      |> List.map (fun (package_name, l) ->
+             List.map
+               (fun (package_version, _) ->
+                 ( OpamPackage.Name.to_string package_name,
+                   OpamPackage.Version.to_string package_version,
+                   Running ))
+               l)
+      |> List.flatten
+    in
+    List.concat [ passed_packages; failed_packages; pending_packages ]
 
 let handle_root t ~engine:_ =
   object

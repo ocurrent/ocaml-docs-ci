@@ -25,9 +25,9 @@ let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
   Fmt.pf f "%s" (Pipeline_api.Raw.Reader.ProjectInfo.name_get pi)
 
 (* let pp_project_build_status f
-    (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
-  Client.Build_status.pp f
-  @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps *)
+     (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
+   Client.Build_status.pp f
+   @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps *)
 
 let list_projects ci =
   Client.Pipeline.projects ci
@@ -43,14 +43,25 @@ let list_projects ci =
    |> Lwt_result.map @@ fun status ->
       Fmt.pr "@[<v> @,@,%a@]@." pp_project_build_status status *)
 
-let list_versions project_name project =
+(* let list_versions project_name project =
+   Printf.printf "\n";
+   Client.Project.versions project ()
+   |> Lwt_result.map (fun list ->
+          let project_version f ({ version } : Client.Project.project_version) =
+            Fmt.pf f "%s/%s" project_name version
+          in
+          Fmt.pr "%a." Fmt.(list project_version) list) *)
+
+let list_versions_status project_name project =
   Printf.printf "\n";
-  Client.Project.versions project ()
+  Fmt.pr "%s" project_name;
+  Client.Project.status project ()
   |> Lwt_result.map (fun list ->
-         let project_version f ({ version } : Client.Project.project_version) =
-           Fmt.pf f "%s/%s" project_name version
+         let project_status f
+             ({ version; status } : Client.Project.project_status) =
+           Fmt.pf f "%s/%s" version (Client.Build_status.to_string status)
          in
-         Fmt.pr "%a." Fmt.(list project_version) list)
+         Fmt.pr "%a." Fmt.(list project_status) list)
 
 let main ~ci_uri ~project_name ~project_version =
   let vat = Capnp_rpc_unix.client_only_vat () in
@@ -60,10 +71,12 @@ let main ~ci_uri ~project_name ~project_version =
       Sturdy_ref.connect_exn sr >>= fun ci ->
       match project_name with
       | None -> list_projects ci
-      | Some repo -> (
+      | Some project_name -> (
           match project_version with
           | None ->
-              with_ref (Client.Pipeline.project ci repo) (list_versions repo)
+              with_ref
+                (Client.Pipeline.project ci project_name)
+                (list_versions_status project_name)
           | Some _version -> Lwt_result.fail (`Msg "unimplemented")))
 
 (* Command-line parsing *)

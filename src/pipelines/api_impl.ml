@@ -30,6 +30,23 @@ let make_project ~monitor project_name =
                     let slot = Capnp.Array.get arr i in
                     version_set slot (OpamPackage.Version.to_string version));
              Service.return response
+
+       method status_impl _params release_param_caps =
+         let open Api.Status in
+         release_param_caps ();
+         let response, results = Service.Response.create Results.init_pointer in
+         let statuses = Monitor.lookup_status monitor ~name:project_name in
+         let arr = Results.status_init results (List.length statuses) in
+         statuses
+         |> List.iteri (fun i (_name, version, state) ->
+                let open Raw.Builder.ProjectBuildStatus in
+                let slot = Capnp.Array.get arr i in
+                version_set slot version;
+                match state with
+                | Monitor.Done -> status_set slot Passed
+                | Monitor.Failed -> status_set slot Failed
+                | Monitor.Running -> status_set slot Pending);
+         Service.return response
      end
 
 let make ~monitor =

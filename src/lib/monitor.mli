@@ -40,5 +40,5 @@ val map_versions :
 val lookup_known_projects : t -> string list
 (** Get a list of the names of known projects *)
 
-val lookup_status : t -> name:string -> version:string -> state option
-(** Lookup the state of a package in the pipeline *)
+val lookup_status : t -> name:string -> (string * string * state) list
+(** Get a list of version and status tuples for a project *)

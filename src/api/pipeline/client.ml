@@ -29,11 +29,19 @@ module Build_status = struct
     | Passed -> Fmt.string f "passed"
     | Pending -> Fmt.string f "pending"
     | Undefined x -> Fmt.pf f "unknown:%d" x
+
+  let to_string = function
+  | NotStarted -> "not started"
+  | Failed -> "failed"
+  | Passed -> "passed"
+  | Pending -> "pending"
+  | Undefined _ -> "unknown"
 end
 
 module Project = struct
   type t = Raw.Client.Project.t Capability.t
   type project_version = { version : string }
+  type project_status = { version : string; status : Build_status.t }
 
   let versions t () =
     let open Raw.Client.Project.Versions in
@@ -44,6 +52,19 @@ module Project = struct
            |> Results.versions_get_list
            |> List.map (fun x ->
                   { version = Raw.Reader.ProjectVersion.version_get x }))
+
+  let status t () =
+    let open Raw.Client.Project.Status in
+    let request = Capability.Request.create_no_args () in
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map (fun x ->
+           x
+           |> Results.status_get_list
+           |> List.map (fun x ->
+                  {
+                    version = Raw.Reader.ProjectBuildStatus.version_get x;
+                    status = Raw.Reader.ProjectBuildStatus.status_get x;
+                  }))
 end
 
 module Pipeline = struct
@@ -60,12 +81,4 @@ module Pipeline = struct
     let request = Capability.Request.create_no_args () in
     Capability.call_for_value t method_id request
     |> Lwt_result.map Results.projects_get_list
-
-  (* let status t name version =
-     let open Raw.Client.Pipeline.Status in
-     let request, params = Capability.Request.create Params.init_pointer in
-     Params.project_name_set params name;
-     Params.version_set params version;
-     Capability.call_for_value t method_id request
-     |> Lwt_result.map Results.status_get *)
 end
