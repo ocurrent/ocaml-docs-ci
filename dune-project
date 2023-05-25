@@ -36,6 +36,7 @@
   (ppx_deriving (>= 5.2.1))
   (ppx_deriving_yojson (>= 3.7.0))
   git-unix
+  (dockerfile (>= 8.2.1))
   conf-libev
   (ocaml-version (>= 3.6.1))
   (obuilder-spec (>= 0.5.1))
@@ -43,7 +44,7 @@
 
   (memtrace (>= 0.1.1)) ; required for memory profiling
   (alcotest (and (>= 1.7.0) :with-test))
-  (alcotest-lwt (and (>= 1.7.0) :with-test))))
+  (alcotest-lwt (and (>= 1.7.0) :with-test))
   (docker_hub (>= 0.1.1))))
 
 (package

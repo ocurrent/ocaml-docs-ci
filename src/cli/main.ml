@@ -55,11 +55,13 @@ let list_projects ci =
 let list_versions_status project_name project =
   Printf.printf "\n";
   Fmt.pr "%s" project_name;
-  Client.Project.status project ()
+  Client.Project.status project
   |> Lwt_result.map (fun list ->
          let project_status f
              ({ version; status } : Client.Project.project_status) =
-           Fmt.pf f "%s/%s" version (Client.Build_status.to_string status)
+           Fmt.pf f "%s/%s"
+             (OpamPackage.Version.to_string version)
+             (Client.Build_status.to_string status)
          in
          Fmt.pr "%a." Fmt.(list project_status) list)
 
