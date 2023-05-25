@@ -31,13 +31,9 @@ let register t solve_failures preps blessing trees =
   t.blessing <- blessing;
   t.trees <- trees
 
-let (let*) = Result.bind
-let (let+) a f = Result.map f a
-
-let rec simplify =
-  function
-  | And [(_, a)] -> simplify a
-  | v -> v
+let ( let* ) = Result.bind
+let ( let+ ) a f = Result.map f a
+let rec simplify = function And [ (_, a) ] -> simplify a | v -> v
 
 let render_level =
   let open Tyxml_html in
