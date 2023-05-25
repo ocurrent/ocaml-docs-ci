@@ -57,7 +57,8 @@ module Ssh = struct
       close_in ch;
       data
     with ex ->
-      if Sys.file_exists path then failwith @@ Fmt.str "Error loading %S: %a" path Fmt.exn ex
+      if Sys.file_exists path then
+        failwith @@ Fmt.str "Error loading %S: %a" path Fmt.exn ex
       else failwith @@ Fmt.str "File %S does not exist" path
 
   let v (`SSH_host host) (`SSH_user user) (`SSH_port port) (`SSH_pubkey pubkey)
@@ -69,14 +70,22 @@ module Ssh = struct
       private_key = load_file privkey;
       private_key_file =
         Fpath.(
-          (Bos.OS.Dir.current () |> Result.get_ok) // (of_string privkey |> Result.get_ok)
+          (Bos.OS.Dir.current () |> Result.get_ok)
+          // (of_string privkey |> Result.get_ok)
           |> to_string);
       public_key = load_file pubkey;
       folder;
     }
 
   let cmdliner =
-    Term.(const v $ ssh_host $ ssh_user $ ssh_port $ ssh_pubkey $ ssh_privkey $ ssh_folder)
+    Term.(
+      const v
+      $ ssh_host
+      $ ssh_user
+      $ ssh_port
+      $ ssh_pubkey
+      $ ssh_privkey
+      $ ssh_folder)
 
   let config t =
     Fmt.str
@@ -100,7 +109,11 @@ module Ssh = struct
       ]
 
   let secrets_values t =
-    [ ("ssh_privkey", t.private_key); ("ssh_pubkey", t.public_key); ("ssh_config", config t) ]
+    [
+      ("ssh_privkey", t.private_key);
+      ("ssh_pubkey", t.public_key);
+      ("ssh_config", config t);
+    ]
 
   let storage_folder t = t.folder
   let host t = t.host
@@ -109,7 +122,9 @@ module Ssh = struct
   let port t = t.port
 
   let digest t =
-    Fmt.str "%s-%s-%d-%s" t.host t.user t.port t.folder |> Digest.string |> Digest.to_hex
+    Fmt.str "%s-%s-%d-%s" t.host t.user t.port t.folder
+    |> Digest.string
+    |> Digest.to_hex
 end
 
 type t = {
@@ -127,41 +142,52 @@ type t = {
 let voodoo_branch =
   Arg.value
   @@ Arg.opt Arg.(string) "main"
-  @@ Arg.info ~doc:"Voodoo branch to watch" ~docv:"VOODOO_BRANCH" ["voodoo-branch"]
+  @@ Arg.info ~doc:"Voodoo branch to watch" ~docv:"VOODOO_BRANCH"
+       [ "voodoo-branch" ]
 
 let voodoo_repo =
   Arg.value
   @@ Arg.opt Arg.string "https://github.com/ocaml-doc/voodoo.git"
-  @@ Arg.info ~doc:"Voodoo repository to watch" ~docv:"VOODOO_REPO" ["voodoo-repo"]
+  @@ Arg.info ~doc:"Voodoo repository to watch" ~docv:"VOODOO_REPO"
+       [ "voodoo-repo" ]
 
 let cap_file =
   Arg.required
   @@ Arg.opt Arg.(some string) None
-  @@ Arg.info ~doc:"Ocluster capability file" ~docv:"FILE" [ "ocluster-submission" ]
+  @@ Arg.info ~doc:"Ocluster capability file" ~docv:"FILE"
+       [ "ocluster-submission" ]
 
 let jobs =
   Arg.required
   @@ Arg.opt Arg.(some int) (Some 8)
-  @@ Arg.info ~doc:"Number of parallel jobs on the host machine (for solver)" ~docv:"JOBS"
-       [ "jobs"; "j" ]
+  @@ Arg.info ~doc:"Number of parallel jobs on the host machine (for solver)"
+       ~docv:"JOBS" [ "jobs"; "j" ]
 
 let track_packages =
   Arg.value
   @@ Arg.opt Arg.(list string) []
-  @@ Arg.info ~doc:"Filter the name of packages to track. " ~docv:"PKGS" [ "filter" ]
+  @@ Arg.info ~doc:"Filter the name of packages to track. " ~docv:"PKGS"
+       [ "filter" ]
 
 let take_n_last_versions =
   Arg.value
   @@ Arg.opt Arg.(some int) None
   @@ Arg.info ~doc:"Limit the number of versions" ~docv:"LIMIT" [ "limit" ]
 
-let v voodoo_branch voodoo_repo cap_file jobs track_packages take_n_last_versions ssh =
+let v voodoo_branch voodoo_repo cap_file jobs track_packages
+    take_n_last_versions ssh =
   let vat = Capnp_rpc_unix.client_only_vat () in
   let cap = Capnp_rpc_unix.Cap_file.load vat cap_file |> Result.get_ok in
 
-  let ocluster_connection_prep = Current_ocluster.Connection.create ~max_pipeline:100 cap in
-  let ocluster_connection_do = Current_ocluster.Connection.create ~max_pipeline:100 cap in
-  let ocluster_connection_gen = Current_ocluster.Connection.create ~max_pipeline:100 cap in
+  let ocluster_connection_prep =
+    Current_ocluster.Connection.create ~max_pipeline:100 cap
+  in
+  let ocluster_connection_do =
+    Current_ocluster.Connection.create ~max_pipeline:100 cap
+  in
+  let ocluster_connection_gen =
+    Current_ocluster.Connection.create ~max_pipeline:100 cap
+  in
 
   {
     voodoo_branch;
@@ -176,10 +202,20 @@ let v voodoo_branch voodoo_repo cap_file jobs track_packages take_n_last_version
   }
 
 let cmdliner =
-  Term.(const v $ voodoo_branch $ voodoo_repo $ cap_file $ jobs $ track_packages $ take_n_last_versions $ Ssh.cmdliner)
+  Term.(
+    const v
+    $ voodoo_branch
+    $ voodoo_repo
+    $ cap_file
+    $ jobs
+    $ track_packages
+    $ take_n_last_versions
+    $ Ssh.cmdliner)
 
 (* odoc pinned to tag 2.2.0 *)
-let odoc _ = "https://github.com/ocaml/odoc.git#103dac4c370aa2ad5aca7ba54f02f8e06adb941b"
+let odoc _ =
+  "https://github.com/ocaml/odoc.git#103dac4c370aa2ad5aca7ba54f02f8e06adb941b"
+
 let pool _ = "linux-x86_64"
 let jobs t = t.jobs
 let voodoo_branch t = t.voodoo_branch

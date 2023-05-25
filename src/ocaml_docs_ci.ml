@@ -1,6 +1,9 @@
 module Git = Current_git
 
-let () = Logging.init ()
+let () =
+  Logging.init ();
+  Memtrace.trace_if_requested ~context:"ocaml-docs-ci" ()
+
 let hourly = Current_cache.Schedule.v ~valid_for:(Duration.of_hour 1) ()
 let program_name = "ocaml-docs-ci"
 
@@ -10,9 +13,10 @@ let has_role user = function
   | _ -> (
       match Option.map Current_web.User.id user with
       | Some
-          ( "github:talex5" | "github:avsm" | "github:kit-ty-kate" | "github:samoht"
-          | "github:tmcgilchrist" | "github:dra27" | "github:jonludlam" | "github:TheLortex"
-          | "github:sabine" | "github:novemberkilo" ) ->
+          ( "github:talex5" | "github:avsm" | "github:kit-ty-kate"
+          | "github:samoht" | "github:tmcgilchrist" | "github:dra27"
+          | "github:jonludlam" | "github:TheLortex" | "github:sabine"
+          | "github:novemberkilo" ) ->
           true
       | _ -> false)
 
@@ -21,16 +25,22 @@ let main current_config github_auth mode config =
     match Docs_ci_lib.Init.setup (Docs_ci_lib.Config.ssh config) with
     | Ok () -> ()
     | Error (`Msg msg) ->
-        Docs_ci_lib.Log.err (fun f -> f "Failed to initialize the storage server:\n%s" msg);
+        Docs_ci_lib.Log.err (fun f ->
+            f "Failed to initialize the storage server:\n%s" msg);
         exit 1
   in
-  let repo_opam = Git.clone ~schedule:hourly "https://github.com/ocaml/opam-repository.git" in
+  let repo_opam =
+    Git.clone ~schedule:hourly "https://github.com/ocaml/opam-repository.git"
+  in
   let monitor = Docs_ci_lib.Monitor.make () in
   let engine =
     Current.Engine.create ~config:current_config (fun () ->
-        Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam ~monitor () |> Current.ignore_value)
+        Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam ~monitor ()
+        |> Current.ignore_value)
   in
-  let has_role = if github_auth = None then Current_web.Site.allow_all else has_role in
+  let has_role =
+    if github_auth = None then Current_web.Site.allow_all else has_role
+  in
   let secure_cookies = github_auth <> None in
   let authn = Option.map Current_github.Auth.make_login_uri github_auth in
   let site =
@@ -39,16 +49,17 @@ let main current_config github_auth mode config =
       :: Current_web.routes engine
       @ Docs_ci_lib.Monitor.routes monitor engine
     in
-    Current_web.Site.(v ?authn ~has_role ~secure_cookies) ~name:program_name routes
+    Current_web.Site.(v ?authn ~has_role ~secure_cookies)
+      ~name:program_name routes
   in
-  ignore @@
-  Logging.run
-    (Lwt.choose
-       [
-         Current.Engine.thread engine;
-         (* The main thread evaluating the pipeline. *)
-         Current_web.run ~mode site (* Optional: provides a web UI *);
-       ])
+  ignore
+  @@ Logging.run
+       (Lwt.choose
+          [
+            Current.Engine.thread engine;
+            (* The main thread evaluating the pipeline. *)
+            Current_web.run ~mode site (* Optional: provides a web UI *);
+          ])
 
 (* Command-line parsing *)
 
@@ -58,7 +69,11 @@ let cmd =
   let doc = "an OCurrent pipeline" in
   let info = Cmd.info program_name ~doc in
   Cmd.v info
-    Term.( const main $ Current.Config.cmdliner $ Current_github.Auth.cmdliner $
-             Current_web.cmdliner $ Docs_ci_lib.Config.cmdliner)
+    Term.(
+      const main
+      $ Current.Config.cmdliner
+      $ Current_github.Auth.cmdliner
+      $ Current_web.cmdliner
+      $ Docs_ci_lib.Config.cmdliner)
 
 let () = exit @@ Cmd.eval cmd

@@ -4,7 +4,8 @@ let cache = Voodoo.cache
 
 let not_base x =
   not
-    (List.mem (OpamPackage.name_to_string x)
+    (List.mem
+       (OpamPackage.name_to_string x)
        [
          "base-unix";
          "base-bigarray";
@@ -30,7 +31,10 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   (* the list of packages to install (which is a superset of the packages to prep) *)
   let all_deps = Package.all_deps install in
   let packages_str =
-    all_deps |> List.map Package.opam |> List.filter not_base |> List.map OpamPackage.to_string
+    all_deps
+    |> List.map Package.opam
+    |> List.filter not_base
+    |> List.map OpamPackage.to_string
     |> String.concat " "
   in
 
@@ -51,7 +55,10 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
            let opam = Package.opam p in
            let min_dune_version = OpamPackage.Version.of_string "2.1.0" in
            match OpamPackage.name_to_string opam with
-           | "dune" -> OpamPackage.Version.compare (OpamPackage.version opam) min_dune_version >= 0
+           | "dune" ->
+               OpamPackage.Version.compare (OpamPackage.version opam)
+                 min_dune_version
+               >= 0
            | _ -> false)
   in
   (* split install in two phases, the first installs the build system to favor cache sharing *)
@@ -65,11 +72,13 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
     | [] -> comment "no build system"
     | lst ->
         let packages_str =
-          lst |> List.sort Package.compare
+          lst
+          |> List.sort Package.compare
           |> List.map (fun pkg -> Package.opam pkg |> OpamPackage.to_string)
           |> String.concat " "
         in
-        run ~network ~cache "opam depext -viy %s && opam install %s" packages_str packages_str
+        run ~network ~cache "opam depext -viy %s && opam install %s"
+          packages_str packages_str
   in
 
   let prep_storage_folders = List.rev_map (fun p -> (Storage.Prep, p)) prep in
@@ -77,24 +86,28 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
   let create_dir_and_copy_logs_if_not_exist =
     let command =
       Fmt.str
-        "([ -d $1 ] || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log $1 && opam show $3 \
-         --raw > $1/opam)) && (%s)"
+        "([ -d $1 ] || (echo \"FAILED:$2\" && mkdir -p $1 && cp ~/opam.err.log \
+         $1 && opam show $3 --raw > $1/opam)) && (%s)"
         (Misc.tar_cmd (Fpath.v "$1"))
     in
     Storage.for_all prep_storage_folders command
   in
 
   let tools = Voodoo.Prep.spec ~base voodoo |> Spec.finish in
-  base |> Spec.children ~name:"tools" tools
+  base
+  |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
          (* Install required packages *)
          run "sudo mkdir /src";
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
-         run ~network "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam update";
+         run ~network
+           "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam update";
          run "opam repo remove default && opam repo add opam /src";
-         copy ~from:(`Build "tools") [ "/home/opam/voodoo-prep" ] ~dst:"/home/opam/";
+         copy ~from:(`Build "tools")
+           [ "/home/opam/voodoo-prep" ]
+           ~dst:"/home/opam/";
          (* Pre-install build tools *)
          build_preinstall;
          (* Enable build cache conditionally on dune version *)
@@ -107,8 +120,8 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
               [
                 "sudo apt update";
                 Fmt.str
-                  "(opam depext -viy %s 2>&1 | tee ~/opam.err.log) || echo 'Failed to install all \
-                   packages'"
+                  "(opam depext -viy %s 2>&1 | tee ~/opam.err.log) || echo \
+                   'Failed to install all packages'"
                   packages_str;
               ];
          (* Perform the prep step for all packages *)
@@ -121,10 +134,12 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
                 create_dir_and_copy_logs_if_not_exist;
                 (* Extract *)
                 Storage.for_all prep_storage_folders
-                  (Fmt.str "rsync -aR --no-p ./$1 %s:%s/.;" (Config.Ssh.host ssh)
+                  (Fmt.str "rsync -aR --no-p ./$1 %s:%s/.;"
+                     (Config.Ssh.host ssh)
                      (Config.Ssh.storage_folder ssh));
                 (* Compute hashes *)
-                Storage.for_all prep_storage_folders (Storage.Tar.hash_command ~prefix:"HASHES" ());
+                Storage.for_all prep_storage_folders
+                  (Storage.Tar.hash_command ~prefix:"HASHES" ());
               ];
        ]
 
@@ -135,16 +150,25 @@ module Prep = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { job : Jobs.t; base : Spec.t; voodoo : Voodoo.Prep.t; config : Config.t }
+    type t = {
+      job : Jobs.t;
+      base : Spec.t;
+      voodoo : Voodoo.Prep.t;
+      config : Config.t;
+    }
 
     let digest { job = { install; prep }; voodoo; _ } =
       (* base is derived from 'prep' so we don't need to include it in the hash *)
-      Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install) (Voodoo.Prep.digest voodoo)
-        (String.concat "\n" (List.rev_map Package.digest prep |> List.sort String.compare))
-      |> Digest.string |> Digest.to_hex
+      Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install)
+        (Voodoo.Prep.digest voodoo)
+        (String.concat "\n"
+           (List.rev_map Package.digest prep |> List.sort String.compare))
+      |> Digest.string
+      |> Digest.to_hex
   end
 
-  let pp f Key.{ job = { install; _ }; _ } = Fmt.pf f "Voodoo prep %a" Package.pp install
+  let pp f Key.{ job = { install; _ }; _ } =
+    Fmt.pf f "Voodoo prep %a" Package.pp install
 
   module Value = struct
     type item = Storage.id_hash [@@deriving yojson]
@@ -154,7 +178,8 @@ module Prep = struct
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
   end
 
-  let build No_context job Key.{ job = { install; prep }; base; voodoo; config } =
+  let build No_context job Key.{ job = { install; prep }; base; voodoo; config }
+      =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     (* Problem: no rebuild if the opam definition changes without affecting the universe hash.
@@ -164,60 +189,78 @@ module Prep = struct
     *)
     let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~install prep in
     let action = Misc.to_ocluster_submission spec in
-    let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
+    let src =
+      ( "https://github.com/ocaml/opam-repository.git",
+        [ Package.commit install ] )
+    in
     let version = Misc.cache_hint install in
     let cache_hint = "docs-universe-prep-" ^ version in
     let build_pool =
-      Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint ~src
+      Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action
+        ~cache_hint ~src
         ~secrets:(Config.Ssh.secrets_values (Config.ssh config))
         (Config.ocluster_connection_prep config)
     in
-    let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
+    let* build_job =
+      Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job
+    in
     Current.Job.log job "Using cache hint %S" cache_hint;
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     (* extract result from logs *)
     let extract_hashes ((git_hashes, failed), retriable_errors) line =
       let retry_conditions log_line =
-        let retry_on = [
-          "Temporary failure";
-          "Could not resolve host";
-          "rsync: connection unexpectedly closed"
-        ] in
+        let retry_on =
+          [
+            "Temporary failure";
+            "Could not resolve host";
+            "rsync: connection unexpectedly closed";
+          ]
+        in
         List.fold_left
-          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
+          false retry_on
       in
       match Storage.parse_hash ~prefix:"HASHES" line with
       | Some value -> ((value :: git_hashes, failed), retriable_errors)
       | None -> (
-        if retry_conditions line then
-          ((git_hashes, failed), line :: retriable_errors)
-        else
-          match String.split_on_char ':' line with
-          | [ prev; branch ] when Astring.String.is_suffix ~affix:"FAILED" prev ->
-              Current.Job.log job "Failed: %s" branch;
-              ((git_hashes, branch :: failed), retriable_errors)
-          | _ -> ((git_hashes, failed), retriable_errors))
+          if retry_conditions line then
+            ((git_hashes, failed), line :: retriable_errors)
+          else
+            match String.split_on_char ':' line with
+            | [ prev; branch ]
+              when Astring.String.is_suffix ~affix:"FAILED" prev ->
+                Current.Job.log job "Failed: %s" branch;
+                ((git_hashes, branch :: failed), retriable_errors)
+            | _ -> ((git_hashes, failed), retriable_errors))
     in
 
     let fn () =
       let** _ = Current_ocluster.Connection.run_job ~job build_job in
-        Misc.fold_logs build_job extract_hashes (([],[]), [])
+      Misc.fold_logs build_job extract_hashes (([], []), [])
     in
 
-    let** (git_hashes, failed) = Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn in
+    let** git_hashes, failed =
+      Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn
+    in
     Lwt.return_ok
-        ( List.map
-            (fun (r : Storage.id_hash) ->
-              Current.Job.log job "%s -> %s" r.id r.hash;
-              r)
-            git_hashes,
-          failed )
+      ( List.map
+          (fun (r : Storage.id_hash) ->
+            Current.Job.log job "%s -> %s" r.id r.hash;
+            r)
+          git_hashes,
+        failed )
 end
 
 module PrepCache = Current_cache.Make (Prep)
 
 type prep_result = Success | Failed
-type t = { base : Spec.t; hash : string; package : Package.t; result : prep_result }
+
+type t = {
+  base : Spec.t;
+  hash : string;
+  package : Package.t;
+  result : prep_result;
+}
 
 let hash t = t.hash
 let package t = t.package
@@ -229,7 +272,9 @@ type prep = t Package.Map.t
 let pp f t = Fmt.pf f "%s:%s" (Package.id t.package) t.hash
 
 let compare a b =
-  match String.compare a.hash b.hash with 0 -> Package.compare a.package b.package | v -> v
+  match String.compare a.hash b.hash with
+  | 0 -> Package.compare a.package b.package
+  | v -> v
 
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
@@ -237,12 +282,14 @@ module StringSet = Set.Make (String)
 let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
   let packages = job.prep in
   let artifacts_branches_output =
-    artifacts_branches_output |> List.to_seq
+    artifacts_branches_output
+    |> List.to_seq
     |> Seq.map (fun Storage.{ id; hash } -> (id, hash))
     |> StringMap.of_seq
   in
   let failed_branches = StringSet.of_list failed_branches in
-  packages |> List.to_seq
+  packages
+  |> List.to_seq
   |> Seq.filter_map (fun package ->
          let package_id = Package.id package in
          match StringMap.find_opt package_id artifacts_branches_output with
@@ -255,9 +302,7 @@ let combine ~base ~(job : Jobs.t) (artifacts_branches_output, failed_branches) =
 let v ~config ~voodoo ~spec (job : Jobs.t) =
   let open Current.Syntax in
   Current.component "voodoo-prep %s" (job.install |> Package.digest)
-  |> let> voodoo = voodoo
-     and> spec = spec
-     in
+  |> let> voodoo and> spec in
      PrepCache.get No_context { job; voodoo; config; base = spec }
      |> Current.Primitive.map_result (Result.map (combine ~base:spec ~job))
 
@@ -266,7 +311,8 @@ let extract ~(job : Jobs.t) (prep : prep Current.t) =
   List.map
     (fun package ->
       ( package,
-        let+ prep = prep in
+        let+ prep in
         Package.Map.find package prep ))
     job.prep
-  |> List.to_seq |> Package.Map.of_seq
+  |> List.to_seq
+  |> Package.Map.of_seq

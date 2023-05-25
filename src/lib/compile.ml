@@ -1,4 +1,6 @@
-type hashes = { compile_hash : string; linked_hash : string } [@@deriving yojson]
+type hashes = { compile_hash : string; linked_hash : string }
+[@@deriving yojson]
+
 type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
 
 let hashes t = t.hashes
@@ -14,7 +16,8 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
   let opam = package |> Package.opam in
   let name = opam |> OpamPackage.name_to_string in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
-  base |> Spec.children ~name:"tools" tools
+  base
+  |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
          workdir "/home/opam/docs/";
@@ -35,7 +38,8 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
                   (Fmt.str "rsync -aR %s:%s/./$1 .;" (Config.Ssh.host ssh)
                      (Config.Ssh.storage_folder ssh));
                 Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
-                  (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
+                  (Config.Ssh.storage_folder ssh)
+                  (Fpath.to_string prep_folder);
                 Fmt.str "find . -name '*.tar' -exec tar -xvf {} \\;";
               ];
          (* prepare the compilation folder *)
@@ -44,18 +48,22 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
               [
                 Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
                 Fmt.str
-                  "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
-                   compile/packages/*.odoc compile/packages/%s/*.odoc"
+                  "rm -f compile/packages.mld compile/page-packages.odoc \
+                   compile/packages/*.mld compile/packages/*.odoc \
+                   compile/packages/%s/*.odoc"
                   name;
               ];
          (* Run voodoo-do && tar compile/linked output *)
          run "%s"
          @@ Misc.Cmd.list
               [
-                Fmt.str "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s " name
+                Fmt.str
+                  "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do -p %s %s "
+                  name
                   (match blessing with Blessed -> "-b" | Universe -> "");
                 Misc.tar_cmd compile_folder;
-                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/" Fpath.pp
+                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/"
+                  Fpath.pp
                   (Storage.Base.generation_folder `Linked generation)
                   Fpath.pp
                   (Storage.Base.generation_folder `Linked generation);
@@ -67,12 +75,16 @@ let spec_success ~ssh ~base ~voodoo ~deps ~blessing ~generation prep =
          @@ Misc.Cmd.list
               [
                 Fmt.str "echo '%f'" (Random.float 1.);
-                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string compile_folder)
+                Fmt.str "rsync -aR ./%s ./%s %s:%s/."
+                  (Fpath.to_string compile_folder)
                   Fpath.(to_string (parent linked_folder))
-                  (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
-                Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
+                  (Config.Ssh.host ssh)
+                  (Config.Ssh.storage_folder ssh);
+                Fmt.str "set '%s'; %s"
+                  (Fpath.to_string compile_folder)
                   (Storage.Tar.hash_command ~prefix:"COMPILE" ());
-                Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
+                Fmt.str "set '%s'; %s"
+                  (Fpath.to_string linked_folder)
                   (Storage.Tar.hash_command ~prefix:"LINKED" ());
               ];
        ]
@@ -87,7 +99,8 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in
   let tools = Voodoo.Do.spec ~base voodoo |> Spec.finish in
-  base |> Spec.children ~name:"tools" tools
+  base
+  |> Spec.children ~name:"tools" tools
   |> Spec.add
        [
          workdir "/home/opam/docs/";
@@ -102,7 +115,8 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
          @@ Misc.Cmd.list
               [
                 Fmt.str "rsync -aR %s:%s/./%s ." (Config.Ssh.host ssh)
-                  (Config.Ssh.storage_folder ssh) (Fpath.to_string prep_folder);
+                  (Config.Ssh.storage_folder ssh)
+                  (Fpath.to_string prep_folder);
                 Fmt.str "find . -name '*.tar' -exec tar -xvf {} \\;";
               ];
          (* prepare the compilation folder *)
@@ -111,18 +125,23 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
               [
                 Fmt.str "mkdir -p %a" Fpath.pp compile_folder;
                 Fmt.str
-                  "rm -f compile/packages.mld compile/page-packages.odoc compile/packages/*.mld \
-                   compile/packages/*.odoc compile/packages/%s/*.odoc"
+                  "rm -f compile/packages.mld compile/page-packages.odoc \
+                   compile/packages/*.mld compile/packages/*.odoc \
+                   compile/packages/%s/*.odoc"
                   name;
               ];
          (* Run voodoo-do && tar compile/linked output *)
          run "%s"
          @@ Misc.Cmd.list
               [
-                Fmt.str "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do --failed -p %s %s " name
+                Fmt.str
+                  "OCAMLRUNPARAM=b opam exec -- /home/opam/voodoo-do --failed \
+                   -p %s %s "
+                  name
                   (match blessing with Blessed -> "-b" | Universe -> "");
                 Misc.tar_cmd compile_folder;
-                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/" Fpath.pp
+                Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/"
+                  Fpath.pp
                   (Storage.Base.generation_folder `Linked generation)
                   Fpath.pp
                   (Storage.Base.generation_folder `Linked generation);
@@ -134,12 +153,16 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
          @@ Misc.Cmd.list
               [
                 Fmt.str "echo '%f'" (Random.float 1.);
-                Fmt.str "rsync -aR ./%s ./%s %s:%s/." (Fpath.to_string compile_folder)
+                Fmt.str "rsync -aR ./%s ./%s %s:%s/."
+                  (Fpath.to_string compile_folder)
                   Fpath.(to_string (parent linked_folder))
-                  (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh);
-                Fmt.str "set '%s'; %s" (Fpath.to_string compile_folder)
+                  (Config.Ssh.host ssh)
+                  (Config.Ssh.storage_folder ssh);
+                Fmt.str "set '%s'; %s"
+                  (Fpath.to_string compile_folder)
                   (Storage.Tar.hash_command ~prefix:"COMPILE" ());
-                Fmt.str "set '%s'; %s" (Fpath.to_string linked_folder)
+                Fmt.str "set '%s'; %s"
+                  (Fpath.to_string linked_folder)
                   (Storage.Tar.hash_command
                      ~extra_files:[ "../page-" ^ version ^ ".odocl" ]
                      ~prefix:"LINKED" ());
@@ -171,21 +194,26 @@ module Compile = struct
       voodoo : Voodoo.Do.t;
     }
 
-    let key { config; deps; prep; blessing; voodoo; base = _ } =
-      Fmt.str "v9-%s-%s-%s-%a-%s-%s"
+    let key { config = _; deps; prep; blessing; voodoo; base = _ } =
+      Fmt.str "v9-%s-%s-%s-%a-%s"
         (Package.Blessing.to_string blessing)
         (Prep.package prep |> Package.digest)
         (Prep.hash prep)
-        Fmt.(list (fun f { hashes = { compile_hash; _ }; _ } -> Fmt.pf f "%s" compile_hash))
-        deps (Voodoo.Do.digest voodoo) (Config.odoc config)
+        Fmt.(
+          list (fun f { hashes = { compile_hash; _ }; _ } ->
+              Fmt.pf f "%s" compile_hash))
+        deps (Voodoo.Do.digest voodoo)
 
     let digest t = key t |> Digest.string |> Digest.to_hex
   end
 
-  let pp f Key.{ prep; _ } = Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
+  let pp f Key.{ prep; _ } =
+    Fmt.pf f "Voodoo do %a" Package.pp (Prep.package prep)
+
   let auto_cancel = true
 
-  let build { generation; _ } job Key.{ deps; prep; blessing; voodoo; config; base } =
+  let build { generation; _ } job
+      Key.{ deps; prep; blessing; voodoo; config; base } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
@@ -193,50 +221,63 @@ module Compile = struct
       match Prep.result prep with
       | Success ->
           Lwt.return_ok
-            (spec_success ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~deps ~blessing prep)
+            (spec_success ~generation ~ssh:(Config.ssh config) ~voodoo ~base
+               ~deps ~blessing prep)
       | Failed ->
           Lwt.return_ok
-            (spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base ~blessing prep)
+            (spec_failure ~generation ~ssh:(Config.ssh config) ~voodoo ~base
+               ~blessing prep)
     in
     let action = Misc.to_ocluster_submission spec in
     let version = Misc.cache_hint package in
     let cache_hint = "docs-universe-compile-" ^ version in
     let build_pool =
-      Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action ~cache_hint
+      Current_ocluster.Connection.pool ~job ~pool:(Config.pool config) ~action
+        ~cache_hint
         ~secrets:(Config.Ssh.secrets_values (Config.ssh config))
         (Config.ocluster_connection_do config)
     in
-    let* build_job = Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job in
+    let* build_job =
+      Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job
+    in
     Current.Job.log job "Using cache hint %S" cache_hint;
     let extract_hashes ((v_compile, v_linked), retriable_errors) line =
       let retry_conditions log_line =
-        let retry_on = [
-          "Temporary failure";
-          "Could not resolve host";
-          "rsync: connection unexpectedly closed"
-        ] in
+        let retry_on =
+          [
+            "Temporary failure";
+            "Could not resolve host";
+            "rsync: connection unexpectedly closed";
+          ]
+        in
         List.fold_left
-          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line) false retry_on
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
+          false retry_on
       in
       (* some early stopping could be done here *)
-      let compile = Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile in
-      let linked = Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked in
-      if retry_conditions line then
-        ((compile, linked), line :: retriable_errors)
-      else
-        ((compile, linked), retriable_errors)
+      let compile =
+        Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile
+      in
+      let linked =
+        Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked
+      in
+      if retry_conditions line then ((compile, linked), line :: retriable_errors)
+      else ((compile, linked), retriable_errors)
     in
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let fn () =
       let** _ = Current_ocluster.Connection.run_job ~job build_job in
-        Misc.fold_logs build_job extract_hashes ((None, None), [])
+      Misc.fold_logs build_job extract_hashes ((None, None), [])
     in
-    let** (compile, linked) = Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn in
+    let** compile, linked =
+      Retry.retry_loop ~job ~log_string:(Current.Job.id job) fn
+    in
     try
       let compile = Option.get compile in
       let linked = Option.get linked in
       Lwt.return_ok { compile_hash = compile.hash; linked_hash = linked.hash }
-    with Invalid_argument _ -> Lwt.return_error (`Msg "Compile: failed to parse output")
+    with Invalid_argument _ ->
+      Lwt.return_error (`Msg "Compile: failed to parse output")
 end
 
 module CompileCache = Current_cache.Make (Compile)
@@ -244,15 +285,13 @@ module CompileCache = Current_cache.Make (Compile)
 let v ~generation ~config ~name ~voodoo ~blessing ~deps prep =
   let open Current.Syntax in
   Current.component "do %s" name
-  |> let> prep = prep
-     and> voodoo = voodoo
-     and> blessing = blessing
-     and> deps = deps
-     and> generation = generation in
+  |> let> prep and> voodoo and> blessing and> deps and> generation in
      let package = Prep.package prep in
      let base = Prep.base prep in
      let output =
        CompileCache.get { Compile.generation }
          Compile.Key.{ prep; blessing; voodoo; deps; config; base }
      in
-     Current.Primitive.map_result (Result.map (fun hashes -> { package; blessing; hashes })) output
+     Current.Primitive.map_result
+       (Result.map (fun hashes -> { package; blessing; hashes }))
+       output

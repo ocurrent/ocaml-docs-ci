@@ -23,15 +23,21 @@ module Track = struct
     type t = { limit : int option; repo : Git.Commit.t; filter : string list }
 
     let digest { repo; filter; limit } =
-      Git.Commit.hash repo ^ String.concat ";" filter ^ "; "
+      Git.Commit.hash repo
+      ^ String.concat ";" filter
+      ^ "; "
       ^ (limit |> Option.map string_of_int |> Option.value ~default:"")
   end
 
   let pp f { Key.repo; filter; _ } =
-    Fmt.pf f "opam repo track\n%a\n%a" Git.Commit.pp_short repo Fmt.(list string) filter
+    Fmt.pf f "opam repo track\n%a\n%a" Git.Commit.pp_short repo
+      Fmt.(list string)
+      filter
 
   module Value = struct
-    type package_definition = { package : OpamPackage.t; digest : string } [@@deriving yojson]
+    type package_definition = { package : OpamPackage.t; digest : string }
+    [@@deriving yojson]
+
     type t = package_definition list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
@@ -39,10 +45,15 @@ module Track = struct
   end
 
   let rec take n lst =
-    match (n, lst) with 0, _ -> [] | _, [] -> [] | n, a :: q -> a :: take (n - 1) q
+    match (n, lst) with
+    | 0, _ -> []
+    | _, [] -> []
+    | n, a :: q -> a :: take (n - 1) q
 
   let take = function Some n -> take n | None -> Fun.id
-  let get_file path = Lwt_io.with_file ~mode:Input (Fpath.to_string path) Lwt_io.read
+
+  let get_file path =
+    Lwt_io.with_file ~mode:Input (Fpath.to_string path) Lwt_io.read
 
   let get_versions ~limit path =
     let open Lwt.Syntax in
@@ -59,21 +70,29 @@ module Track = struct
                    }))
     |> Result.get_ok
     |> Lwt.map (fun v ->
-           v |> List.sort (fun a b -> -OpamPackage.compare a.Value.package b.package) |> take limit)
+           v
+           |> List.sort (fun a b ->
+                  -OpamPackage.compare a.Value.package b.package)
+           |> take limit)
 
   let build No_context job { Key.repo; filter; limit } =
     let open Lwt.Syntax in
     let open Rresult in
-    let filter name = match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst in
+    let filter name =
+      match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst
+    in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->
     let result =
       Bos.OS.Dir.contents Fpath.(dir / "packages") >>| fun packages ->
-      packages |> List.filter filter
+      packages
+      |> List.filter filter
       |> Lwt_list.map_s (get_versions ~limit)
       |> Lwt.map (fun v -> List.flatten v)
     in
-    match result with Ok v -> Lwt.map Result.ok v | Error e -> Lwt.return_error e
+    match result with
+    | Ok v -> Lwt.map Result.ok v
+    | Error e -> Lwt.return_error e
 end
 
 module TrackCache = Misc.LatchedBuilder (Track)
@@ -88,7 +107,10 @@ module Map = OpamStd.Map.Make (struct
   type nonrec t = t
 
   let compare a b = O.OpamPackage.compare a.package b.package
-  let to_json { package; digest } = `A [ OpamPackage.to_json package; `String digest ]
+
+  let to_json { package; digest } =
+    `A [ OpamPackage.to_json package; `String digest ]
+
   let of_json _ = None
   let to_string t = OpamPackage.to_string t.package
 end)
@@ -96,6 +118,6 @@ end)
 let v ~limit ~(filter : string list) (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "Track packages - %a" Fmt.(list string) filter
-  |> let> repo = repo in
+  |> let> repo in
      (* opkey is a constant because we expect only one instance of track *)
      TrackCache.get ~opkey:"track" No_context { filter; repo; limit }

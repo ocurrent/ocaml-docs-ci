@@ -11,16 +11,20 @@ end = struct
     let ( let* ) = Option.bind in
     let ocaml_version name =
       packages
-      |> List.find_opt (fun pkg -> pkg |> Package.opam |> OpamPackage.name_to_string = name)
-      |> Option.map (fun pkg -> pkg |> Package.opam |> OpamPackage.version_to_string)
+      |> List.find_opt (fun pkg ->
+             pkg |> Package.opam |> OpamPackage.name_to_string = name)
+      |> Option.map (fun pkg ->
+             pkg |> Package.opam |> OpamPackage.version_to_string)
     in
     let is_base =
       List.exists
-        (fun p -> Package.opam p |> OpamPackage.name_to_string = "ocaml-base-compiler")
+        (fun p ->
+          Package.opam p |> OpamPackage.name_to_string = "ocaml-base-compiler")
         packages
     in
     let* version =
-      if is_base then ocaml_version "ocaml-base-compiler" else ocaml_version "ocaml-variants"
+      if is_base then ocaml_version "ocaml-base-compiler"
+      else ocaml_version "ocaml-variants"
     in
     Ocaml_version.of_string version |> Result.to_option
 
@@ -31,8 +35,7 @@ let tag ocaml_version =
   let minor =
     if Ocaml_version.major ocaml_version >= 5 then
       Fmt.str "%d" (Ocaml_version.minor ocaml_version)
-    else
-      Fmt.str "%02d" (Ocaml_version.minor ocaml_version)
+    else Fmt.str "%02d" (Ocaml_version.minor ocaml_version)
   in
   Fmt.str "debian-11-ocaml-%d.%s%s"
     (Ocaml_version.major ocaml_version)
@@ -40,73 +43,87 @@ let tag ocaml_version =
     (match Ocaml_version.extra ocaml_version with
     | None -> ""
     | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))
-module PeekerBody  = struct
+
+module PeekerBody = struct
   type t = unit
 
   let id = "docker-peek"
 
   module Key = struct
     type t = Ocaml_version.t
-    let digest x = "v2"^Ocaml_version.to_string x
+
+    let digest x = "v2" ^ Ocaml_version.to_string x
   end
 
   module Value = struct
     type t = string
+
     let marshal x = x
     let unmarshal x = x
   end
 
-
-
   let conv_error = function
     | Ok x -> Ok x
-    | Error (`Malformed_json s) -> Error (`Msg ("Malformed json: "^s))
-    | Error `No_corresponding_arch_found -> Error (`Msg "No corresponding arch found")
-    | Error `No_corresponding_os_found -> Error (`Msg "No corresponding OS found")
+    | Error (`Malformed_json s) -> Error (`Msg ("Malformed json: " ^ s))
+    | Error `No_corresponding_arch_found ->
+        Error (`Msg "No corresponding arch found")
+    | Error `No_corresponding_os_found ->
+        Error (`Msg "No corresponding OS found")
 
   let build () job key =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Current.Level.Mostly_harmless job in
     Current.Job.log job "tag: %s" (tag key);
-    let+ res = Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key)) in
+    let+ res =
+      Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key))
+    in
     match res with
     | Ok manifests ->
-      Result.map (fun r ->
-        let tag = "ocaml/opam@"^r in
-        Current.Job.log job "result: %s" tag;
-        tag) (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error)
+        Result.map
+          (fun r ->
+            let tag = "ocaml/opam@" ^ r in
+            Current.Job.log job "result: %s" tag;
+            tag)
+          (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error)
     | Error (`Msg _) as e -> e
     | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
 
   let pp = Ocaml_version.pp
-
   let auto_cancel = true
 end
 
-module Peeker = Current_cache.Make(PeekerBody)
+module Peeker = Current_cache.Make (PeekerBody)
+
 module Image : sig
   val peek : Ocaml_version.t -> string Current.t
 end = struct
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
+
   let real_peek ocaml_version =
     (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
     Peeker.get ~schedule:weekly () ocaml_version
 
   let peek ocaml_version =
     let tag = tag ocaml_version in
-    Current.primitive ~info:(Current.component "Docker image peek %s" tag)
-      (fun () -> real_peek ocaml_version) (Current.return ())
+    Current.primitive
+      ~info:(Current.component "Docker image peek %s" tag)
+      (fun () -> real_peek ocaml_version)
+      (Current.return ())
 end
 
 let cache_hint package =
   let packages = Package.all_deps package in
-  Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest |> Platform.to_string
+  Platform.v ~packages
+  |> Option.value ~default:Ocaml_version.Releases.latest
+  |> Platform.to_string
 
 (** Select base image to use *)
 let get_base_image packages =
   let open Current.Syntax in
-  let version = Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest in
+  let version =
+    Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest
+  in
   let+ tag = Image.peek version in
   Spec.make tag
 
@@ -128,25 +145,28 @@ let network = [ "host" ]
 let docs_cache_folder = "/home/opam/docs-cache/"
 let cache = [ Obuilder_spec.Cache.v ~target:docs_cache_folder "ci-docs" ]
 
-(** Obuilder operation to locally pull the selected folders. The [digests] option
-is used to invalidate the operation if the expected value changes. *)
+(** Obuilder operation to locally pull the selected folders. The [digests]
+    option is used to invalidate the operation if the expected value changes. *)
 let rsync_pull ~ssh ?(digest = "") folders =
   let sources =
     List.map
       (fun folder ->
-        Fmt.str "%s:%s/./%a" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) Fpath.pp folder)
+        Fmt.str "%s:%s/./%a" (Config.Ssh.host ssh)
+          (Config.Ssh.storage_folder ssh)
+          Fpath.pp folder)
       folders
     |> String.concat " "
   in
   let cache_sources =
-    List.map (Fmt.str "%s./%a" docs_cache_folder Fpath.pp) folders |> String.concat " "
+    List.map (Fmt.str "%s./%a" docs_cache_folder Fpath.pp) folders
+    |> String.concat " "
   in
   match folders with
   | [] -> Obuilder_spec.comment "no sources to pull"
   | _ ->
       Obuilder_spec.run ~secrets:Config.Ssh.secrets ~cache ~network
-        "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'" sources
-        docs_cache_folder cache_sources digest
+        "rsync --delete -avzR %s %s  && rsync -aR %s ./ && echo 'pulled: %s'"
+        sources docs_cache_folder cache_sources digest
 
 module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
   module Adaptor = struct
@@ -176,17 +196,20 @@ let profile =
   | Some "docker" -> `Docker
   | Some x -> Fmt.failwith "Unknown $PROFILE setting %S" x
 
-let to_obuilder_job build_spec = Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish)
+let to_obuilder_job build_spec =
+  Fmt.to_to_string Obuilder_spec.pp (build_spec |> Spec.finish)
 
 let to_docker_job build_spec =
   let spec_str =
-    Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true ~os:`Unix (build_spec |> Spec.finish)
+    Obuilder_spec.Docker.dockerfile_of_spec ~buildkit:true ~os:`Unix
+      (build_spec |> Spec.finish)
   in
   `Contents spec_str
 
 let to_ocluster_submission spec =
   match profile with
-  | `Production | `Dev -> to_obuilder_job spec |> Cluster_api.Submission.obuilder_build
+  | `Production | `Dev ->
+      to_obuilder_job spec |> Cluster_api.Submission.obuilder_build
   | `Docker -> to_docker_job spec |> Cluster_api.Submission.docker_build
 
 let fold_logs build_job fn =
@@ -198,7 +221,8 @@ let fold_logs build_job fn =
         let prev_line = match e with [] -> "" | e :: _ -> e in
         let* logs = Cluster_api.Job.log build_job start in
         match (logs, prev_line) with
-        | Error (`Capnp e), _ -> Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
+        | Error (`Capnp e), _ ->
+            Lwt.return @@ Fmt.error_msg "%a" Capnp_rpc.Error.pp e
         | Ok ("", _), "" -> Lwt_result.return acc
         | Ok ("", _), last_line -> aux start [ last_line; "" ] acc
         | Ok (data, next), prev_line ->
@@ -213,8 +237,8 @@ let fold_logs build_job fn =
 let tar_cmd folder =
   let f = Fpath.to_string folder in
   Fmt.str
-    "shopt -s nullglob && ((tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar %s/content.tar) || \
-     (echo 'Empty directory'))"
+    "shopt -s nullglob && ((tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar \
+     %s/content.tar) || (echo 'Empty directory'))"
     f f f f f
 
 module Cmd = struct
@@ -224,4 +248,3 @@ module Cmd = struct
     let open Fmt in
     to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
 end
-

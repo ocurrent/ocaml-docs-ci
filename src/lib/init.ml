@@ -5,7 +5,10 @@ let override = false
 let ssh_run_prefix ssh =
   let remote = Ssh.user ssh ^ "@" ^ Ssh.host ssh in
   Bos.Cmd.(
-    v "ssh" % "-o" % "StrictHostKeyChecking=no" % "-p"
+    v "ssh"
+    % "-o"
+    % "StrictHostKeyChecking=no"
+    % "-p"
     % (Ssh.port ssh |> string_of_int)
     % "-i"
     % p (Ssh.priv_key_file ssh)
