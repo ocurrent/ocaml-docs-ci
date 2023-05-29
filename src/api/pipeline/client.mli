@@ -5,6 +5,7 @@ module Build_status : sig
 
   val pp : t Fmt.t
   val to_string : t -> string
+  val color : t -> Fmt.style
 end
 
 module State : sig

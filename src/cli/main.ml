@@ -24,10 +24,8 @@ let import_ci_ref ~vat = function
 let pp_project_info f (pi : Pipeline_api.Raw.Reader.ProjectInfo.t) =
   Fmt.pf f "%s" (Pipeline_api.Raw.Reader.ProjectInfo.name_get pi)
 
-(* let pp_project_build_status f
-     (ps : Pipeline_api.Raw.Reader.ProjectBuildStatus.t) =
-   Client.Build_status.pp f
-   @@ Pipeline_api.Raw.Reader.ProjectBuildStatus.status_get ps *)
+let pp_project_build_status f (ps : Client.Build_status.t) =
+  Client.Build_status.pp f ps
 
 let list_projects ci =
   Client.Pipeline.projects ci
@@ -38,32 +36,21 @@ let list_projects ci =
            Fmt.(list pp_project_info)
            orgs
 
-(* let show_status ci project_name project_version =
-   Client.Pipeline.status ci project_name project_version
-   |> Lwt_result.map @@ fun status ->
-      Fmt.pr "@[<v> @,@,%a@]@." pp_project_build_status status *)
-
-(* let list_versions project_name project =
-   Printf.printf "\n";
-   Client.Project.versions project ()
-   |> Lwt_result.map (fun list ->
-          let project_version f ({ version } : Client.Project.project_version) =
-            Fmt.pf f "%s/%s" project_name version
-          in
-          Fmt.pr "%a." Fmt.(list project_version) list) *)
-
 let list_versions_status project_name project =
-  Printf.printf "\n";
-  Fmt.pr "%s" project_name;
+  Fmt.pr "@[<v>%s@,@]@." "";
+  Fmt.pr "@[<v>Project: %s@]@." project_name;
+
+  Fmt.pr "@[<hov>Version/Status: @,";
   Client.Project.status project
   |> Lwt_result.map (fun list ->
          let project_status f
              ({ version; status } : Client.Project.project_status) =
-           Fmt.pf f "%s/%s"
+           Ocolor_format.prettify_formatter f;
+           Fmt.pf f "@[%s/%a@] "
              (OpamPackage.Version.to_string version)
-             (Client.Build_status.to_string status)
+             pp_project_build_status status
          in
-         Fmt.pr "%a." Fmt.(list project_status) list)
+         Fmt.pr "%a@]@." Fmt.(list project_status) list)
 
 let main ~ci_uri ~project_name ~project_version =
   let vat = Capnp_rpc_unix.client_only_vat () in
@@ -97,34 +84,16 @@ let cap =
   @@ Arg.opt Arg.(some Capnp_rpc_unix.sturdy_uri) None
   @@ Arg.info ~doc:"The ocaml-docs-ci.cap file." ~docv:"CAP" [ "ci-cap" ]
 
-(* fixed position argument *)
 let project_name =
   Arg.value
   @@ Arg.opt Arg.(some string) None
   @@ Arg.info ~doc:"The Opam Project name." ~docv:"PROJECT" [ "project"; "p" ]
 
-(* optional argument *)
 let project_version =
   Arg.value
   @@ Arg.opt Arg.(some string) None
   @@ Arg.info ~doc:"The Opam Project version." ~docv:"VERSION"
        [ "version"; "n" ]
-
-(* let cmd =
-   let doc = "Client for ocaml-docs-ci" in
-   let main () ci_uri project_name project_version =
-     match Lwt_main.run (main ~ci_uri ~project_name ~project_version) with
-     | Ok () -> ()
-     | Error (`Capnp ex) ->
-         Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
-         exit 1
-     | Error (`Msg m) ->
-         Fmt.epr "%s@." m;
-         exit 1
-   in
-   let info = Cmd.info "ocaml-docs-ci" ~doc in
-   Cmd.v info
-     Term.(const main $ setup_log $ cap $ project_name $ project_version) *)
 
 type statuscmd_conf = {
   cap : Uri.t option;
@@ -171,12 +140,7 @@ let root_doc = "[some headline for the main command]"
 let root_man =
   [ `S Manpage.s_description; `P "[multiline overview of the main command]" ]
 
-(*
-   Use the built-in action consisting of displaying the help page.
-*)
-(* let root_term = Term.ret (Term.const (`Help (`Pager, None))) *)
 let root_info = Cmd.info "ocaml-docs-ci-client" ~doc:root_doc ~man:root_man
-(* let root = Cmd.v root_info root_term *)
 let subcommands run = [ statuscmd run ]
 
 let parse_command_line_and_run (run : cmd_conf -> unit) =
