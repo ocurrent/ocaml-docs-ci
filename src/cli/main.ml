@@ -95,35 +95,55 @@ let project_version =
   @@ Arg.info ~doc:"The Opam Project version." ~docv:"VERSION"
        [ "version"; "n" ]
 
+let dry_run =
+  let info = Arg.info [ "dry-run" ] ~doc:"Dry run (without effect)." in
+  Arg.value (Arg.flag info)
+
 type statuscmd_conf = {
   cap : Uri.t option;
   project_name : string option;
   project_version : string option;
+  dry_run : bool;
 }
 
 type cmd_conf = Status of statuscmd_conf
 
 let run cmd_conf =
   match cmd_conf with
-  | Status statuscmd_conf ->
-      let main () ci_uri project_name project_version =
-        match Lwt_main.run (main ~ci_uri ~project_name ~project_version) with
-        | Ok () -> ()
-        | Error (`Capnp ex) ->
-            Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
-            exit 1
-        | Error (`Msg m) ->
-            Fmt.epr "%s@." m;
-            exit 1
-      in
-      main () statuscmd_conf.cap statuscmd_conf.project_name
-        statuscmd_conf.project_version
+  | Status statuscmd_conf -> (
+      match statuscmd_conf.dry_run with
+      | true ->
+          Fmt.pr
+            "@[<hov>@,\
+            \ DRY RUN -- subcommand:status cap_file: %s project_name: %s \
+             project_version: %s@,\
+             @]@."
+            (Option.value ~default:"-"
+               (Option.map Uri.to_string statuscmd_conf.cap))
+            (Option.value ~default:"-" statuscmd_conf.project_name)
+            (Option.value ~default:"-" statuscmd_conf.project_version)
+      | false ->
+          let main () ci_uri project_name project_version =
+            match
+              Lwt_main.run (main ~ci_uri ~project_name ~project_version)
+            with
+            | Ok () -> ()
+            | Error (`Capnp ex) ->
+                Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
+                exit 1
+            | Error (`Msg m) ->
+                Fmt.epr "%s@." m;
+                exit 1
+          in
+          main () statuscmd_conf.cap statuscmd_conf.project_name
+            statuscmd_conf.project_version)
 
 let statuscmd_term run =
-  let combine () cap project_name project_version =
-    Status { cap; project_name; project_version } |> run
+  let combine () dry_run cap project_name project_version =
+    Status { dry_run; cap; project_name; project_version } |> run
   in
-  Term.(const combine $ setup_log $ cap $ project_name $ project_version)
+  Term.(
+    const combine $ setup_log $ dry_run $ cap $ project_name $ project_version)
 
 let statuscmd_doc = "Build status of a project."
 
