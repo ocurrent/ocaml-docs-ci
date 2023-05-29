@@ -125,20 +125,23 @@ let statuscmd_term run =
   in
   Term.(const combine $ setup_log $ cap $ project_name $ project_version)
 
-let statuscmd_doc = "[Some headline for status]"
+let statuscmd_doc = "Build status of a project."
 
 let statuscmd_man =
-  [ `S Manpage.s_description; `P "[multiline overview of statuscmd]" ]
+  [
+    `S Manpage.s_description;
+    `P "Lookup the build status of the versions of a project.";
+  ]
 
 let statuscmd run =
   let info = Cmd.info "status" ~doc:statuscmd_doc ~man:statuscmd_man in
   Cmd.v info (statuscmd_term run)
 (*** Putting together the main command ***)
 
-let root_doc = "[some headline for the main command]"
+let root_doc = "Cli client for ocaml-docs-ci."
 
 let root_man =
-  [ `S Manpage.s_description; `P "[multiline overview of the main command]" ]
+  [ `S Manpage.s_description; `P "Command line client for ocaml-docs-ci." ]
 
 let root_info = Cmd.info "ocaml-docs-ci-client" ~doc:root_doc ~man:root_man
 let subcommands run = [ statuscmd run ]
