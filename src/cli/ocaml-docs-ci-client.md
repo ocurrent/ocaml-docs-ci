@@ -8,6 +8,7 @@ $ dune install ocaml-docs-ci-client
 [1]
 ```
 
+<!-- $MDX non-deterministic=output -->
 ```sh
 $ ocaml-docs-ci-client status --dry-run --ci-cap="capnp://sha-256:lsLPZ6Q4jYcTxiitvBg02B3xfds7KwwJ4FIptUe2qew@localhost:9080/BuaVTt00ZvXq83VUGrCD2I_qw-e9POjLoGmgHfxMtGI" --project="fmt" --version="0.9.0"
 

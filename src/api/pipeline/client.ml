@@ -10,15 +10,6 @@ module Build_status = struct
     | Pending -> Fmt.pf f "@{<yellow>pending@}"
     | Undefined x -> Fmt.pf f "unknown:%d" x
 
-  let to_string = function
-    | NotStarted -> "not started"
-    | Failed -> "failed"
-    | Passed -> "passed"
-    | Pending -> "pending"
-    | Undefined _ -> "unknown"
-
-  open Fmt
-
   let color = function
     | NotStarted -> `None
     | Failed -> `Fg `Red
@@ -28,8 +19,6 @@ module Build_status = struct
 end
 
 module State = struct
-  open Raw.Reader.JobInfo.State
-
   type t =
     | Aborted
     | Failed of string

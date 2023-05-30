@@ -60,4 +60,5 @@
   (capnp-rpc-unix (>= 1.2))
   dockerfile
   (mdx :with-test)
+  ocaml-docs-ci
   (timedesc (>= 0.9.0))))

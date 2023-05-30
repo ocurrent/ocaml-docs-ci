@@ -13,8 +13,6 @@ type t = {
   mutable trees : pipeline_tree Package.Map.t;
 }
 
-let ( let* ) = Result.bind
-let ( let+ ) a f = Result.map f a
 let get_blessing t = t.blessing
 
 let make () =
@@ -186,11 +184,6 @@ let lookup_failed_pending t =
   |> List.filter (fun (_, st) -> st != Done)
   |> List.partition (fun (_, st) -> st == Failed)
 
-let lookup_solve_failures t name =
-  let ( >>= ) = Option.bind in
-  OpamPackage.of_string_opt name >>= fun opam_package ->
-  OpamPackage.Map.find_opt opam_package t.solve_failures
-
 let render_link (pkg, _) =
   let open Tyxml_html in
   let name = OpamPackage.to_string pkg in
@@ -272,20 +265,6 @@ let render_package_root t =
     h1 [ txt "Solver failures" ];
     ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures));
   ]
-
-let find_in_results
-    (l : (OpamPackage.Name.t * (OpamPackage.Version.t * state) list) list)
-    (name : string) (version : string) =
-  match List.find_opt (fun (n, _) -> n = OpamPackage.Name.of_string name) l with
-  | None -> false
-  | Some (_, versions) -> (
-      match
-        List.find_opt
-          (fun (v, _) -> v = OpamPackage.Version.of_string version)
-          versions
-      with
-      | None -> false
-      | Some _ -> true)
 
 let filter_by_name (name : string) :
     (OpamPackage.Name.t * 's) list -> (OpamPackage.Name.t * 's) list =
