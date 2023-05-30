@@ -36,13 +36,23 @@ let list_projects ci =
            Fmt.(list pp_project_info)
            orgs
 
-let list_versions_status project_name project =
+let list_versions_status project_name ?(version = None) project =
+  let version = Option.map OpamPackage.Version.of_string version in
   Fmt.pr "@[<v>%s@,@]@." "";
   Fmt.pr "@[<v>Project: %s@]@." project_name;
 
   Fmt.pr "@[<hov>Version/Status: @,";
   Client.Project.status project
-  |> Lwt_result.map (fun list ->
+  |> Lwt_result.map (fun list' ->
+         let list =
+           match version with
+           | None -> list'
+           | Some version' ->
+               List.filter
+                 (fun ({ version; _ } : Client.Project.project_status) ->
+                   version = version')
+                 list'
+         in
          let project_status f
              ({ version; status } : Client.Project.project_status) =
            Ocolor_format.prettify_formatter f;
@@ -60,13 +70,10 @@ let main ~ci_uri ~project_name ~project_version =
       Sturdy_ref.connect_exn sr >>= fun ci ->
       match project_name with
       | None -> list_projects ci
-      | Some project_name -> (
-          match project_version with
-          | None ->
-              with_ref
-                (Client.Pipeline.project ci project_name)
-                (list_versions_status project_name)
-          | Some _version -> Lwt_result.fail (`Msg "unimplemented")))
+      | Some project_name ->
+          with_ref
+            (Client.Pipeline.project ci project_name)
+            (list_versions_status project_name ~version:project_version))
 
 (* Command-line parsing *)
 
