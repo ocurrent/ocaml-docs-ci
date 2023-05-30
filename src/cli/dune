@@ -11,3 +11,7 @@
   fmt.cli
   fmt.tty
   timedesc))
+
+(mdx
+ (files ocaml-docs-ci-client.md)
+ (package ocaml-docs-ci-client))

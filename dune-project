@@ -1,5 +1,7 @@
 (lang dune 3.6)
 
+(using mdx 0.3)
+
 (name ocaml-docs-ci)
 (generate_opam_files true)
 
@@ -57,4 +59,5 @@
   current_rpc
   (capnp-rpc-unix (>= 1.2))
   dockerfile
+  (mdx :with-test)
   (timedesc (>= 0.9.0))))

@@ -13,6 +13,7 @@ depends: [
   "current_rpc"
   "capnp-rpc-unix" {>= "1.2"}
   "dockerfile"
+  "mdx" {with-test}
   "timedesc" {>= "0.9.0"}
   "odoc" {with-doc}
 ]
