@@ -254,6 +254,12 @@ module Compile = struct
           (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
           false retry_on
       in
+      let escape_on_success log_line =
+        let escape_on = [ "Job succeeded" ] in
+        List.fold_left
+          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
+          false escape_on
+      in
       (* some early stopping could be done here *)
       let compile =
         Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile
@@ -262,6 +268,8 @@ module Compile = struct
         Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked
       in
       if retry_conditions line then ((compile, linked), line :: retriable_errors)
+      else if escape_on_success line then ((compile, linked), [])
+        (* ignore retriable errors if the job has succeeded *)
       else ((compile, linked), retriable_errors)
     in
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
