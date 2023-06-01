@@ -171,6 +171,38 @@ let spec_failure ~ssh ~base ~voodoo ~blessing ~generation prep =
 
 let or_default a = function None -> a | b -> b
 
+let extract_hashes ((v_compile, v_linked), retriable_errors) line =
+  let retry_conditions log_line =
+    let retry_on =
+      [
+        "Temporary failure";
+        "Could not resolve host";
+        "rsync: connection unexpectedly closed";
+      ]
+    in
+    List.fold_left
+      (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
+      false retry_on
+  in
+  let escape_on_success log_line =
+    let escape_on = [ "Job succeeded" ] in
+    List.fold_left
+      (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
+      false escape_on
+  in
+  (* some early stopping could be done here *)
+  let compile =
+    Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile
+  in
+  let linked =
+    Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked
+  in
+  if escape_on_success line then ((compile, linked), [])
+    (* ignore retriable errors if the job has succeeded *)
+  else if retry_conditions line then
+    ((compile, linked), line :: retriable_errors)
+  else ((compile, linked), retriable_errors)
+
 module Compile = struct
   type output = t
   type t = { generation : Epoch.t }
@@ -241,37 +273,7 @@ module Compile = struct
       Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job
     in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    let extract_hashes ((v_compile, v_linked), retriable_errors) line =
-      let retry_conditions log_line =
-        let retry_on =
-          [
-            "Temporary failure";
-            "Could not resolve host";
-            "rsync: connection unexpectedly closed";
-          ]
-        in
-        List.fold_left
-          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
-          false retry_on
-      in
-      let escape_on_success log_line =
-        let escape_on = [ "Job succeeded" ] in
-        List.fold_left
-          (fun acc str -> acc || Astring.String.is_infix ~affix:str log_line)
-          false escape_on
-      in
-      (* some early stopping could be done here *)
-      let compile =
-        Storage.parse_hash ~prefix:"COMPILE" line |> or_default v_compile
-      in
-      let linked =
-        Storage.parse_hash ~prefix:"LINKED" line |> or_default v_linked
-      in
-      if retry_conditions line then ((compile, linked), line :: retriable_errors)
-      else if escape_on_success line then ((compile, linked), [])
-        (* ignore retriable errors if the job has succeeded *)
-      else ((compile, linked), retriable_errors)
-    in
+
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let fn () =
       let** _ = Current_ocluster.Connection.run_job ~job build_job in

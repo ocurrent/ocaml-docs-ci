@@ -20,6 +20,12 @@ val blessing : t -> Package.Blessing.t
 val package : t -> Package.t
 (** The compiled package *)
 
+val extract_hashes :
+  (Storage.id_hash option * Storage.id_hash option) * string list ->
+  string ->
+  (Storage.id_hash option * Storage.id_hash option) * string list
+(** Function used to parse log lines *)
+
 val v :
   generation:Epoch.t Current.t ->
   config:Config.t ->

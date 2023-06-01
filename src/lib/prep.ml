@@ -229,10 +229,10 @@ module Prep = struct
       match Storage.parse_hash ~prefix:"HASHES" line with
       | Some value -> ((value :: git_hashes, failed), retriable_errors)
       | None -> (
-          if retry_conditions line then
-            ((git_hashes, failed), line :: retriable_errors)
-          else if escape_on_success line then ((git_hashes, failed), [])
+          if escape_on_success line then ((git_hashes, failed), [])
             (* ignore retriable errors if the job has succeeded *)
+          else if retry_conditions line then
+            ((git_hashes, failed), line :: retriable_errors)
           else
             match String.split_on_char ':' line with
             | [ prev; branch ]
