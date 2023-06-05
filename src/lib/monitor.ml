@@ -6,6 +6,24 @@ type pipeline_tree =
 
 type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
 
+type step_type =
+  | Prep
+  | DepCompilePrep
+  | DepCompileCompile
+  | Compile
+  | BuildHtml
+
+type job_id = { t : string }
+type step_info = { t : step_type; job_id : job_id }
+type state = Done | Running | Failed
+type step_build_status = { step : step_info; status : state }
+type package_name = { t : OpamPackage.Name.t }
+type package_build_status = { version : OpamPackage.Version.t; status : state }
+
+let opam_package_from_name name =
+  OpamPackage.of_string_opt name
+  |> Option.to_result ~none:"invalid package name"
+
 type t = {
   mutable solve_failures : string OpamPackage.Map.t;
   mutable preps : preps;
@@ -95,18 +113,8 @@ let get_opam_package_info t opam_package =
       let blessed_pipeline = Package.Map.find blessed_package t.trees in
       blessed_pipeline
 
-let get_package_info t name =
-  let* opam_package =
-    OpamPackage.of_string_opt name
-    |> Option.to_result ~none:"invalid package name"
-  in
-  get_opam_package_info t opam_package
-
-let render_package_state t name =
-  let* opam_package =
-    OpamPackage.of_string_opt name
-    |> Option.to_result ~none:"invalid package name"
-  in
+let render_package_state t opam_package =
+  let name = OpamPackage.name_to_string opam_package in
   match OpamPackage.Map.find_opt opam_package t.solve_failures with
   | Some reason ->
       let open Tyxml_html in
@@ -132,15 +140,18 @@ let handle t ~engine:_ str =
 
     method! private get context =
       let response =
-        match render_package_state t str with
-        | Ok page -> page
+        let package = opam_package_from_name str in
+        match package with
         | Error msg ->
             Tyxml_html.[ txt "An error occured:"; br (); i [ txt msg ] ]
+        | Ok package ->
+          match render_package_state t package with
+          | Ok page -> page
+          | Error msg ->
+              Tyxml_html.[ txt "An error occured:"; br (); i [ txt msg ] ]
       in
       Current_web.Context.respond_ok context response
   end
-
-type state = Done | Running | Failed
 
 let max a b =
   match (a, b) with
@@ -161,9 +172,9 @@ let rec pipeline_state = function
   | Seq lst | And lst | Or lst ->
       List.fold_left (fun acc (_, v) -> max (pipeline_state v) acc) Done lst
 
-let opam_package_state t name =
+let opam_package_state t opam_package =
   match
-    let+ blessed_pipeline = get_package_info t name in
+    let+ blessed_pipeline = get_opam_package_info t opam_package in
     pipeline_state blessed_pipeline
   with
   | Ok v -> v
@@ -175,12 +186,12 @@ let lookup_known_projects t =
 
 let lookup_done t =
   OpamPackage.Map.keys t.blessing
-  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> List.map (fun k -> (k, opam_package_state t k))
   |> List.filter (fun (_, st) -> st = Done)
 
 let lookup_failed_pending t =
   OpamPackage.Map.keys t.blessing
-  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> List.map (fun k -> (k, opam_package_state t k))
   |> List.filter (fun (_, st) -> st != Done)
   |> List.partition (fun (_, st) -> st == Failed)
 
@@ -236,7 +247,7 @@ let max_version versions =
 
 let map_versions t =
   OpamPackage.Map.keys t.blessing
-  |> List.map (fun k -> (k, opam_package_state t (OpamPackage.to_string k)))
+  |> List.map (fun k -> (k, opam_package_state t k))
   |> group_by_pkg
 
 let map_max_versions t = map_versions t |> OpamPackage.Name.Map.map max_version
