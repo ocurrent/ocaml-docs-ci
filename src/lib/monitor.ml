@@ -1,3 +1,11 @@
+(*TODO: Cut over pipeline_tree's strings to use step_type *)
+(* type step_type =
+   | Prep
+   | DepCompilePrep of OpamPackage.t
+   | DepCompileCompile of OpamPackage.t
+   | Compile
+   | BuildHtml *)
+
 type pipeline_tree =
   | Item : 'a Current.t -> pipeline_tree
   | Seq of (string * pipeline_tree) list
@@ -5,22 +13,33 @@ type pipeline_tree =
   | Or of (string * pipeline_tree) list
 
 type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
+type state = Done | Running | Failed [@@deriving show, eq]
+type step_status = Err of string | Active | Blocked | OK [@@deriving show, eq]
 
-type step_type =
-  | Prep
-  | DepCompilePrep
-  | DepCompileCompile
-  | Compile
-  | BuildHtml
+type step = { typ : string; job_id : string option; status : step_status }
+[@@deriving show, eq]
 
-type job_id = { t : string }
-type step_info = { t : step_type; job_id : job_id }
-type state = Done | Running | Failed
-type step_build_status = { step : step_info; status : state }
-type package_name = { t : OpamPackage.Name.t }
 type package_build_status = { version : OpamPackage.Version.t; status : state }
 
-let opam_package_from_name name =
+type package_steps = {
+  package : OpamPackage.t;
+  status : state;
+  steps : step list;
+}
+[@@deriving eq]
+
+let pp_package ppf r =
+  Format.fprintf ppf "%s.%s"
+    (OpamPackage.name_to_string r)
+    (OpamPackage.version_to_string r)
+
+let pp_package_steps ppf r =
+  Format.fprintf ppf "{@ package:@ %a;@ status:@ %a;@ steps:@ @[%a@]@ }"
+    pp_package r.package pp_state r.status
+    (Format.pp_print_list pp_step)
+    r.steps
+
+let opam_package_from_string name =
   OpamPackage.of_string_opt name
   |> Option.to_result ~none:"invalid package name"
 
@@ -32,6 +51,7 @@ type t = {
 }
 
 let get_blessing t = t.blessing
+let get_solve_failures t = t.solve_failures
 
 let make () =
   {
@@ -113,6 +133,39 @@ let get_opam_package_info t opam_package =
       let blessed_pipeline = Package.Map.find blessed_package t.trees in
       blessed_pipeline
 
+let rec to_steps description arr = function
+  | Item current ->
+      let status : step_status =
+        match Current.observe current with
+        | Error (`Msg msg) -> Err msg
+        | Error (`Active _) -> Active
+        | Error `Blocked -> Blocked
+        | Ok _ -> OK
+      in
+      let job_id =
+        try
+          Current.Analysis.metadata current
+          |> Current.observe
+          |> Result.to_option
+          |> Option.join
+          |> function
+          | Some { job_id = Some job_id; _ } -> Some job_id
+          | _ -> None
+        with Failure _ -> None
+      in
+      { typ = description; job_id; status } :: arr
+  | Seq items | And items | Or items ->
+      let f name = Fmt.str "%s" name in
+      let f_colon name = ":" ^ Fmt.str "%s" name in
+      List.map
+        (fun (name, item) ->
+          to_steps
+            (if description = "" then description ^ f name
+             else description ^ f_colon name)
+            arr item)
+        items
+      |> List.flatten
+
 let render_package_state t opam_package =
   let name = OpamPackage.name_to_string opam_package in
   match OpamPackage.Map.find_opt opam_package t.solve_failures with
@@ -140,15 +193,15 @@ let handle t ~engine:_ str =
 
     method! private get context =
       let response =
-        let package = opam_package_from_name str in
+        let package = opam_package_from_string str in
         match package with
         | Error msg ->
             Tyxml_html.[ txt "An error occured:"; br (); i [ txt msg ] ]
-        | Ok package ->
-          match render_package_state t package with
-          | Ok page -> page
-          | Error msg ->
-              Tyxml_html.[ txt "An error occured:"; br (); i [ txt msg ] ]
+        | Ok package -> (
+            match render_package_state t package with
+            | Ok page -> page
+            | Error msg ->
+                Tyxml_html.[ txt "An error occured:"; br (); i [ txt msg ] ])
       in
       Current_web.Context.respond_ok context response
   end
@@ -194,6 +247,9 @@ let lookup_failed_pending t =
   |> List.map (fun k -> (k, opam_package_state t k))
   |> List.filter (fun (_, st) -> st != Done)
   |> List.partition (fun (_, st) -> st == Failed)
+
+let lookup_solve_failures t =
+  OpamPackage.Map.keys t.solve_failures |> List.map (fun k -> (k, Failed))
 
 let render_link (pkg, _) =
   let open Tyxml_html in
@@ -284,8 +340,11 @@ let filter_by_name (name : string) :
 
 let lookup_status t ~name =
   let blessings = get_blessing t |> OpamPackage.Map.keys in
+  let solve_failures = get_solve_failures t |> OpamPackage.Map.keys in
   let known_projects =
-    List.map (fun blessing -> OpamPackage.name_to_string blessing) blessings
+    List.map
+      (fun package -> OpamPackage.to_string package)
+      (blessings @ solve_failures)
   in
   if not (List.exists (fun x -> x = name) known_projects) then []
     (* we don't know this project *)
@@ -297,11 +356,11 @@ let lookup_status t ~name =
              (OpamPackage.name package, (OpamPackage.version package, s)))
       |> filter_by_name name
       |> List.map (fun (package_name, (package_version, _)) ->
-             ( OpamPackage.Name.to_string package_name,
-               OpamPackage.Version.to_string package_version,
-               Done ))
+             (package_name, package_version, Done))
     in
-    let failed, pending = lookup_failed_pending t in
+    let failed', pending = lookup_failed_pending t in
+    let solve_failures = lookup_solve_failures t in
+    let failed = solve_failures @ failed' in
     let failed_packages =
       group_by_pkg failed
       |> OpamPackage.Name.Map.bindings
@@ -309,9 +368,7 @@ let lookup_status t ~name =
       |> List.map (fun (package_name, l) ->
              List.map
                (fun (package_version, _) ->
-                 ( OpamPackage.Name.to_string package_name,
-                   OpamPackage.Version.to_string package_version,
-                   Failed ))
+                 (package_name, package_version, Failed))
                l)
       |> List.flatten
     in
@@ -322,13 +379,55 @@ let lookup_status t ~name =
       |> List.map (fun (package_name, l) ->
              List.map
                (fun (package_version, _) ->
-                 ( OpamPackage.Name.to_string package_name,
-                   OpamPackage.Version.to_string package_version,
-                   Running ))
+                 (package_name, package_version, Running))
                l)
       |> List.flatten
     in
     List.concat [ passed_packages; failed_packages; pending_packages ]
+
+let lookup_status' t package : state =
+  let statuses = lookup_status t ~name:(OpamPackage.to_string package) in
+  let x =
+    List.find_opt
+      (fun (_, version, _) -> version = OpamPackage.version package)
+      statuses
+  in
+  match x with None -> Running | Some (_, _, s) -> s
+
+(* val lookup_steps : t -> name:string -> (package_steps list, string) result *)
+let lookup_steps' t (package : OpamPackage.t) =
+  let status = lookup_status' t package in
+  let package_pipeline_tree = get_opam_package_info t package in
+  let steps = Result.map (fun p -> to_steps "" [] p) package_pipeline_tree in
+  Result.map (fun s -> { package; status; steps = s }) steps
+
+let lookup_steps t ~name =
+  let blessings = get_blessing t |> OpamPackage.Map.keys in
+  let solve_failures = get_solve_failures t |> OpamPackage.Map.keys in
+  let packages =
+    List.filter
+      (fun package -> OpamPackage.to_string package = name)
+      (blessings @ solve_failures)
+  in
+  List.iter (fun p -> Printf.printf "%s" (OpamPackage.to_string p)) blessings;
+  if List.length packages = 0 then
+    Error (Fmt.str "no packages found with name: %s" name)
+  else
+    let r : (package_steps, string) result list =
+      List.map (fun package -> lookup_steps' t package) packages
+    in
+
+    let errors, oks = List.partition Result.is_error r in
+
+    if List.length errors > 0 then
+      let list_errors = List.map Result.get_error errors in
+      Error
+        (List.fold_left
+           (fun acc s -> if acc = "" then acc ^ s else acc ^ " " ^ s)
+           "" list_errors)
+    else
+      let list_packages = List.map Result.get_ok oks in
+      Ok list_packages
 
 let handle_root t ~engine:_ =
   object

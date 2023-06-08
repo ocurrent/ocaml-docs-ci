@@ -41,7 +41,7 @@ let make_project ~monitor project_name =
          |> List.iteri (fun i (_name, version, state) ->
                 let open Raw.Builder.ProjectBuildStatus in
                 let slot = Capnp.Array.get arr i in
-                version_set slot version;
+                version_set slot (OpamPackage.Version.to_string version);
                 match state with
                 | Monitor.Done -> status_set slot Passed
                 | Monitor.Failed -> status_set slot Failed
