@@ -4,7 +4,7 @@ module Build_status : sig
   type t = Raw.Reader.BuildStatus.t
 
   val pp : t Fmt.t
-  val to_string : t -> string
+  val color : t -> Fmt.style
 end
 
 module State : sig

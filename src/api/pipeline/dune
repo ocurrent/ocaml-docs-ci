@@ -5,6 +5,7 @@
   capnp-rpc-lwt
   opam-format
   current_rpc
+  ocolor
   ppx_deriving_yojson.runtime)
  (flags
   (:standard -w -53-55))

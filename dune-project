@@ -1,5 +1,7 @@
 (lang dune 3.6)
 
+(using mdx 0.3)
+
 (name ocaml-docs-ci)
 (generate_opam_files true)
 
@@ -41,7 +43,7 @@
   (ocaml-version (>= 3.6.1))
   (obuilder-spec (>= 0.5.1))
   (docker_hub (>= 0.1.1))
-
+  (ocolor (>= 1.3.0))
   (memtrace (>= 0.1.1)) ; required for memory profiling
   (alcotest (and (>= 1.7.0) :with-test))
   (alcotest-lwt (and (>= 1.7.0) :with-test))
@@ -57,4 +59,6 @@
   current_rpc
   (capnp-rpc-unix (>= 1.2))
   dockerfile
+  (mdx :with-test)
+  ocaml-docs-ci
   (timedesc (>= 0.9.0))))
