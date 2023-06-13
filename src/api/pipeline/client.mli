@@ -20,32 +20,43 @@ module State : sig
   val from_build_status : Build_status.t -> t
 end
 
-module Project : sig
-  type t = Raw.Client.Project.t Capability.t
-  type project_version = { version : OpamPackage.Version.t }
+module Package : sig
+  type t = Raw.Client.Package.t Capability.t
+  type package_version = { version : OpamPackage.Version.t }
 
-  type project_status = {
+  type package_status = {
     version : OpamPackage.Version.t;
     status : Build_status.t;
   }
 
-  val versions :
-    t -> (project_version list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+  type step = {
+    typ : string;
+    job_id : string option;
+    status : Build_status.t;
+  }
 
-  val status :
-    Raw.Client.Project.t Capability.t ->
-    (project_status list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+  (* type package_steps = {
+    status: Build_status.t;
+    steps : step list;
+  } *)
+
+  val versions :
+    t -> (package_status list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+
+  val steps :
+    t ->
+    (step list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 end
 
 module Pipeline : sig
   type t = Raw.Client.Pipeline.t Capability.t
   (** The top level object for ocaml-docs-ci. *)
 
-  val project : t -> string -> Raw.Reader.Project.t Capability.t
+  val package : t -> string -> Raw.Reader.Package.t Capability.t
 
-  val projects :
+  val packages :
     t ->
-    ( Raw.Reader.ProjectInfo.t list,
+    ( Raw.Reader.PackageInfo.t list,
       [> `Capnp of Capnp_rpc.Error.t ] )
     Lwt_result.t
 end

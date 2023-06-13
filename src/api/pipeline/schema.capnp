@@ -85,27 +85,37 @@ struct Step {
   jobId @1 :Text;
 }
 
-struct ProjectVersion {
-  version @0 :Text;
+struct StepInfo {
+  type @0 :Text; # see if we can use StepType here.
+  # The job_id links a step to the job that reifies it.
+  jobId :union {
+    id @1 :Text;
+    none @2 :Void;
+  }
+  status @3 :BuildStatus;
+  stepPackage :union { # the (optional) package that the step refers to
+    name @4 :Text;
+    none @5 :Void;
+  }
 }
 
-struct ProjectInfo {
+struct PackageInfo {
   name @0 :Text;
 }
 
-struct ProjectBuildStatus {
+struct PackageBuildStatus {
   version @0: Text;
   status @1 :BuildStatus;
 }
 
-interface Project {
-  versions @0 () -> (versions :List(ProjectVersion));
+interface Package {
+  steps @0 (package_version :Text) -> (steps :List(StepInfo));
 
-  status @1 () -> (status :List(ProjectBuildStatus));
+  versions @1 () -> (versions :List(PackageBuildStatus));
 }
 
 interface Pipeline {
-  project @0 (project_name :Text) -> (project : Project);
+  package @0 (package_name :Text) -> (package : Package);
 
-  projects @1 () -> (projects :List(ProjectInfo));
+  packages @1 () -> (packages :List(PackageInfo));
 }

@@ -47,7 +47,7 @@ val map_versions :
   t -> (OpamPackage.Version.t * state) list OpamPackage.Name.Map.t
 (** Map of package name to versions *)
 
-val lookup_known_projects : t -> string list
+val lookup_known_packages : t -> string list
 (** Get a list of the names of known projects *)
 
 val lookup_status :

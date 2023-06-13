@@ -233,7 +233,7 @@ let opam_package_state t opam_package =
   | Ok v -> v
   | Error _ -> Failed
 
-let lookup_known_projects t =
+let lookup_known_packages t =
   let blessings = get_blessing t |> OpamPackage.Map.keys in
   List.map (fun blessing -> OpamPackage.name_to_string blessing) blessings
 
