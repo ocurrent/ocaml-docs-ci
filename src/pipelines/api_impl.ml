@@ -25,10 +25,15 @@ let make_package ~monitor package_name =
          | Some versions ->
              let arr = Results.versions_init results (List.length versions) in
              versions
-             |> List.iteri (fun i (version, _) ->
+             |> List.iteri (fun i (version, state) ->
                     let open Raw.Builder.PackageBuildStatus in
                     let slot = Capnp.Array.get arr i in
-                    version_set slot (OpamPackage.Version.to_string version));
+                    version_set slot (OpamPackage.Version.to_string version);
+                    match state with
+                    | Monitor.Done -> status_set slot Passed
+                    | Running -> status_set slot Pending
+                    | Failed -> status_set slot Failed);
+
              Service.return response
 
        method steps_impl params release_param_caps =
