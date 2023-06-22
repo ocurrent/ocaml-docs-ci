@@ -406,10 +406,9 @@ let lookup_steps t ~name =
   let solve_failures = get_solve_failures t |> OpamPackage.Map.keys in
   let packages =
     List.filter
-      (fun package -> OpamPackage.to_string package = name)
+      (fun package -> OpamPackage.name_to_string package = name)
       (blessings @ solve_failures)
   in
-  List.iter (fun p -> Printf.printf "%s" (OpamPackage.to_string p)) blessings;
   if List.length packages = 0 then
     Error (Fmt.str "no packages found with name: %s" name)
   else

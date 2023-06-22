@@ -16,6 +16,13 @@ module Build_status = struct
     | Passed -> `Fg `Green
     | Pending -> `Fg `Yellow
     | Undefined _ -> `None
+
+  let to_yojson = function
+    | NotStarted -> `String "not started"
+    | Failed -> `String "failed"
+    | Passed -> `String "passed"
+    | Pending -> `String "pending"
+    | Undefined _ -> `String "unknown"
 end
 
 module State = struct
@@ -53,6 +60,7 @@ module Package = struct
   }
 
   type step = { typ : string; job_id : string option; status : Build_status.t }
+  [@@deriving to_yojson]
 
   let versions t =
     let open Raw.Client.Package.Versions in
@@ -69,9 +77,10 @@ module Package = struct
                     status = Raw.Reader.PackageBuildStatus.status_get x;
                   }))
 
-  let steps t =
+  let steps t version =
     let open Raw.Client.Package.Steps in
-    let request = Capability.Request.create_no_args () in
+    let request, params = Capability.Request.create Params.init_pointer in
+    Params.package_version_set params version;
     Capability.call_for_value t method_id request
     |> Lwt_result.map (fun x ->
            x
@@ -88,21 +97,6 @@ module Package = struct
                     | Raw.Reader.StepInfo.JobId.Id s -> Some s
                   in
                   { typ; status; job_id }))
-
-  (* let status t =
-     let open Raw.Client.Package.Status in
-     let request = Capability.Request.create_no_args () in
-     Capability.call_for_value t method_id request
-     |> Lwt_result.map (fun x ->
-            x
-            |> Results.status_get_list
-            |> List.map (fun x ->
-                   {
-                     version =
-                       Raw.Reader.PackageBuildStatus.version_get x
-                       |> OpamPackage.Version.of_string;
-                     status = Raw.Reader.PackageBuildStatus.status_get x;
-                   })) *)
 end
 
 module Pipeline = struct

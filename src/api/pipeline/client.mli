@@ -29,23 +29,20 @@ module Package : sig
     status : Build_status.t;
   }
 
-  type step = {
-    typ : string;
-    job_id : string option;
-    status : Build_status.t;
-  }
+  type step = { typ : string; job_id : string option; status : Build_status.t }
 
   (* type package_steps = {
-    status: Build_status.t;
-    steps : step list;
-  } *)
+       status: Build_status.t;
+       steps : step list;
+     } *)
+
+  val step_to_yojson : step -> Yojson.Safe.t
 
   val versions :
     t -> (package_status list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 
   val steps :
-    t ->
-    (step list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+    t -> string -> (step list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 end
 
 module Pipeline : sig

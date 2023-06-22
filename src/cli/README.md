@@ -20,7 +20,7 @@
 
 `ocaml-docs-ci status --ci-cap <path to cap file> --job <job-id>` show the build status of a single job
 
-`ocaml-docs-ci logs --ci-cap <path to cap file> --job <job-id>` display logs for an individual job
+`ocaml-docs-ci logs --ci-cap <path to cap file> --job <job-id>` display logs for an individual job (with a URL)
 
 `ocaml-docs-ci rebuild --ci-cap <path to cap file> --job <job-id>` rebuild a specific job
 

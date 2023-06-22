@@ -41,7 +41,7 @@ let list_versions_status package_name ?(version = None) package =
   Fmt.pr "@[<v>%s@,@]@." "";
   Fmt.pr "@[<v>package: %s@]@." package_name;
 
-  Fmt.pr "@[<hov>Version/Status: @,";
+  Fmt.pr "@[<v>Version/Status: @,";
   Client.Package.versions package
   |> Lwt_result.map (fun list' ->
          let list =
@@ -62,13 +62,15 @@ let list_versions_status package_name ?(version = None) package =
          in
          Fmt.pr "%a@]@." Fmt.(list package_status) list)
 
-(* TODO: Use below to print out steps *)
-let render_list_text ~items ~render =
-  List.map
-    (fun (description, item) ->
-      Fmt.pr "@[<v>%s@]@." description;
-      render item)
-    items
+let list_steps (package_version : string) package =
+  Client.Package.steps package package_version
+  |> Lwt_result.map (fun (steps : Client.Package.step list) ->
+         Printf.printf "List steps: %d" (List.length steps);
+         List.map
+           (fun step ->
+             Fmt.pr "@[<v>%s@]@."
+               (step |> Client.Package.step_to_yojson |> Yojson.Safe.to_string))
+           steps)
 
 let main_status ~ci_uri ~package_name ~package_version =
   let vat = Capnp_rpc_unix.client_only_vat () in
@@ -83,10 +85,15 @@ let main_status ~ci_uri ~package_name ~package_version =
             (Client.Pipeline.package ci package_name)
             (list_versions_status package_name ~version:package_version))
 
-let main_list_steps ~ci_uri ~package =
-  ignore ci_uri;
-  ignore package;
-  Lwt.return @@ Error (`Msg "implement me")
+let main_list_steps ~ci_uri ~package_name ~package_version =
+  let vat = Capnp_rpc_unix.client_only_vat () in
+  match import_ci_ref ~vat ci_uri with
+  | Error _ as e -> Lwt.return e
+  | Ok sr ->
+      Sturdy_ref.connect_exn sr >>= fun ci ->
+      with_ref
+        (Client.Pipeline.package ci package_name)
+        (list_steps package_version)
 
 (* Command-line parsing *)
 
@@ -104,10 +111,10 @@ let cap =
   @@ Arg.opt Arg.(some Capnp_rpc_unix.sturdy_uri) None
   @@ Arg.info ~doc:"The ocaml-docs-ci.cap file." ~docv:"CAP" [ "ci-cap" ]
 
-let package_name =
+let package =
   Arg.value
   @@ Arg.opt Arg.(some string) None
-  @@ Arg.info ~doc:"The Opam package name." ~docv:"package" [ "package"; "p" ]
+  @@ Arg.info ~doc:"The Opam package." ~docv:"package" [ "package"; "p" ]
 
 let package_version =
   Arg.value
@@ -128,8 +135,8 @@ type statuscmd_conf = {
 
 type stepscmd_conf = {
   cap : Uri.t option;
-  package : string option;
-      (* string formatted as package_name.version - e.g. mirage.1.0.0 *)
+  package_name : string option;
+  package_version : string option;
   dry_run : bool;
 }
 
@@ -145,11 +152,14 @@ let run cmd_conf =
             \ DRY RUN -- subcommand:list-steps cap_file: %s package: %s @]@."
             (Option.value ~default:"-"
                (Option.map Uri.to_string stepscmd_conf.cap))
-            (Option.value ~default:"-" stepscmd_conf.package)
+            (Option.value ~default:"-" stepscmd_conf.package_name)
       | false ->
-          let main () ci_uri package =
-            match Lwt_main.run (main_list_steps ~ci_uri ~package) with
-            | Ok () -> ()
+          let main () ci_uri package_name package_version =
+            match
+              Lwt_main.run
+                (main_list_steps ~ci_uri ~package_name ~package_version)
+            with
+            | Ok _ -> ()
             | Error (`Capnp ex) ->
                 Fmt.epr "%a@." Capnp_rpc.Error.pp ex;
                 exit 1
@@ -157,7 +167,11 @@ let run cmd_conf =
                 Fmt.epr "%s@." m;
                 exit 1
           in
-          main () stepscmd_conf.cap stepscmd_conf.package)
+          let package' = Option.value ~default:"-" stepscmd_conf.package_name in
+          let version' =
+            Option.value ~default:"-" stepscmd_conf.package_version
+          in
+          main () stepscmd_conf.cap package' version')
   | Status statuscmd_conf -> (
       match statuscmd_conf.dry_run with
       | true ->
@@ -190,8 +204,7 @@ let statuscmd_term run =
   let combine () dry_run cap package_name package_version =
     Status { dry_run; cap; package_name; package_version } |> run
   in
-  Term.(
-    const combine $ setup_log $ dry_run $ cap $ package_name $ package_version)
+  Term.(const combine $ setup_log $ dry_run $ cap $ package $ package_version)
 
 let statuscmd_doc = "Build status of a package."
 
@@ -204,6 +217,22 @@ let statuscmd_man =
 let statuscmd run =
   let info = Cmd.info "status" ~doc:statuscmd_doc ~man:statuscmd_man in
   Cmd.v info (statuscmd_term run)
+
+let stepscmd_term run =
+  let combine () dry_run cap package_name package_version =
+    ListSteps { dry_run; cap; package_name; package_version } |> run
+  in
+  Term.(const combine $ setup_log $ dry_run $ cap $ package $ package_version)
+
+let stepscmd_doc = "Build steps of a package."
+
+let stepscmd_man =
+  [ `S Manpage.s_description; `P "Lookup the build steps of the package." ]
+
+let stepscmd run =
+  let info = Cmd.info "steps" ~doc:stepscmd_doc ~man:stepscmd_man in
+  Cmd.v info (stepscmd_term run)
+
 (*** Putting together the main command ***)
 
 let root_doc = "Cli client for ocaml-docs-ci."
@@ -212,7 +241,7 @@ let root_man =
   [ `S Manpage.s_description; `P "Command line client for ocaml-docs-ci." ]
 
 let root_info = Cmd.info "ocaml-docs-ci-client" ~doc:root_doc ~man:root_man
-let subcommands run = [ statuscmd run ]
+let subcommands run = [ statuscmd run; stepscmd run ]
 
 let parse_command_line_and_run (run : cmd_conf -> unit) =
   Cmd.group root_info (subcommands run) |> Cmd.eval |> exit
