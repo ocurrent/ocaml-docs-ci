@@ -63,9 +63,7 @@ let package_step_list_testable =
 
 let test_lookup_steps_docs_ci _switch () =
   let monitor = pipeline (Monitor.make ()) in
-  let result =
-    Monitor.lookup_steps monitor ~name:"docs-ci.1.0.0" |> Result.get_ok
-  in
+  let result = Monitor.lookup_steps monitor ~name:"docs-ci" |> Result.get_ok in
   let expected =
     [
       {
@@ -94,9 +92,7 @@ let test_lookup_steps_docs_ci _switch () =
 
 let test_lookup_steps_ocurrent _switch () =
   let monitor = pipeline (Monitor.make ()) in
-  let result =
-    Monitor.lookup_steps monitor ~name:"ocurrent.1.1.0" |> Result.get_ok
-  in
+  let result = Monitor.lookup_steps monitor ~name:"ocurrent" |> Result.get_ok in
   let expected =
     [
       {
@@ -118,9 +114,7 @@ let test_lookup_steps_ocurrent _switch () =
 
 let test_lookup_steps_ocluster _switch () =
   let monitor = pipeline (Monitor.make ()) in
-  let result =
-    Monitor.lookup_steps monitor ~name:"ocluster.0.7.0" |> Result.get_ok
-  in
+  let result = Monitor.lookup_steps monitor ~name:"ocluster" |> Result.get_ok in
   let expected =
     [
       {
@@ -138,7 +132,7 @@ let test_lookup_steps_solve_failure_example _switch () =
   let result =
     Monitor.lookup_steps monitor ~name:"mirage.4.0.0" |> Result.get_error
   in
-  let expected = "couldn't find package" in
+  let expected = "no packages found with name: mirage.4.0.0" in
   Alcotest.(check string) "" expected result |> Lwt.return
 
 let tests =
