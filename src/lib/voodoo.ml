@@ -191,7 +191,7 @@ end
 
 module Do = struct
   type voodoo = t
-  type t = { commit : Git.Commit_id.t; config : Config.t }
+  type t = { commit : Git.Commit_id.t; config : Config.t } [@@ocaml.warning "-69"]
 
   let v { voodoo_do; config; _ } = { commit = voodoo_do; config }
 

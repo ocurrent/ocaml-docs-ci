@@ -9,7 +9,7 @@
  (github ocurrent/ocaml-docs-ci))
 
 (authors "lucas@tarides.com")
-(maintainers "navin@tarides.com" "timmcgil@gmail.com")
+(maintainers "Navin Keswani <navin@novemberkilo.io>" "Tim McGilchrist <timmcgil@gmail.com>")
 
 (package
  (name ocaml-docs-ci)
