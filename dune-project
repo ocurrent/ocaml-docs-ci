@@ -47,7 +47,9 @@
   (memtrace (>= 0.1.1)) ; required for memory profiling
   (alcotest (and (>= 1.7.0) :with-test))
   (alcotest-lwt (and (>= 1.7.0) :with-test))
-  (docker_hub (>= 0.1.1))))
+  (docker_hub (>= 0.1.1))
+  (mirage-crypto-rng (>= 0.8.7))
+  (prometheus-app (>= 1.2))))
 
 (package
  (name ocaml-docs-ci-client)

@@ -46,10 +46,10 @@ For further details on how `docs-ci` works read the [pipeline diagram](doc/pipel
 
 Environments:
 
-| Environment | www                       | pipeline                          | git branch | data                               |
-|-------------|---------------------------|-----------------------------------|------------|------------------------------------|
-| Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | http://docs-data.ocaml.org         |
-| Staging     | https://staging.ocaml.org | https://staging.docs.ci.ocaml.org | staging    | http://staging.docs-data.ocaml.org |
+| Environment | www                       | pipeline                          | git branch | data                               | voodoo branch |
+|-------------|---------------------------|-----------------------------------|------------|------------------------------------|---------------|
+| Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | http://docs-data.ocaml.org         | main          |
+| Staging     | https://staging.ocaml.org | https://staging.docs.ci.ocaml.org | staging    | http://staging.docs-data.ocaml.org | staging       |
 
 OAuth integration provided by GitHub OAuth Apps hosted under the OCurrent organisation.
 See https://github.com/organizations/ocurrent/settings/applications
