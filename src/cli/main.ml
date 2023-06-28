@@ -62,15 +62,22 @@ let list_versions_status package_name ?(version = None) package =
          in
          Fmt.pr "%a@]@." Fmt.(list package_status) list)
 
-let list_steps (package_version : string) package =
-  Client.Package.steps package package_version
-  |> Lwt_result.map (fun (steps : Client.Package.step list) ->
-         Printf.printf "List steps: %d" (List.length steps);
-         List.map
-           (fun step ->
-             Fmt.pr "@[<v>%s@]@."
-               (step |> Client.Package.step_to_yojson |> Yojson.Safe.to_string))
-           steps)
+let list_steps (_package_version : string) package =
+  Client.Package.steps package
+  |> Lwt_result.map
+     @@ fun (package_steps' :
+              (string * Client.Build_status.t * Client.Package.step list) list)
+       ->
+     let package_steps : Client.Package.package_steps_list =
+       List.map
+         (fun (version, status, steps) : Client.Package.package_steps ->
+           { version; status; steps })
+         package_steps'
+     in
+     Fmt.pr "@[<v>%s@]@."
+       (package_steps
+       |> Client.Package.package_steps_list_to_yojson
+       |> Yojson.Safe.to_string)
 
 let main_status ~ci_uri ~package_name ~package_version =
   let vat = Capnp_rpc_unix.client_only_vat () in

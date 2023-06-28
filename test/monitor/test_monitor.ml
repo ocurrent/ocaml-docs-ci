@@ -68,7 +68,7 @@ let test_lookup_steps_docs_ci _switch () =
     [
       {
         Monitor.package = OpamPackage.of_string "docs-ci.1.0.0";
-        status = Monitor.Running;
+        status = Monitor.Failed;
         steps =
           [
             { Monitor.typ = "step1"; job_id = None; status = Monitor.Active };

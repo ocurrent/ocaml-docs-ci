@@ -104,12 +104,18 @@ struct PackageInfo {
 }
 
 struct PackageBuildStatus {
-  version @0: Text;
+  version @0 :Text;
   status @1 :BuildStatus;
 }
 
+struct PackageSteps {
+  version @0 :Text;
+  status @1 :BuildStatus;
+  steps @2 :List(StepInfo);
+}
+
 interface Package {
-  steps @0 (package_version :Text) -> (steps :List(StepInfo));
+  steps @0 () -> (steps :List(PackageSteps));
 
   versions @1 () -> (versions :List(PackageBuildStatus));
 }

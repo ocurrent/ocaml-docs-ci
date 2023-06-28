@@ -62,6 +62,15 @@ module Package = struct
   type step = { typ : string; job_id : string option; status : Build_status.t }
   [@@deriving to_yojson]
 
+  type package_steps = {
+    version : string;
+    status : Build_status.t;
+    steps : step list;
+  }
+  [@@deriving to_yojson]
+
+  type package_steps_list = package_steps list [@@deriving to_yojson]
+
   let versions t =
     let open Raw.Client.Package.Versions in
     let request = Capability.Request.create_no_args () in
@@ -77,26 +86,31 @@ module Package = struct
                     status = Raw.Reader.PackageBuildStatus.status_get x;
                   }))
 
-  let steps t version =
+  let steps t =
     let open Raw.Client.Package.Steps in
-    let request, params = Capability.Request.create Params.init_pointer in
-    Params.package_version_set params version;
+    let request, _ = Capability.Request.create Params.init_pointer in
     Capability.call_for_value t method_id request
-    |> Lwt_result.map (fun x ->
-           x
-           |> Results.steps_get_list
-           |> List.map (fun x ->
-                  let status = Raw.Reader.StepInfo.status_get x in
-                  let typ = Raw.Reader.StepInfo.type_get x in
-                  let job_id_t = Raw.Reader.StepInfo.job_id_get x in
-                  let job_id =
-                    match Raw.Reader.StepInfo.JobId.get job_id_t with
-                    | Raw.Reader.StepInfo.JobId.None
-                    | Raw.Reader.StepInfo.JobId.Undefined _ ->
-                        None
-                    | Raw.Reader.StepInfo.JobId.Id s -> Some s
-                  in
-                  { typ; status; job_id }))
+    |> Lwt_result.map @@ fun package_steps ->
+       let open Raw.Reader.PackageSteps in
+       Results.steps_get_list package_steps
+       |> List.map @@ fun package_slot ->
+          let package_version = version_get package_slot in
+          let status = status_get package_slot in
+          let steps =
+            steps_get_list package_slot
+            |> List.map (fun x ->
+                   let open Raw.Reader.StepInfo in
+                   let status = status_get x in
+                   let typ = type_get x in
+                   let job_id_t = job_id_get x in
+                   let job_id =
+                     match JobId.get job_id_t with
+                     | JobId.None | JobId.Undefined _ -> None
+                     | JobId.Id s -> Some s
+                   in
+                   { typ; job_id; status })
+          in
+          (package_version, status, steps)
 end
 
 module Pipeline = struct

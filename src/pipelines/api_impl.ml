@@ -36,62 +36,53 @@ let make_package ~monitor package_name =
 
              Service.return response
 
-       method steps_impl params release_param_caps =
+       method steps_impl _params release_param_caps =
          let open Api.Steps in
-         let package_version = Params.package_version_get params in
+         (* let package_version = Params.package_version_get params in *)
          release_param_caps ();
          let response, results = Service.Response.create Results.init_pointer in
          let all_package_versions_steps =
            Monitor.lookup_steps monitor ~name:package_name
            |> Result.value ~default:[] (* discard error and return [] *)
          in
-         let selected_package_version_steps =
-           List.find_opt
-             (fun (p : Monitor.package_steps) ->
-               OpamPackage.version_to_string p.package = package_version)
-             all_package_versions_steps
+         let arr =
+           Results.steps_init results (List.length all_package_versions_steps)
          in
-         let maybe_steps =
-           Option.map
-             (fun (p : Monitor.package_steps) -> p.steps)
-             selected_package_version_steps
+         let steps_f (step : Monitor.step) =
+           let open Raw.Builder.StepInfo in
+           let slot = init_root () in
+           type_set slot step.typ;
+           let job_id_t = job_id_init slot in
+           (match step.job_id with
+           | None -> JobId.none_set job_id_t
+           | Some job_id -> (
+               JobId.id_set job_id_t job_id;
+               match step.status with
+               | Active -> status_set slot Pending
+               | Blocked -> status_set slot NotStarted
+               | OK -> status_set slot Passed
+               | Err _ -> status_set slot Failed));
+           slot
          in
-         let steps = Option.value ~default:[] maybe_steps in
-         let arr = Results.steps_init results (List.length steps) in
-         steps
-         |> List.iteri (fun i (step : Monitor.step) ->
-                let open Raw.Builder.StepInfo in
+         all_package_versions_steps
+         |> List.iteri (fun i (package_steps : Monitor.package_steps) ->
+                let open Raw.Builder.PackageSteps in
                 let slot = Capnp.Array.get arr i in
-                type_set slot step.typ;
-                let job_id_t = job_id_init slot in
-                match step.job_id with
-                | None -> JobId.none_set job_id_t
-                | Some job_id -> (
-                    JobId.id_set job_id_t job_id;
-                    match step.status with
-                    | Active -> status_set slot Pending
-                    | Blocked -> status_set slot NotStarted
-                    | OK -> status_set slot Passed
-                    | Err _ -> status_set slot Failed));
+                version_set slot
+                  (OpamPackage.version_to_string package_steps.package);
+                (match package_steps.status with
+                | Monitor.Done -> status_set slot Passed
+                | Running -> status_set slot Pending
+                | Failed -> status_set slot Failed);
+                (match package_steps.status with
+                | Monitor.Done -> status_set slot Passed
+                | Running -> status_set slot Pending
+                | Failed -> status_set slot Failed);
+
+                let steps = package_steps.steps |> List.map steps_f in
+                ignore (steps_set_list slot steps));
 
          Service.return response
-
-       (* method status_impl _params release_param_caps =
-          let open Api.Status in
-          release_param_caps ();
-          let response, results = Service.Response.create Results.init_pointer in
-          let statuses = Monitor.lookup_status monitor ~name:package_name in
-          let arr = Results.status_init results (List.length statuses) in
-          statuses
-          |> List.iteri (fun i (_name, version, state) ->
-                 let open Raw.Builder.PackageBuildStatus in
-                 let slot = Capnp.Array.get arr i in
-                 version_set slot (OpamPackage.Version.to_string version);
-                 match state with
-                 | Monitor.Done -> status_set slot Passed
-                 | Monitor.Failed -> status_set slot Failed
-                 | Monitor.Running -> status_set slot Pending);
-          Service.return response *)
      end
 
 let make ~monitor =

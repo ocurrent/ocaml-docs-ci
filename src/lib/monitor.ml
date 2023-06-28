@@ -396,7 +396,7 @@ let lookup_status' t package : state =
 
 (* val lookup_steps : t -> name:string -> (package_steps list, string) result *)
 let lookup_steps' t (package : OpamPackage.t) =
-  let status = lookup_status' t package in
+  let status = opam_package_state t package in
   let package_pipeline_tree = get_opam_package_info t package in
   let steps = Result.map (fun p -> to_steps "" [] p) package_pipeline_tree in
   Result.map (fun s -> { package; status; steps = s }) steps
