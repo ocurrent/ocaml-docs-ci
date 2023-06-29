@@ -1,3 +1,8 @@
 (executable
  (name test_monitor)
- (libraries docs_ci_lib current current_web cmdliner))
+ (libraries docs_ci_lib current current_web alcotest alcotest-lwt))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_monitor.exe -e)))

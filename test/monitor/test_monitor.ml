@@ -1,3 +1,5 @@
+module Monitor = Docs_ci_lib.Monitor
+
 let step1 =
   Current_git.clone
     ~schedule:(Current_cache.Schedule.v ())
@@ -44,7 +46,7 @@ let pipeline monitor =
               ( "and-pattern",
                 And [ ("sub-step3", Item step1); ("sub-step4", Item step3) ] );
             ]) );
-      (pkg2, Monitor.(Seq [ ("fake running step", Item running) ]));
+      (pkg2, Monitor.(Seq [ ("fake-running-step", Item running) ]));
       (pkg3, Monitor.(Item step1));
     ]
     |> List.to_seq
@@ -54,49 +56,95 @@ let pipeline monitor =
     [ (OpamPackage.of_string "mirage.4.0.0", "solver failed") ]
   in
   Monitor.(register monitor solve_failure OpamPackage.Map.empty blessing values);
+  monitor
 
-  Current.all
+let package_step_list_testable =
+  Alcotest.testable Monitor.pp_package_steps Monitor.equal_package_steps
+
+let test_lookup_steps_docs_ci _switch () =
+  let monitor = pipeline (Monitor.make ()) in
+  let result = Monitor.lookup_steps monitor ~name:"docs-ci" |> Result.get_ok in
+  let expected =
     [
-      step1 |> Current.map ignore;
-      step2 |> Current.map ignore;
-      step3 |> Current.map ignore;
-      running |> Current.map ignore;
-    ]
-
-let () =
-  Fmt_tty.setup_std_outputs ();
-  Logs.set_level (Some Debug);
-  Logs.set_reporter (Logs_fmt.reporter ())
-
-let main mode =
-  let monitor = Docs_ci_lib.Monitor.make () in
-  let engine =
-    Current.Engine.create
-      ~config:(Current.Config.v ~confirm:Current.Level.Average ()) (fun () ->
-        pipeline monitor)
-  in
-  let has_role = Current_web.Site.allow_all in
-  let site =
-    let routes =
-      Current_web.routes engine @ Docs_ci_lib.Monitor.routes monitor engine
-    in
-    Current_web.Site.(v ~has_role) ~name:"test_monitor" routes
-  in
-  ignore
-  @@ Lwt_main.run
-       (Lwt.choose
+      {
+        Monitor.package = OpamPackage.of_string "docs-ci.1.0.0";
+        status = Monitor.Failed;
+        steps =
           [
-            Current.Engine.thread engine;
-            (* The main thread evaluating the pipeline. *)
-            Current_web.run ~mode site (* Optional: provides a web UI *);
-          ])
+            { Monitor.typ = "step1"; job_id = None; status = Monitor.Active };
+            { Monitor.typ = "step2"; job_id = None; status = Monitor.Active };
+            {
+              Monitor.typ = "and-pattern:sub-step3";
+              job_id = None;
+              status = Monitor.Active;
+            };
+            {
+              Monitor.typ = "and-pattern:sub-step4";
+              job_id = None;
+              status = Monitor.Err "oh no";
+            };
+          ];
+      };
+    ]
+  in
+  Alcotest.(check (list package_step_list_testable)) "" expected result
+  |> Lwt.return
 
-(* Command-line parsing *)
+let test_lookup_steps_ocurrent _switch () =
+  let monitor = pipeline (Monitor.make ()) in
+  let result = Monitor.lookup_steps monitor ~name:"ocurrent" |> Result.get_ok in
+  let expected =
+    [
+      {
+        Monitor.package = OpamPackage.of_string "ocurrent.1.1.0";
+        status = Monitor.Running;
+        steps =
+          [
+            {
+              Monitor.typ = "fake-running-step";
+              job_id = None;
+              status = Monitor.Active;
+            };
+          ];
+      };
+    ]
+  in
+  Alcotest.(check (list package_step_list_testable)) "" expected result
+  |> Lwt.return
 
-open Cmdliner
+let test_lookup_steps_ocluster _switch () =
+  let monitor = pipeline (Monitor.make ()) in
+  let result = Monitor.lookup_steps monitor ~name:"ocluster" |> Result.get_ok in
+  let expected =
+    [
+      {
+        Monitor.package = OpamPackage.of_string "ocluster.0.7.0";
+        status = Monitor.Running;
+        steps = [ { Monitor.typ = ""; job_id = None; status = Monitor.Active } ];
+      };
+    ]
+  in
+  Alcotest.(check (list package_step_list_testable)) "" expected result
+  |> Lwt.return
 
-let cmd =
-  let info = Cmd.info "test_monitor" in
-  Cmd.v info Term.(const main $ Current_web.cmdliner)
+let test_lookup_steps_solve_failure_example _switch () =
+  let monitor = pipeline (Monitor.make ()) in
+  let result =
+    Monitor.lookup_steps monitor ~name:"mirage.4.0.0" |> Result.get_error
+  in
+  let expected = "no packages found with name: mirage.4.0.0" in
+  Alcotest.(check string) "" expected result |> Lwt.return
 
-let () = exit @@ Cmd.eval cmd
+let tests =
+  [
+    Alcotest_lwt.test_case "simple_lookup_steps_example_1" `Quick
+      test_lookup_steps_docs_ci;
+    Alcotest_lwt.test_case "simple_lookup_steps_example_2" `Quick
+      test_lookup_steps_ocurrent;
+    Alcotest_lwt.test_case "simple_lookup_steps_example_3" `Quick
+      test_lookup_steps_ocluster;
+    Alcotest_lwt.test_case "simple_lookup_steps_example_4" `Quick
+      test_lookup_steps_solve_failure_example;
+  ]
+
+let () = Lwt_main.run @@ Alcotest_lwt.run "test_lib" [ ("monitor", tests) ]

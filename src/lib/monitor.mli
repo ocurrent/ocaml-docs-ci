@@ -6,6 +6,16 @@ type state =
   | Running
   | Failed  (** The state of a package in the pipeline *)
 
+(* type step_type =
+   | Prep
+   | DepCompilePrep of OpamPackage.t
+   | DepCompileCompile of OpamPackage.t
+   | Compile
+   | BuildHtml *)
+
+type step_status = Err of string | Active | Blocked | OK
+type step = { typ : string; job_id : string option; status : step_status }
+
 val make : unit -> t
 (** Create a monitor. *)
 
@@ -37,8 +47,19 @@ val map_versions :
   t -> (OpamPackage.Version.t * state) list OpamPackage.Name.Map.t
 (** Map of package name to versions *)
 
-val lookup_known_projects : t -> string list
+val lookup_known_packages : t -> string list
 (** Get a list of the names of known projects *)
 
-val lookup_status : t -> name:string -> (string * string * state) list
+val lookup_status :
+  t -> name:string -> (OpamPackage.Name.t * OpamPackage.Version.t * state) list
 (** Get a list of version and status tuples for a project *)
+
+type package_steps = {
+  package : OpamPackage.t;
+  status : state;
+  steps : step list;
+}
+[@@deriving eq]
+
+val pp_package_steps : Format.formatter -> package_steps -> unit
+val lookup_steps : t -> name:string -> (package_steps list, string) result

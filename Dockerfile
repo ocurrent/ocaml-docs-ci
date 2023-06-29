@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:experimental
 FROM ocaml/opam:debian-11-ocaml-4.14@sha256:bc7e053abdfca481d15f49291f8151a63207d843d3065b4b5a2f6f68681cbd4b AS build
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard f38d24d202c480c1f05d6c86e6f97467fa102b48 && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 4f8d9820693746275a0438102c57ef7e43e745b9 && opam update
 COPY --chown=opam \
 	vendor/ocurrent/current_github.opam \
 	vendor/ocurrent/current_git.opam \
