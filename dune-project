@@ -23,7 +23,7 @@
    current_git
    current_github
    current_ocluster
-  (cstruct (< 6.1.0))
+  (cstruct (>= 6.1.0))
   (opam-0install (>= 0.4.3))
   (capnp-rpc-unix (>= 1.2))
   (capnp-rpc-lwt (>= 1.2.3))
