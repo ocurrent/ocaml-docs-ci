@@ -79,20 +79,10 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
     ]
   in
   let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
-  let* res =
-    perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-      (("ocaml-base-compiler", `Geq, "4.04.1")
-      :: ("ocaml", `Leq, latest)
-      :: constraints)
-  in
-  match res with
-  | Ok x -> Lwt.return (Ok x)
-  | Error (`Msg msg1) ->
-      let+ res =
-        perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-          (("ocaml-base-compiler", `Eq, "5.0.0~beta1") :: constraints)
-      in
-      Result.map_error (fun (`Msg msg) -> `Msg (msg1 ^ "\n" ^ msg)) res
+  perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+    (("ocaml-base-compiler", `Geq, "4.04.1")
+     :: ("ocaml", `Leq, latest)
+     :: constraints)
 
 let solver_version = "v2"
 
@@ -199,8 +189,8 @@ module Solver = struct
       opam_commit : Git.Commit.t;
     }
 
-    (* TODO: what happens when the platform changes. *)
-    let digest { packages; blacklist; opam_commit; _ } =
+    (* TODO: what happens when the platform changes? *)
+    let digest { packages; blacklist; opam_commit; platform=_ } =
       (Git.Commit.hash opam_commit :: blacklist)
       @ List.map
           (fun t ->
