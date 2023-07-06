@@ -95,8 +95,8 @@ end = struct
     let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } =
       request
     in
+    Log.info log "Solving for %a using opam_repository_commit %s" Fmt.(list ~sep:comma string) pkgs opam_repository_commit;
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
-    Log.info log "Solving for %a" Fmt.(list ~sep:comma string) pkgs;
     platforms
     |> Lwt_list.map_p (fun p ->
            let id = fst p in
