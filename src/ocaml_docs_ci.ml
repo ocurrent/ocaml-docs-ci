@@ -2,7 +2,9 @@ open Lwt.Infix
 open Capnp_rpc_lwt
 module Git = Current_git
 
-let () =
+let setup_log default_level =
+  Prometheus_unix.Logging.init ?default_level ();
+  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
   Logging.init ();
   Memtrace.trace_if_requested ~context:"ocaml-docs-ci" ()
 
@@ -91,7 +93,7 @@ let run_capnp capnp_public_address capnp_listen_address =
       Logs.app (fun f -> f "Wrote capability reference to %S" cap_file);
       Lwt.return (vat, Some rpc_engine_resolver)
 
-let main current_config github_auth mode capnp_public_address
+let main () current_config github_auth mode capnp_public_address
     capnp_listen_address config =
   ignore
   @@ Logging.run
@@ -146,6 +148,10 @@ let main current_config github_auth mode capnp_public_address
 
 open Cmdliner
 
+let setup_log =
+  let docs = Manpage.s_common_options in
+  Term.(const setup_log $ Logs_cli.level ~docs ())
+
 let capnp_public_address =
   Arg.value
   @@ Arg.opt (Arg.some Capnp_rpc_unix.Network.Location.cmdliner_conv) None
@@ -174,6 +180,7 @@ let cmd =
   Cmd.v info
     Term.(
       const main
+      $ setup_log
       $ Current.Config.cmdliner
       $ Current_github.Auth.cmdliner
       $ Current_web.cmdliner

@@ -14,12 +14,15 @@
   cmdliner
   fmt.tty
   logs.fmt
+  logs.cli
   lwt
   lwt.unix
   memtrace
   obuilder-spec
   opam-file-format
   docs_ci_pipelines
-  docs_ci_lib)
+  docs_ci_lib
+  mirage-crypto-rng.unix
+  prometheus-app.unix)
  (preprocess
   (pps ppx_deriving_yojson)))
