@@ -77,8 +77,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
           |> List.map (fun pkg -> Package.opam pkg |> OpamPackage.to_string)
           |> String.concat " "
         in
-        run ~network ~cache "opam depext -viy %s && opam install %s"
-          packages_str packages_str
+        run ~network ~cache "opam install %s" packages_str
   in
 
   let prep_storage_folders = List.rev_map (fun p -> (Storage.Prep, p)) prep in
@@ -103,7 +102,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
          run ~network
-           "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam update";
+           "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni";
          run "opam repo remove default && opam repo add opam /src";
          copy ~from:(`Build "tools")
            [ "/home/opam/voodoo-prep" ]
@@ -157,7 +156,7 @@ module Prep = struct
       config : Config.t;
     }
 
-    let digest { job = { install; prep }; voodoo; _ } =
+    let digest { job = { install; prep }; voodoo; base=_; config=_ } =
       (* base is derived from 'prep' so we don't need to include it in the hash *)
       Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install)
         (Voodoo.Prep.digest voodoo)
