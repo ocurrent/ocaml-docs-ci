@@ -211,6 +211,7 @@ module Solver = struct
       Value.{ packages; blacklist; platform; opam_commit } =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
+    Current.Job.log job "Using opam-repository sha %a" Git.Commit.pp opam_commit;
     let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
