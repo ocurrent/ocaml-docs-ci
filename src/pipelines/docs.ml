@@ -211,7 +211,7 @@ let v ~config ~opam ~monitor () =
       opam
   in
   Log.info (fun f -> f "1) Tracked");
-  (* 2) For each package.version, call the solver.  *)
+  (* 2) For each package.version, call the solver. *)
   let solver_result_c = Solver.incremental ~config ~blacklist ~opam tracked in
   let* solver_result = solver_result_c in
   Log.info (fun f -> f "2) Solver result");
@@ -221,7 +221,7 @@ let v ~config ~opam ~monitor () =
   in
   (* 3.b) Expand that list to all the obtainable package.version.universe *)
   let all_packages =
-    (* todo: add a append-only layer at this step *)
+    (* TODO add a append-only layer at this step *)
     all_packages_jobs
     |> List.rev_map Package.all_deps
     |> List.flatten
@@ -231,7 +231,7 @@ let v ~config ~opam ~monitor () =
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   let jobs = Jobs.schedule ~targets:all_packages all_packages_jobs in
   (* 4a) Decide on a docker tag for each job *)
-  let jobs' = jobs |> List.map (fun job -> (job, Misc.spec_of_job job)) in
+  let jobs' = List.map (fun job -> (job, Misc.spec_of_job job)) jobs in
   Log.info (fun f -> f "4) Jobs are scheduled");
   (* 5) Run the preparation step *)
   let prepped =
@@ -323,6 +323,8 @@ let v ~config ~opam ~monitor () =
   (* 7.b) Inform the monitor *)
   let () =
     let solver_failures = Solver.failures solver_result in
+    let successes = List.length (Solver.keys solver_result) in
+    Log.info (fun f -> f "7.b) Inform the monitor: successes %i, failures %i" successes (List.length solver_failures));
     Monitor.register monitor solver_failures prep_nodes blessed
       package_pipeline_tree
   in
