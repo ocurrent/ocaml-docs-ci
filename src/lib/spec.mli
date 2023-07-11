@@ -14,7 +14,5 @@ val finish : t -> Obuilder_spec.t
 (** Finalize the spec and obtain the obuilder content. *)
 
 val to_ocluster_spec : t -> Cluster_api.Obuilder_job.Spec.t
-
 val to_spec : t -> string
-
 val add_rsync_retry_script : Obuilder_spec.op

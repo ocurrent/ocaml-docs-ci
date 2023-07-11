@@ -79,9 +79,9 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
   perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-    (("ocaml-base-compiler", `Geq, "4.04.1")
-     :: ("ocaml", `Leq, latest)
-     :: constraints)
+    (("ocaml-base-compiler", `Geq, Ocaml_version.(Releases.v4_04_1 |> to_string))
+    :: ("ocaml", `Leq, latest)
+    :: constraints)
 
 let solver_version = "v2"
 
@@ -189,7 +189,7 @@ module Solver = struct
     }
 
     (* TODO: what happens when the platform changes? *)
-    let digest { packages; blacklist; opam_commit; platform=_ } =
+    let digest { packages; blacklist; opam_commit; platform = _ } =
       (Git.Commit.hash opam_commit :: blacklist)
       @ List.map
           (fun t ->

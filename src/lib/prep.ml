@@ -102,7 +102,8 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
          run ~network
-           "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni";
+           "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit \
+            -ni";
          run "opam repo remove default && opam repo add opam /src";
          copy ~from:(`Build "tools")
            [ "/home/opam/voodoo-prep" ]
@@ -156,7 +157,7 @@ module Prep = struct
       config : Config.t;
     }
 
-    let digest { job = { install; prep }; voodoo; base=_; config=_ } =
+    let digest { job = { install; prep }; voodoo; base = _; config = _ } =
       (* base is derived from 'prep' so we don't need to include it in the hash *)
       Fmt.str "%s\n%s\n%s\n%s" prep_version (Package.digest install)
         (Voodoo.Prep.digest voodoo)
@@ -188,8 +189,15 @@ module Prep = struct
     *)
     let spec = spec ~ssh:(Config.ssh config) ~voodoo ~base ~install prep in
     let action = Misc.to_ocluster_submission spec in
-    let commit_id = Current_git.Commit_id.v ~repo:"https://github.com/ocaml/opam-repository.git" ~gref:"master" ~hash:(Package.commit install) in
-    let src = ("https://github.com/ocaml/opam-repository.git", [ Package.commit install ]) in
+    let commit_id =
+      Current_git.Commit_id.v
+        ~repo:"https://github.com/ocaml/opam-repository.git" ~gref:"master"
+        ~hash:(Package.commit install)
+    in
+    let src =
+      ( "https://github.com/ocaml/opam-repository.git",
+        [ Package.commit install ] )
+    in
     let version = Misc.cache_hint install in
     let cache_hint = "docs-universe-prep-" ^ version in
     let build_pool =
@@ -206,11 +214,11 @@ module Prep = struct
     Current.Job.write job
       (Fmt.str
          "@.To reproduce locally:@.@.cat > prep.spec \
-          <<'END-OF-SPEC'@.\o033[34m%s\o033[0m@.END-OF-SPEC@.@.\
-          ocluster-client submit-obuilder %s %s --local-file prep.spec \\@.\
-          --pool linux-x86_64 --connect ocluster-submission.cap --cache-hint %s \\@.\
-          --secret ssh_privkey:id_rsa --secret ssh_pubkey:id_rsa.pub\
-          --secret ssh_config:ssh_config@.@."
+          <<'END-OF-SPEC'@.\o033[34m%s\o033[0m@.END-OF-SPEC@.@.ocluster-client \
+          submit-obuilder %s %s --local-file prep.spec \\@.--pool linux-x86_64 \
+          --connect ocluster-submission.cap --cache-hint %s \\@.--secret \
+          ssh_privkey:id_rsa --secret ssh_pubkey:id_rsa.pub--secret \
+          ssh_config:ssh_config@.@."
          (Spec.to_spec spec)
          (Current_git.Commit_id.repo commit_id)
          (Current_git.Commit_id.hash commit_id)

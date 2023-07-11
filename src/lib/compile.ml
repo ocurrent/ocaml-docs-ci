@@ -276,13 +276,12 @@ module Compile = struct
     Current.Job.write job
       (Fmt.str
          "@.To reproduce locally:@.@.cat > prep.spec \
-          <<'END-OF-SPEC'@.\o033[34m%s\o033[0m@.END-OF-SPEC@.@.\
-          ocluster-client submit-obuilder --local-file prep.spec \\@.\
-          --pool linux-x86_64 --connect ocluster-submission.cap --cache-hint %s \\@.\
-          --secret ssh_privkey:id_rsa --secret ssh_pubkey:id_rsa.pub\
-          --secret ssh_config:ssh_config@.@."
-         (Spec.to_spec spec)
-         cache_hint);
+          <<'END-OF-SPEC'@.\o033[34m%s\o033[0m@.END-OF-SPEC@.@.ocluster-client \
+          submit-obuilder --local-file prep.spec \\@.--pool linux-x86_64 \
+          --connect ocluster-submission.cap --cache-hint %s \\@.--secret \
+          ssh_privkey:id_rsa --secret ssh_pubkey:id_rsa.pub--secret \
+          ssh_config:ssh_config@.@."
+         (Spec.to_spec spec) cache_hint);
 
     Capnp_rpc_lwt.Capability.with_ref build_job @@ fun build_job ->
     let fn () =

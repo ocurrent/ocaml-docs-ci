@@ -324,7 +324,9 @@ let v ~config ~opam ~monitor () =
   let () =
     let solver_failures = Solver.failures solver_result in
     let successes = List.length (Solver.keys solver_result) in
-    Log.info (fun f -> f "7.b) Inform the monitor: successes %i, failures %i" successes (List.length solver_failures));
+    Log.info (fun f ->
+        f "7.b) Inform the monitor: successes %i, failures %i" successes
+          (List.length solver_failures));
     Monitor.register monitor solver_failures prep_nodes blessed
       package_pipeline_tree
   in

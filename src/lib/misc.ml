@@ -1,8 +1,3 @@
-(* docker manifest inspect ocaml/opam:ubuntu-ocaml-4.13
-
-   amd64: sha256:c2278d6ff88b3fc701a04f57231c95f78f0cc38dd2541f90f99e2cb15e96a0aa
-*)
-
 module Platform : sig
   val v : packages:Package.t list -> Ocaml_version.t option
   val to_string : Ocaml_version.t -> string
@@ -38,6 +33,7 @@ let tag ocaml_version =
     else Fmt.str "%02d" (Ocaml_version.minor ocaml_version)
   in
   Fmt.str "debian-11-ocaml-%d.%s%s"
+    (* TODO Expose this as an ocurrent node or option *)
     (Ocaml_version.major ocaml_version)
     minor
     (match Ocaml_version.extra ocaml_version with
@@ -52,7 +48,7 @@ module PeekerBody = struct
   module Key = struct
     type t = Ocaml_version.t
 
-    let digest x = "v2" ^ Ocaml_version.to_string x
+    let digest x = "v3" ^ Ocaml_version.to_string x
   end
 
   module Value = struct
@@ -81,9 +77,9 @@ module PeekerBody = struct
     | Ok manifests ->
         Result.map
           (fun r ->
-            let tag = "ocaml/opam@" ^ r in
-            Current.Job.log job "result: %s" tag;
-            tag)
+            let tag_sha = "ocaml/opam@" ^ r in
+            Current.Job.log job "result: %s" tag_sha;
+            tag_sha)
           (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error)
     | Error (`Msg _) as e -> e
     | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
@@ -125,6 +121,10 @@ let get_base_image packages =
     Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest
   in
   let+ tag = Image.peek version in
+  (* TODO Include comment on which image this is?
+
+     debian-12-ocaml-%d.%s%s
+  *)
   Spec.make tag
 
 let default_base_image =
