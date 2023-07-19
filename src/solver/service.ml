@@ -165,7 +165,7 @@ let v ~n_workers ~create_worker =
                    (* TODO Pass in a switch here to handle Cancellation.
                       handle t ~switch:(Lwt_switch.create ()) ~log request
                    *)
-                   (fun () -> handle t ~log request >|= Result.ok)
+                     (fun () -> handle t ~log request >|= Result.ok)
                    (function
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))

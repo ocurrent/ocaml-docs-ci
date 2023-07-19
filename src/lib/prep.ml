@@ -101,6 +101,7 @@ let spec ~ssh ~voodoo ~base ~(install : Package.t) (prep : Package.t list) =
          run "sudo mkdir /src";
          copy [ "packages" ] ~dst:"/src/packages";
          copy [ "repo" ] ~dst:"/src/repo";
+         (* Re-initialise opam after switching from opam.2.0 to 2.1. *)
          run ~network
            "sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit \
             -ni";
@@ -210,7 +211,6 @@ module Prep = struct
       Current.Job.start_with ~pool:build_pool ~level:Mostly_harmless job
     in
     Current.Job.log job "Using cache hint %S" cache_hint;
-    (* TODO Log job spec here! *)
     Current.Job.write job
       (Fmt.str
          "@.To reproduce locally:@.@.cat > prep.spec \
