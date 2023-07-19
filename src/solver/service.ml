@@ -95,7 +95,6 @@ end = struct
     let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } =
       request
     in
-    (* TODO Log more debug information here about platforms and the whole request. *)
     Log.info log "Solving for %a using opam_repository_commit %s"
       Fmt.(list ~sep:comma string)
       pkgs opam_repository_commit;
@@ -166,7 +165,7 @@ let v ~n_workers ~create_worker =
                    (* TODO Pass in a switch here to handle Cancellation.
                       handle t ~switch:(Lwt_switch.create ()) ~log request
                    *)
-                     (fun () -> handle t ~log request >|= Result.ok)
+                   (fun () -> handle t ~log request >|= Result.ok)
                    (function
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))

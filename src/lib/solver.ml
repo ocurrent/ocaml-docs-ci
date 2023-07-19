@@ -126,7 +126,9 @@ module Cache = struct
 
   let mem track =
     let fname = fname track in
-    match Bos.OS.Path.exists fname with Ok true -> true | _ -> V1.mem track
+    match Bos.OS.Path.exists fname with
+    | Ok true -> true
+    | Ok false | Error _ -> V1.mem track
 
   let write ((track, value) : Track.t * cache_value) =
     let fname = fname track in
@@ -211,7 +213,27 @@ module Solver = struct
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
     Current.Job.log job "Using opam-repository sha %a" Git.Commit.pp opam_commit;
-    let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
+    (* TODO Check where with oldest_commit_with *)
+    let check_cache (key : Track.t) : bool Lwt.t =
+      if not (Cache.mem key) then
+        Lwt.return true
+      else
+        let cache = Cache.read key in
+        match cache with
+        | None -> Lwt.return true
+        | Some (Error _) -> Lwt.return true
+        | Some (Ok package) ->
+           Current.Job.log job "check_cache for %s" (Yojson.Safe.to_string (Track.to_yojson key));
+           let cached_opam_repo_sha = Package.commit package in
+           let opam_packages = Package.all_deps package |> List.map Package.opam in
+           let+ commit = Opam_repository.oldest_commit_with opam_packages ~from:opam_commit ~job in
+           (* If the git sha found is the same, use the cached result
+              otherwise we need to resolve as something changed.
+            *)
+           not (String.equal commit cached_opam_repo_sha)
+    in
+
+    let* to_do = Lwt_list.filter_s (fun x -> check_cache x) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->

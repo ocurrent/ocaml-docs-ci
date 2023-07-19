@@ -48,7 +48,7 @@ module PeekerBody = struct
   module Key = struct
     type t = Ocaml_version.t
 
-    let digest x = "v3" ^ Ocaml_version.to_string x
+    let digest x = "v2" ^ Ocaml_version.to_string x
   end
 
   module Value = struct

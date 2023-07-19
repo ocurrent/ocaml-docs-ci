@@ -26,7 +26,7 @@ let clone () =
             clone_path;
           |] )
 
-(** * TODO: Find the oldest commit that touches all the paths. Should find the
+(** TODO: Find the oldest commit that touches all the paths. Should find the
     most recent commit backwards `from` that have touched the paths. Process all
     the paths and check using `OpamFile.OPAM.effectively_equal` to see whether
     Resolve for a packages revdeps.
@@ -41,7 +41,6 @@ let oldest_commit_with ~log ~from pkgs =
            let version = OpamPackage.version_to_string pkg in
            Printf.sprintf "packages/%s/%s.%s" name name version)
   in
-  (* git -C path log -n 1 --format=format:%H from -- paths *)
   let cmd =
     "git"
     :: "-C"
