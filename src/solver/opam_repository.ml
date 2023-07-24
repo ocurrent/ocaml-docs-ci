@@ -26,7 +26,13 @@ let clone () =
             clone_path;
           |] )
 
-let oldest_commit_with ~from pkgs =
+(** Find the oldest commit that touches all the paths. Should find the most
+    recent commit backwards `from` that have touched the paths. Process all the
+    paths and check using `OpamFile.OPAM.effectively_equal` to see whether
+    Resolve for a packages revdeps.
+
+    Don't want to scope on opam_repository *)
+let oldest_commit_with ~log ~from pkgs =
   let from = Store.Hash.to_hex from in
   let paths =
     pkgs
@@ -47,6 +53,7 @@ let oldest_commit_with ~from pkgs =
     :: "--"
     :: paths
   in
+  Log.info log "oldest_commit_with %a" (Fmt.list ~sep:Fmt.sp Fmt.string) cmd;
   let cmd = ("", Array.of_list cmd) in
   Process.pread cmd >|= String.trim
 

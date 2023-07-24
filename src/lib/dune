@@ -16,6 +16,7 @@
   digestif
   fmt.tty
   logs.fmt
+  git-unix
   lwt
   lwt.unix
   obuilder-spec

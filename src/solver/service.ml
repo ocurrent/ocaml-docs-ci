@@ -95,8 +95,10 @@ end = struct
     let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } =
       request
     in
+    Log.info log "Solving for %a using opam_repository_commit %s"
+      Fmt.(list ~sep:comma string)
+      pkgs opam_repository_commit;
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
-    Log.info log "Solving for %a" Fmt.(list ~sep:comma string) pkgs;
     platforms
     |> Lwt_list.map_p (fun p ->
            let id = fst p in
@@ -108,7 +110,7 @@ end = struct
                  List.map (fun (pkg, _) -> OpamPackage.of_string pkg) packages
                in
                Opam_repository.oldest_commit_with repo_packages
-                 ~from:opam_repository_commit
+                 ~from:opam_repository_commit ~log
                >|= fun commit ->
                (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
@@ -160,7 +162,10 @@ let v ~n_workers ~create_worker =
                    (`Capnp (Capnp_rpc.Error.exn "Bad JSON in request: %s" msg))
              | Ok request ->
                  Lwt.catch
-                   (fun () -> handle t ~log request >|= Result.ok)
+                   (* TODO Pass in a switch here to handle Cancellation.
+                      handle t ~switch:(Lwt_switch.create ()) ~log request
+                   *)
+                     (fun () -> handle t ~log request >|= Result.ok)
                    (function
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))

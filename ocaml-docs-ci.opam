@@ -19,7 +19,7 @@ depends: [
   "current_git"
   "current_github"
   "current_ocluster"
-  "cstruct" {< "6.1.0"}
+  "cstruct" {>= "6.1.0"}
   "opam-0install" {>= "0.4.3"}
   "capnp-rpc-unix" {>= "1.2"}
   "capnp-rpc-lwt" {>= "1.2.3"}
@@ -33,7 +33,7 @@ depends: [
   "opam-file-format" {>= "2.1.6"}
   "ppx_deriving" {>= "5.2.1"}
   "ppx_deriving_yojson" {>= "3.7.0"}
-  "git-unix"
+  "git-unix" {>= "3.13.0"}
   "dockerfile" {>= "8.2.1"}
   "conf-libev"
   "ocaml-version" {>= "3.6.1"}

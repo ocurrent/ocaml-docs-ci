@@ -1,6 +1,6 @@
 type t = { install : Package.t; prep : Package.t list }
-(** a job is one package to install, from which a set of prep folders can be
-    derived.*)
+(** A job is one package to install, from which a set of prep folders can be
+    derived. *)
 
 let pp f (t : t) = Fmt.pf f "%a" Package.pp t.install
 let compare (a : t) (b : t) = Package.compare a.install b.install

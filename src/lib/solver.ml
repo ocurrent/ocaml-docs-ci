@@ -69,7 +69,6 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam
       raise exn)
 
 let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
-  let open Lwt.Syntax in
   let package = Track.pkg track in
   let constraints =
     [
@@ -79,20 +78,10 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
     ]
   in
   let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
-  let* res =
-    perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-      (("ocaml-base-compiler", `Geq, "4.04.1")
-      :: ("ocaml", `Leq, latest)
-      :: constraints)
-  in
-  match res with
-  | Ok x -> Lwt.return (Ok x)
-  | Error (`Msg msg1) ->
-      let+ res =
-        perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-          (("ocaml-base-compiler", `Eq, "5.0.0~beta1") :: constraints)
-      in
-      Result.map_error (fun (`Msg msg) -> `Msg (msg1 ^ "\n" ^ msg)) res
+  perform_constrained_solve ~solver ~pool ~job ~platform ~opam
+    (("ocaml-base-compiler", `Geq, Ocaml_version.(Releases.v4_04_1 |> to_string))
+    :: ("ocaml", `Leq, latest)
+    :: constraints)
 
 let solver_version = "v2"
 
@@ -137,7 +126,9 @@ module Cache = struct
 
   let mem track =
     let fname = fname track in
-    match Bos.OS.Path.exists fname with Ok true -> true | _ -> V1.mem track
+    match Bos.OS.Path.exists fname with
+    | Ok true -> true
+    | Ok false | Error _ -> V1.mem track
 
   let write ((track, value) : Track.t * cache_value) =
     let fname = fname track in
@@ -199,8 +190,8 @@ module Solver = struct
       opam_commit : Git.Commit.t;
     }
 
-    (* TODO: what happens when the platform changes. *)
-    let digest { packages; blacklist; opam_commit; _ } =
+    (* TODO: what happens when the platform changes? *)
+    let digest { packages; blacklist; opam_commit; platform = _ } =
       (Git.Commit.hash opam_commit :: blacklist)
       @ List.map
           (fun t ->
@@ -221,7 +212,32 @@ module Solver = struct
       Value.{ packages; blacklist; platform; opam_commit } =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
-    let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
+    Current.Job.log job "Using opam-repository sha %a" Git.Commit.pp opam_commit;
+    let check_cache (key : Track.t) : bool Lwt.t =
+      if not (Cache.mem key) then Lwt.return true
+      else
+        let cache = Cache.read key in
+        match cache with
+        | None -> Lwt.return true
+        | Some (Error _) -> Lwt.return true
+        | Some (Ok package) ->
+            Current.Job.log job "check_cache for %s"
+              (Yojson.Safe.to_string (Track.to_yojson key));
+            let cached_opam_repo_sha = Package.commit package in
+            let opam_packages =
+              Package.all_deps package |> List.map Package.opam
+            in
+            let+ commit =
+              Opam_repository.oldest_commit_with opam_packages ~from:opam_commit
+                ~job
+            in
+            (* If the git sha found is the same, use the cached result
+               otherwise we need to resolve as something changed.
+            *)
+            not (String.equal commit cached_opam_repo_sha)
+    in
+
+    let* to_do = Lwt_list.filter_s (fun x -> check_cache x) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->
