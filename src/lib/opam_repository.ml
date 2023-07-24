@@ -7,7 +7,7 @@ module Log = Solver_api.Solver.Log
     Resolve for a packages revdeps.
 
     Don't want to scope on opam_repository *)
-let oldest_commit_with ~job ~from pkgs =
+let oldest_commit_with ~from pkgs =
   let paths =
     pkgs
     |> List.map (fun pkg ->
@@ -16,7 +16,6 @@ let oldest_commit_with ~job ~from pkgs =
            Printf.sprintf "packages/%s/%s.%s" name name version)
   in
   let clone_path = Current_git.Commit.repo from in
-  Current.Job.log job "clone_path %a" Current_git.Commit.pp from;
   (* Equivalent to: git -C path log -n 1 --format=format:%H from -- paths *)
   let cmd =
     "git"
@@ -30,8 +29,5 @@ let oldest_commit_with ~job ~from pkgs =
     :: "--"
     :: paths
   in
-  Current.Job.log job "oldest_commit_with %a"
-    (Fmt.list ~sep:Fmt.sp Fmt.string)
-    cmd;
   let cmd = ("", Array.of_list cmd) in
   Process.pread cmd >|= String.trim
