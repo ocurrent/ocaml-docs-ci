@@ -1,7 +1,7 @@
 module Metrics = struct
   open Prometheus
 
-  let namespace = "ocamldocsci"
+  let namespace = "docs_ci"
   let subsystem = "monitor"
 
   let package_status_total =
