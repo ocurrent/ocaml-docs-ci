@@ -178,6 +178,7 @@ let extract_hashes ((v_compile, v_linked), retriable_errors) line =
         "Temporary failure";
         "Could not resolve host";
         "rsync: connection unexpectedly closed";
+        "Disconnected: Switch turned off";
       ]
     in
     List.fold_left
