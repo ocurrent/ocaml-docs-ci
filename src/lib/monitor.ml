@@ -400,7 +400,6 @@ let lookup_status' t package : state =
   in
   match x with None -> Running | Some (_, _, s) -> s
 
-(* val lookup_steps : t -> name:string -> (package_steps list, string) result *)
 let lookup_steps' t (package : OpamPackage.t) =
   let status = opam_package_state t package in
   let package_pipeline_tree = get_opam_package_info t package in
