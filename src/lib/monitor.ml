@@ -1,3 +1,15 @@
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "docs_ci"
+  let subsystem = "monitor"
+
+  let package_status_total =
+    let help = "Number of packages by status" in
+    Gauge.v_label ~label_name:"status" ~help ~namespace ~subsystem
+      "package_status_total"
+end
+
 (*TODO: Cut over pipeline_tree's strings to use step_type *)
 (* type step_type =
    | Prep
@@ -60,12 +72,6 @@ let make () =
     blessing = OpamPackage.Map.empty;
     trees = Package.Map.empty;
   }
-
-let register t solve_failures preps blessing trees =
-  t.solve_failures <- OpamPackage.Map.of_list solve_failures;
-  t.preps <- U preps;
-  t.blessing <- blessing;
-  t.trees <- trees
 
 let ( let* ) = Result.bind
 let ( let+ ) a f = Result.map f a
@@ -427,6 +433,40 @@ let lookup_steps t ~name =
     else
       let list_packages = List.map Result.get_ok oks in
       Ok list_packages
+
+let collect_metrics t =
+  let ok_count = ref 0 in
+  let failed_count = ref 0 in
+  let running_count = ref 0 in
+
+  let register_status_for_package t name =
+    let statuses = lookup_status t ~name in
+    List.iter
+      (fun (_, _, status) ->
+        match status with
+        | Done -> ok_count := !ok_count + 1
+        | Failed -> failed_count := !failed_count + 1
+        | Running -> running_count := !running_count + 1)
+      statuses
+  in
+  let known_packages = lookup_known_packages t in
+  List.iter (fun name -> register_status_for_package t name) known_packages;
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "ok")
+    (float_of_int !ok_count);
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "failed")
+    (float_of_int !failed_count);
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "running")
+    (float_of_int !running_count)
+
+let register t solve_failures preps blessing trees =
+  t.solve_failures <- OpamPackage.Map.of_list solve_failures;
+  t.preps <- U preps;
+  t.blessing <- blessing;
+  t.trees <- trees;
+  Lwt.dont_wait (fun () -> collect_metrics t |> Lwt.return) ignore
 
 let handle_root t ~engine:_ =
   object

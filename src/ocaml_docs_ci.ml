@@ -2,6 +2,13 @@ open Lwt.Infix
 open Capnp_rpc_lwt
 module Git = Current_git
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "docs_ci"
+  let subsystem = "pipeline"
+end
+
 let setup_log default_level =
   Prometheus_unix.Logging.init ?default_level ();
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);

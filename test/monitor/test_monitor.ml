@@ -55,7 +55,7 @@ let pipeline monitor =
   let solve_failure =
     [ (OpamPackage.of_string "mirage.4.0.0", "solver failed") ]
   in
-  Monitor.(register monitor solve_failure OpamPackage.Map.empty blessing values);
+  Monitor.register monitor solve_failure OpamPackage.Map.empty blessing values;
   monitor
 
 let package_step_list_testable =

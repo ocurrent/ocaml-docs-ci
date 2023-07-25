@@ -1,5 +1,17 @@
 module Git = Current_git
 
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "docs_ci"
+  let subsystem = "solver"
+
+  let solver_status_total =
+    let help = "Number of solves by status" in
+    Gauge.v_label ~label_name:"status" ~help ~namespace ~subsystem
+      "status_total"
+end
+
 (* -------------------------- *)
 
 let job_log job logs =
@@ -259,9 +271,20 @@ module Solver = struct
           Result.is_ok result)
         to_do
     in
-    Current.Job.log job "Solved: %d / New: %d / Success: %d"
-      (List.length packages) (List.length solved)
-      (List.length (solved |> List.filter (fun x -> x)));
+    let solved_packages = List.length packages
+    and new_packages = List.length solved
+    and success_packages = List.length (solved |> List.filter (fun x -> x)) in
+    Prometheus.Gauge.set
+      (Metrics.solver_status_total "solved")
+      (float_of_int solved_packages);
+    Prometheus.Gauge.set
+      (Metrics.solver_status_total "new")
+      (float_of_int new_packages);
+    Prometheus.Gauge.set
+      (Metrics.solver_status_total "success")
+      (float_of_int success_packages);
+    Current.Job.log job "Solved: %d / New: %d / Success: %d" solved_packages
+      new_packages success_packages;
 
     let successes, failures =
       List.partition
