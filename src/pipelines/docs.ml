@@ -25,6 +25,45 @@ module PrepStatus = struct
     | v -> v
 end
 
+let status = function
+  | Error (`Msg msg) -> Monitor.Err msg
+  | Error (`Active _) -> Active
+  | Error `Blocked -> Blocked
+  | Ok _ -> OK
+
+let job_id (metadata : Current.Metadata.t option) : string option =
+  match metadata with None -> None | Some metadata -> metadata.job_id
+
+open Current.Syntax
+
+let rec current_list_flatten x =
+  match x with
+  | [] -> Current.return []
+  | [ x' ] -> x'
+  | x' :: y ->
+      let+ x' and+ y' = current_list_flatten y in
+      x' @ y'
+
+let rec summarise description arr = function
+  | Monitor.Item current ->
+      let state = Current.state current in
+      let metadata = Current.Analysis.metadata current in
+      let+ status = Current.map status state
+      and+ job_id = Current.map job_id metadata in
+      { Monitor.typ = description; job_id; status } :: arr
+  | Seq items | And items | Or items ->
+      let f name = Fmt.str "%s" name in
+      let f_colon name = ":" ^ Fmt.str "%s" name in
+
+      List.map
+        (fun (name, item) ->
+          summarise
+            (if description = "" then description ^ f name
+             else description ^ f_colon name)
+            arr item)
+        items
+      |> current_list_flatten
+
 let compile ~generation ~config ~voodoo_gen ~voodoo_do
     ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
     (preps : (Prep.prep Current.t * Prep.t Current.t) Package.Map.t) =
@@ -100,7 +139,19 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
        in
        (node, monitor)
   in
-  Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
+  let compile_and_record package _p =
+    get_compilation_node package _p
+    |> Option.map @@ fun (node, monitor) ->
+       let _index =
+         let+ step_list = summarise "" [] monitor
+         and+ voodoo_do_commit = Current.map Voodoo.Do.digest voodoo_do
+         and+ voodoo_gen_commit = Current.map Voodoo.Gen.digest voodoo_gen in
+         Index.record package config step_list voodoo_do_commit
+           voodoo_gen_commit
+       in
+       (node, monitor)
+  in
+  Package.Map.filter_map compile_and_record preps |> Package.Map.bindings
 
 let blacklist =
   [

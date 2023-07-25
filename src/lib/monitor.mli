@@ -14,7 +14,9 @@ type state =
    | BuildHtml *)
 
 type step_status = Err of string | Active | Blocked | OK
+
 type step = { typ : string; job_id : string option; status : step_status }
+[@@deriving show, eq]
 
 val make : unit -> t
 (** Create a monitor. *)
