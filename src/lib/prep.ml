@@ -233,6 +233,7 @@ module Prep = struct
             "Temporary failure";
             "Could not resolve host";
             "rsync: connection unexpectedly closed";
+            "Disconnected: Switch turned off";
           ]
         in
         List.fold_left
