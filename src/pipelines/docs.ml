@@ -146,8 +146,8 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
          let+ step_list = summarise "" [] monitor
          and+ voodoo_do_commit = Current.map Voodoo.Do.digest voodoo_do
          and+ voodoo_gen_commit = Current.map Voodoo.Gen.digest voodoo_gen in
-         Index.record package config step_list voodoo_do_commit
-           voodoo_gen_commit
+         Index.record package config ~voodoo_do_commit ~voodoo_gen_commit
+           step_list
        in
        (node, monitor)
   in
@@ -243,7 +243,7 @@ let compile_hierarchical_collapse ~input lst =
   |> collapse_by ~key ~input first_char (Some package_name)
   |> collapse_single ~key ~input
 
-let v ~config ~opam ~monitor () =
+let v ~config ~opam ~monitor ~migrations () =
   let open Current.Syntax in
   let voodoo = Voodoo.v config in
   let ssh = Config.ssh config in
@@ -254,6 +254,14 @@ let v ~config ~opam ~monitor () =
     let+ voodoo in
     Epoch.v config voodoo
   in
+
+  (* 0) Housekeeping - run migrations *)
+  let migrations =
+    match migrations with
+    | Some path -> Index.migrate path
+    | None -> Current.return ()
+  in
+  Current.with_context migrations @@ fun () ->
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v

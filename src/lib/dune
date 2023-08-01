@@ -27,6 +27,8 @@
   opam-0install
   solver_api
   ocaml-version
+  omigrate
+  omigrate.sqlite3
   docker_hub)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))
