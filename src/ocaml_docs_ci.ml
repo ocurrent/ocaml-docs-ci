@@ -101,7 +101,7 @@ let run_capnp capnp_public_address capnp_listen_address =
       Lwt.return (vat, Some rpc_engine_resolver)
 
 let main () current_config github_auth mode capnp_public_address
-    capnp_listen_address config =
+    capnp_listen_address config migrations =
   ignore
   @@ Logging.run
        (let () =
@@ -121,7 +121,8 @@ let main () current_config github_auth mode capnp_public_address
         let monitor = Docs_ci_lib.Monitor.make () in
         let engine =
           Current.Engine.create ~config:current_config (fun () ->
-              Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam ~monitor ()
+              Docs_ci_pipelines.Docs.v ~config ~opam:repo_opam ~monitor
+                ~migrations ()
               |> Current.ignore_value)
         in
         rpc_engine_resolver
@@ -181,6 +182,16 @@ let capnp_listen_address =
     @@ opt (Arg.some Capnp_rpc_unix.Network.Location.cmdliner_conv) None
     @@ i)
 
+let migrations =
+  Arg.(
+    value
+    @@ opt (some dir) None
+    @@ info ~docv:"MIGRATIONS_PATH"
+         ~doc:
+           "Specify the path to the migration directory. If no path is given \
+            the migration step is ignored."
+         [ "migration-path" ])
+
 let cmd =
   let doc = "An OCurrent pipeline" in
   let info = Cmd.info program_name ~doc in
@@ -193,6 +204,7 @@ let cmd =
       $ Current_web.cmdliner
       $ capnp_public_address
       $ capnp_listen_address
-      $ Docs_ci_lib.Config.cmdliner)
+      $ Docs_ci_lib.Config.cmdliner
+      $ migrations)
 
 let () = exit @@ Cmd.eval cmd

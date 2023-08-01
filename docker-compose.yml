@@ -119,6 +119,7 @@ services:
       - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
       - --capnp-listen-address=tcp:0.0.0.0:9080
       - --capnp-public-address=tcp:localhost:9080
+      - --migration-path=/migrations
     init: true
     restart: on-failure         # (wait for the scheduler to write the submission cap)
     ports:
