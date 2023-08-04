@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:experimental
-FROM ocaml/opam:debian-11-ocaml-4.14@sha256:bc7e053abdfca481d15f49291f8151a63207d843d3065b4b5a2f6f68681cbd4b AS build
+FROM ocaml/opam:debian-12-ocaml-4.14@sha256:45b04e2a4c933c57549382045dfac12cb7e872cace0456f92f4b022066e48111 AS build
 RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 4f8d9820693746275a0438102c57ef7e43e745b9 && opam update
 COPY --chown=opam \
 	vendor/ocurrent/current_github.opam \
@@ -26,7 +26,7 @@ RUN opam install --deps-only .
 ADD --chown=opam . .
 RUN opam config exec -- dune build ./_build/install/default/bin/ocaml-docs-ci ./_build/install/default/bin/ocaml-docs-ci-solver && cp ./_build/install/default/bin/ocaml-docs-ci ./_build/install/default/bin/ocaml-docs-ci-solver .
 
-FROM debian:11
+FROM debian:12
 RUN apt-get update && apt-get install rsync libev4 openssh-client curl gnupg2 dumb-init git graphviz libsqlite3-dev ca-certificates netbase gzip bzip2 xz-utils unzip tar -y --no-install-recommends
 RUN git config --global user.name "docs" && git config --global user.email "ci"
 WORKDIR /var/lib/ocurrent
