@@ -78,14 +78,12 @@ let migrate path =
   |> let> date = Current.return (Unix.time ()) in
      Migration_cache.get path date
 
-type status = [ `Failed | `Running | `Passed ] [@@deriving show]
+let state_to_int = function Monitor.Failed -> 0 | Running -> 1 | Done -> 2
 
-let status_to_int = function `Failed -> 0 | `Running -> 1 | `Passed -> 2
-
-let int_to_status = function
-  | 0 -> Ok `Failed
-  | 1 -> Ok `Running
-  | 2 -> Ok `Passed
+let int_to_state = function
+  | 0 -> Ok Monitor.Failed
+  | 1 -> Ok Running
+  | 2 -> Ok Done
   | _ -> Error "Unrecognised status: %d"
 
 type t = { record_package : Sqlite3.stmt; record_pipeline : Sqlite3.stmt }
@@ -101,14 +99,16 @@ let db =
           step_list, status, pipeline_id) VALUES (?, ?, ?, ?, ?)"
      and record_pipeline =
        Sqlite3.prepare db
-         "INSERT OR REPLACE INTO docs_ci_pipeline_index (epoch_1, epoch_2, \
-          voodoo_do, voodoo_gen, voodoo_compile) VALUES (?, ?, ?, ?, ?)"
+         "INSERT INTO docs_ci_pipeline_index (epoch_html, epoch_linked, \
+          voodoo_do, voodoo_gen, voodoo_prep) VALUES (?, ?, ?, ?, ?) returning \
+          id"
      in
      { record_package; record_pipeline })
 
 let init () = Lwt.map (fun () -> ignore (Lazy.force db)) (Migration.init ())
 
-let record package config ~voodoo_do_commit ~voodoo_gen_commit step_list =
+let record package config ~voodoo_do_commit ~voodoo_gen_commit pipeline_id
+    package_status step_list =
   Log.info (fun f ->
       f
         "[Index] Package: %s:%s Voodoo-branch: %s Voodoo-repo: %s \
@@ -120,4 +120,37 @@ let record package config ~voodoo_do_commit ~voodoo_gen_commit step_list =
         voodoo_do_commit voodoo_gen_commit
         (Format.pp_print_list Monitor.pp_step)
         step_list);
-  ()
+  ();
+  let package_name = Package.opam package |> OpamPackage.name_to_string in
+  let package_version = Package.opam package |> OpamPackage.version_to_string in
+  let step_list_string =
+    step_list |> Monitor.steps_list_to_yojson |> Yojson.Safe.to_string
+  in
+
+  let t = Lazy.force db in
+  Db.exec t.record_package
+    Sqlite3.Data.
+      [
+        TEXT package_name;
+        TEXT package_version;
+        TEXT step_list_string;
+        INT (state_to_int package_status |> Int64.of_int);
+        INT (pipeline_id |> Int64.of_int);
+      ]
+
+let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
+    ~epoch_html ~epoch_linked =
+  let t = Lazy.force db in
+  match
+    Db.query_one t.record_pipeline
+      Sqlite3.Data.
+        [
+          TEXT epoch_html;
+          TEXT epoch_linked;
+          TEXT voodoo_do_commit;
+          TEXT voodoo_gen_commit;
+          TEXT voodoo_prep_commit;
+        ]
+  with
+  | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
+  | _ -> Error "Failed to record pipeline."

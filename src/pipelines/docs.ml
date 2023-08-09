@@ -65,7 +65,7 @@ let rec summarise description arr = function
       |> current_list_flatten
 
 let compile ~generation ~config ~voodoo_gen ~voodoo_do
-    ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
+    ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t) ~pipeline_id
     (preps : (Prep.prep Current.t * Prep.t Current.t) Package.Map.t) =
   let compilation_jobs = ref Package.Map.empty in
 
@@ -142,12 +142,14 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
   let compile_and_record package _p =
     get_compilation_node package _p
     |> Option.map @@ fun (node, monitor) ->
+       let package_status = Monitor.pipeline_state monitor in
        let _index =
          let+ step_list = summarise "" [] monitor
+         and+ pipeline_id
          and+ voodoo_do_commit = Current.map Voodoo.Do.digest voodoo_do
          and+ voodoo_gen_commit = Current.map Voodoo.Gen.digest voodoo_gen in
          Index.record package config ~voodoo_do_commit ~voodoo_gen_commit
-           step_list
+           pipeline_id package_status step_list
        in
        (node, monitor)
   in
@@ -250,18 +252,24 @@ let v ~config ~opam ~monitor ~migrations () =
   let v_do = Current.map Voodoo.Do.v voodoo in
   let v_gen = Current.map Voodoo.Gen.v voodoo in
   let v_prep = Current.map Voodoo.Prep.v voodoo in
-  let generation =
-    let+ voodoo in
-    Epoch.v config voodoo
-  in
-
-  (* 0) Housekeeping - run migrations *)
   let migrations =
     match migrations with
     | Some path -> Index.migrate path
     | None -> Current.return ()
   in
-  Current.with_context migrations @@ fun () ->
+  let voodoo =
+    let+ _ = migrations and+ voodoo in
+    voodoo
+  in
+  let generation =
+    let+ voodoo in
+    Epoch.v config voodoo
+  in
+  (* 0) Housekeeping - run migrations, record a new pipeline run *)
+  let* _ = migrations in
+  Log.info (fun f -> f "0) Migrations");
+
+  let pipeline_id = Record.v config voodoo in
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v
@@ -361,7 +369,7 @@ let v ~config ~opam ~monitor ~migrations () =
   let html, html_input_node, package_pipeline_tree =
     let compile_monitor =
       compile ~generation ~config ~voodoo_do:v_do ~voodoo_gen:v_gen ~blessed
-        prepped'
+        ~pipeline_id prepped'
     in
     Log.info (fun f ->
         f ".. %d compilation nodes" (List.length compile_monitor));

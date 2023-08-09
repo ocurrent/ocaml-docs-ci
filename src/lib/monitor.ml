@@ -26,11 +26,14 @@ type pipeline_tree =
 
 type preps = U : (Package.t * _ Current.t) list OpamPackage.Map.t -> preps
 type state = Done | Running | Failed [@@deriving show, eq]
-type step_status = Err of string | Active | Blocked | OK [@@deriving show, eq]
+
+type step_status = Err of string | Active | Blocked | OK
+[@@deriving show, eq, to_yojson]
 
 type step = { typ : string; job_id : string option; status : step_status }
-[@@deriving show, eq]
+[@@deriving show, eq, to_yojson]
 
+type steps_list = step list [@@deriving show, eq, to_yojson]
 type package_build_status = { version : OpamPackage.Version.t; status : state }
 
 type package_steps = {
