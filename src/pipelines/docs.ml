@@ -144,12 +144,8 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
     |> Option.map @@ fun (node, monitor) ->
        let package_status = Monitor.pipeline_state monitor in
        let _index =
-         let+ step_list = summarise "" [] monitor
-         and+ pipeline_id
-         and+ voodoo_do_commit = Current.map Voodoo.Do.digest voodoo_do
-         and+ voodoo_gen_commit = Current.map Voodoo.Gen.digest voodoo_gen in
-         Index.record package config ~voodoo_do_commit ~voodoo_gen_commit
-           pipeline_id package_status step_list
+         let+ step_list = summarise "" [] monitor and+ pipeline_id in
+         Index.record package pipeline_id package_status step_list
        in
        (node, monitor)
   in

@@ -107,20 +107,7 @@ let db =
 
 let init () = Lwt.map (fun () -> ignore (Lazy.force db)) (Migration.init ())
 
-let record package config ~voodoo_do_commit ~voodoo_gen_commit pipeline_id
-    package_status step_list =
-  Log.info (fun f ->
-      f
-        "[Index] Package: %s:%s Voodoo-branch: %s Voodoo-repo: %s \
-         Voodoo-do-commit: %s Voodoo-gen-commit: %s Step-list: %a"
-        (Package.opam package |> OpamPackage.name_to_string)
-        (Package.opam package |> OpamPackage.version_to_string)
-        (Config.voodoo_branch config)
-        (Config.voodoo_repo config)
-        voodoo_do_commit voodoo_gen_commit
-        (Format.pp_print_list Monitor.pp_step)
-        step_list);
-  ();
+let record package pipeline_id package_status step_list =
   let package_name = Package.opam package |> OpamPackage.name_to_string in
   let package_version = Package.opam package |> OpamPackage.version_to_string in
   let step_list_string =
