@@ -1,6 +1,7 @@
 module Rpc = Current_rpc.Impl (Current)
 module Raw = Pipeline_api.Raw
 module Monitor = Docs_ci_lib.Monitor
+module Index = Docs_ci_lib.Index
 module String_map = Map.Make (String)
 open Capnp_rpc_lwt
 
@@ -38,7 +39,6 @@ let make_package ~monitor package_name =
 
        method steps_impl _params release_param_caps =
          let open Api.Steps in
-         (* let package_version = Params.package_version_get params in *)
          release_param_caps ();
          let response, results = Service.Response.create Results.init_pointer in
          let all_package_versions_steps =
@@ -82,6 +82,28 @@ let make_package ~monitor package_name =
                 let steps = package_steps.steps |> List.map steps_f in
                 ignore (steps_set_list slot steps));
 
+         Service.return response
+
+       method by_pipeline_impl params release_param_caps =
+         let open Api.ByPipeline in
+         let pipeline_id = Params.pipeline_id_get params in
+         release_param_caps ();
+
+         let response, results = Service.Response.create Results.init_pointer in
+         let versions =
+           Index.get_package_status_by_name package_name pipeline_id
+         in
+         let arr = Results.versions_init results (List.length versions) in
+         versions
+         |> List.filter (fun (_, state_res) -> Result.is_ok state_res)
+         |> List.iteri (fun i (version, state) ->
+                let open Raw.Builder.PackageBuildStatus in
+                let slot = Capnp.Array.get arr i in
+                version_set slot version;
+                match Result.get_ok state with
+                | Monitor.Done -> status_set slot Passed
+                | Running -> status_set slot Pending
+                | Failed -> status_set slot Failed);
          Service.return response
      end
 
@@ -130,4 +152,51 @@ let make ~monitor =
              in
              Results.package_set results (Some package);
              Service.return response
+
+       method health_impl params release_param_caps =
+         let open Api.Health in
+         let pipeline_id = Params.pipeline_id_get params in
+         release_param_caps ();
+         let response, results = Service.Response.create Results.init_pointer in
+         match Index.get_pipeline_data pipeline_id with
+         | None ->
+             Service.fail "Invalid pipeline_id %d" (Int64.to_int pipeline_id)
+         | Some pipeline_data ->
+             let Index.{ failed_count; running_count; passed_count } =
+               Index.get_pipeline_counts pipeline_id
+             in
+             let health_slot = Results.health_init results in
+             let open Raw.Builder.PipelineHealth in
+             voodoo_do_commit_set health_slot pipeline_data.voodoo_do;
+             voodoo_gen_commit_set health_slot pipeline_data.voodoo_gen;
+             voodoo_prep_commit_set health_slot pipeline_data.voodoo_prep;
+             epoch_html_set health_slot pipeline_data.epoch_html;
+             epoch_linked_set health_slot pipeline_data.epoch_linked;
+             failing_packages_set health_slot @@ Int64.of_int failed_count;
+             passing_packages_set health_slot @@ Int64.of_int passed_count;
+             running_packages_set health_slot @@ Int64.of_int running_count;
+
+             Service.return response
+
+       method diff_impl params release_param_caps =
+         let open Api.Diff in
+         let pipeline_id_one = Params.pipeline_id_one_get params in
+         let pipeline_id_two = Params.pipeline_id_two_get params in
+         release_param_caps ();
+
+         let response, results = Service.Response.create Results.init_pointer in
+         let failing_packages_that_were_passing =
+           Index.get_pipeline_diff ~pipeline_id_latest:pipeline_id_one
+             ~pipeline_id_latest_but_one:pipeline_id_two
+         in
+         let arr =
+           Results.failing_packages_init results
+             (List.length failing_packages_that_were_passing)
+         in
+         failing_packages_that_were_passing
+         |> List.iteri (fun i (name, version) ->
+                let open Raw.Builder.PackageInfo in
+                let slot = Capnp.Array.get arr i in
+                name_set slot (Fmt.str "%s:%s" name version));
+         Service.return response
      end

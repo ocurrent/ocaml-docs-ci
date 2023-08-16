@@ -114,14 +114,31 @@ struct PackageSteps {
   steps @2 :List(StepInfo);
 }
 
+struct PipelineHealth {
+  voodooDoCommit @0 :Text;
+  voodooGenCommit @1 :Text;
+  voodooPrepCommit @2 :Text;
+  epochHtml @3 :Text;
+  epochLinked @4 :Text;
+  failingPackages @5 :Int64;
+  passingPackages @6 :Int64;
+  runningPackages @7 :Int64;
+}
+
 interface Package {
   steps @0 () -> (steps :List(PackageSteps));
 
   versions @1 () -> (versions :List(PackageBuildStatus));
+
+  byPipeline @2 (pipeline_id :Int64) -> (versions :List(PackageBuildStatus));
 }
 
 interface Pipeline {
   package @0 (package_name :Text) -> (package : Package);
 
   packages @1 () -> (packages :List(PackageInfo));
+
+  health @2 (pipeline_id :Int64) -> (health : PipelineHealth);
+
+  diff @3 (pipeline_id_one :Int64, pipeline_id_two :Int64) -> (failingPackages :List(PackageInfo));
 }
