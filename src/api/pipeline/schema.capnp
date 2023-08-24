@@ -141,4 +141,6 @@ interface Pipeline {
   health @2 (pipeline_id :Int64) -> (health : PipelineHealth);
 
   diff @3 (pipeline_id_one :Int64, pipeline_id_two :Int64) -> (failingPackages :List(PackageInfo));
+
+  pipelineIds @4 () -> (latest :Int64, latest_but_one :Int64);
 }

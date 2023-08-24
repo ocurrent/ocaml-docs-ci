@@ -51,6 +51,11 @@ module Package : sig
     ( (string * Build_status.t * step list) list,
       [> `Capnp of Capnp_rpc.Error.t ] )
     Lwt_result.t
+
+  val by_pipeline :
+    t ->
+    int64 ->
+    (package_status list, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 end
 
 module Pipeline : sig
@@ -64,4 +69,20 @@ module Pipeline : sig
     ( Raw.Reader.PackageInfo.t list,
       [> `Capnp of Capnp_rpc.Error.t ] )
     Lwt_result.t
+
+  val health :
+    t ->
+    int64 ->
+    (Raw.Reader.PipelineHealth.t, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
+
+  val diff :
+    t ->
+    int64 ->
+    int64 ->
+    ( Raw.Reader.PackageInfo.t list,
+      [> `Capnp of Capnp_rpc.Error.t ] )
+    Lwt_result.t
+
+  val pipeline_ids :
+    t -> (int64 * int64, [> `Capnp of Capnp_rpc.Error.t ]) Lwt_result.t
 end

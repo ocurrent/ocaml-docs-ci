@@ -112,7 +112,7 @@ let db =
           id"
      and get_recent_pipeline_ids =
        Sqlite3.prepare db
-         "SELECT id FROM docs_ci_pipeline_index ORDER BY id LIMIT 2"
+         "SELECT id FROM docs_ci_pipeline_index ORDER BY id DESC LIMIT 2"
      and get_packages_by_status =
        Sqlite3.prepare db
          "SELECT name, version FROM docs_ci_package_index WHERE status = ? AND \
@@ -128,7 +128,7 @@ let db =
      and get_pipeline_data =
        Sqlite3.prepare db
          "SELECT epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep \
-          FROM docs_ci_pipeline_index WHERE pipeline_id = ?"
+          FROM docs_ci_pipeline_index WHERE id = ?"
      in
 
      {
@@ -181,7 +181,7 @@ let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
 let get_recent_pipeline_ids =
   let t = Lazy.force db in
   let recent_pipeline_ids =
-    Db.query t.get_recent_pipeline_ids []
+    Db.query t.get_recent_pipeline_ids Sqlite3.Data.[]
     |> List.map @@ function
        | Sqlite3.Data.[ INT latest ] -> latest
        | row ->
@@ -277,7 +277,7 @@ let get_pipeline_diff ~pipeline_id_latest ~pipeline_id_latest_but_one =
             get_package_status ~name ~version
               ~pipeline_id:pipeline_id_latest_but_one
           in
-          status = Some (Ok Monitor.Done))
+          status = Some (Ok Monitor.Done) || status = Some (Ok Monitor.Running))
     failing_packages_in_latest
 
 let get_package_status_by_name name pipeline_id =

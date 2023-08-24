@@ -199,4 +199,16 @@ let make ~monitor =
                 let slot = Capnp.Array.get arr i in
                 name_set slot (Fmt.str "%s:%s" name version));
          Service.return response
+
+       method pipeline_ids_impl _params release_param_caps =
+         let open Api.PipelineIds in
+         release_param_caps ();
+
+         let response, results = Service.Response.create Results.init_pointer in
+         match Index.get_recent_pipeline_ids with
+         | None -> Service.fail "Failed to get pipeline ids"
+         | Some (latest, latest_but_one) ->
+             Results.latest_set results latest;
+             Results.latest_but_one_set results latest_but_one;
+             Service.return response
      end
