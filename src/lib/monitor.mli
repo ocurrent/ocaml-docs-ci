@@ -18,6 +18,11 @@ type step_status = Err of string | Active | Blocked | OK
 type step = { typ : string; job_id : string option; status : step_status }
 [@@deriving show, eq]
 
+type steps_list = step list
+
+val steps_list_to_yojson : steps_list -> Yojson.Safe.t
+val step_to_yojson : step -> Yojson.Safe.t
+
 val make : unit -> t
 (** Create a monitor. *)
 
@@ -65,3 +70,4 @@ type package_steps = {
 
 val pp_package_steps : Format.formatter -> package_steps -> unit
 val lookup_steps : t -> name:string -> (package_steps list, string) result
+val pipeline_state : pipeline_tree -> state
