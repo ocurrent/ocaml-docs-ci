@@ -22,6 +22,7 @@
   opam-file-format
   docs_ci_pipelines
   docs_ci_lib
+  dune-build-info
   mirage-crypto-rng.unix
   prometheus-app.unix)
  (preprocess

@@ -192,9 +192,14 @@ let migrations =
             the migration step is ignored."
          [ "migration-path" ])
 
+let version =
+  match Build_info.V1.version () with
+  | None -> "n/a"
+  | Some v -> Build_info.V1.Version.to_string v
+
 let cmd =
   let doc = "An OCurrent pipeline" in
-  let info = Cmd.info program_name ~doc in
+  let info = Cmd.info program_name ~doc ~version in
   Cmd.v info
     Term.(
       const main
