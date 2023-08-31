@@ -50,7 +50,7 @@ let universes ~packages (resolutions : OpamPackage.t list) =
                  let name = OpamPackage.name res in
                  OpamPackage.Name.Set.mem name deps
                  || OpamPackage.Name.Set.mem name depopts)
-          |> List.map (fun pkg -> OpamPackage.Set.add pkg (aux pkg))
+          |> List.rev_map (fun pkg -> OpamPackage.Set.add pkg (aux pkg))
         in
         let result =
           List.fold_left OpamPackage.Set.union OpamPackage.Set.empty deps
@@ -58,7 +58,9 @@ let universes ~packages (resolutions : OpamPackage.t list) =
         Hashtbl.add memo root result;
         result
   in
-  List.map (fun pkg -> (pkg, aux pkg |> OpamPackage.Set.elements)) resolutions
+  List.rev_map
+    (fun pkg -> (pkg, aux pkg |> OpamPackage.Set.elements))
+    resolutions
 
 let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
   let context = Git_context.create () ~packages ~env:(env vars) ~constraints in
@@ -71,9 +73,9 @@ let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
       let pkgs = Solver.packages_of_result sels in
       let universes = universes ~packages pkgs in
       Ok
-        (List.map
+        (List.rev_map
            (fun (pkg, univ) ->
-             (OpamPackage.to_string pkg, List.map OpamPackage.to_string univ))
+             (OpamPackage.to_string pkg, List.rev_map OpamPackage.to_string univ))
            universes)
   | Error diagnostics -> Error (Solver.diagnostics diagnostics)
 
@@ -105,10 +107,10 @@ let main commit =
         in
         let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
         assert (Store.Hash.equal opam_repository_commit commit);
-        let root_pkgs = pkgs |> List.map OpamPackage.Name.of_string in
+        let root_pkgs = pkgs |> List.rev_map OpamPackage.Name.of_string in
         let constraints =
           constraints
-          |> List.map (fun (name, rel, version) ->
+          |> List.rev_map (fun (name, rel, version) ->
                  ( OpamPackage.Name.of_string name,
                    (rel, OpamPackage.Version.of_string version) ))
           |> OpamPackage.Name.Map.of_list
