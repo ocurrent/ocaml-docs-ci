@@ -36,6 +36,7 @@ depends: [
   "git-unix" {>= "3.13.0"}
   "dockerfile" {>= "8.2.1"}
   "conf-libev"
+  "dune-build-info"
   "ocaml-version" {>= "3.6.1"}
   "obuilder-spec" {>= "0.5.1"}
   "docker_hub" {>= "0.1.1"}

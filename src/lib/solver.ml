@@ -190,28 +190,7 @@ module Solver = struct
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
     Current.Job.log job "Using opam-repository sha %a" Git.Commit.pp opam_commit;
-    let check_cache (key : Track.t) : bool Lwt.t =
-      if not (Cache.mem key) then Lwt.return true
-      else
-        let cache = Cache.read key in
-        match cache with
-        | None -> Lwt.return true
-        | Some (Error _) -> Lwt.return true
-        | Some (Ok package) ->
-            let cached_opam_repo_sha = Package.commit package in
-            let opam_packages =
-              Package.all_deps package |> List.map Package.opam
-            in
-            let+ commit =
-              Opam_repository.oldest_commit_with opam_packages ~from:opam_commit
-            in
-            (* If the git sha found is the same, use the cached result
-               otherwise we need to resolve as something changed.
-            *)
-            not (String.equal commit cached_opam_repo_sha)
-    in
-
-    let* to_do = Lwt_list.filter_s (fun x -> check_cache x) packages in
+    let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
         (fun pkg ->
