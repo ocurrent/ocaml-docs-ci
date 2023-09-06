@@ -139,8 +139,10 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
        in
        let package_status = Monitor.pipeline_state monitor in
        let _index =
-         let+ step_list = summarise "" [] monitor and+ pipeline_id in
-         Index.record package pipeline_id package_status step_list
+         (* let+ step_list = summarise "" [] monitor  *)
+         (* DEBUGGING THE MEMORY BLOAT -- Skip the summarising for now *)
+         let+ pipeline_id in
+         Index.record package pipeline_id package_status []
        in
        (node, monitor)
   in
