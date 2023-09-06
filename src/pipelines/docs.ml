@@ -137,19 +137,16 @@ let compile ~generation ~config ~voodoo_gen ~voodoo_do
          | Monitor.Seq lst -> Monitor.Seq (lst @ [ ("do-html", Item node) ])
          | _ -> assert false
        in
-       (node, monitor)
-  in
-  let compile_and_record package _p =
-    get_compilation_node package _p
-    |> Option.map @@ fun (node, monitor) ->
        let package_status = Monitor.pipeline_state monitor in
        let _index =
-         let+ step_list = summarise "" [] monitor and+ pipeline_id in
-         Index.record package pipeline_id package_status step_list
+         (* let+ step_list = summarise "" [] monitor  *)
+         (* DEBUGGING THE MEMORY BLOAT -- Skip the summarising for now *)
+         let+ pipeline_id in
+         Index.record package pipeline_id package_status []
        in
        (node, monitor)
   in
-  Package.Map.filter_map compile_and_record preps |> Package.Map.bindings
+  Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
 
 let blacklist =
   [
