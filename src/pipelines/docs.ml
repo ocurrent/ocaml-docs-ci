@@ -258,11 +258,17 @@ let v ~config ~opam ~monitor ~migrations () =
     let+ voodoo in
     Epoch.v config voodoo
   in
-  (* 0) Housekeeping - run migrations, record a new pipeline run *)
+  (* 0) Housekeeping - run migrations *)
   let* _ = migrations in
   Log.info (fun f -> f "0) Migrations");
 
+  (* Record a new pipeline run *)
+  (* Note that this ocurrent job will only run if the inputs have changed and a new pipeline is being run.
+     Otherwise, the results of the last successful run of the job will be used.
+     Thus, we reuse the pipeline_id and don't create a new pipeline_id on re-deploys.
+  *)
   let pipeline_id = Record.v config voodoo in
+
   (* 1) Track the list of packages in the opam repository *)
   let tracked =
     Track.v

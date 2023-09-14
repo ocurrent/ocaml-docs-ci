@@ -18,6 +18,14 @@
 
 `ocaml-docs-ci list-steps --ci-cap <path to cap file> --package <package_name.version>` lists the steps (along with associated job-id and status) for a single version of a package.
 
+`ocaml-docs-ci health-check --ci-cap <path to cap file>` prints out the voodoo commit SHAs, epochs, and the number of failing packages, passing packages and running packages for the latest and latest-but-one pipelines.
+
+`ocaml-docs-ci diff-pipelines --ci-cap <path to cap file>` lists the packages that are failing in the latest pipeline that were passing in the latest-but-one pipeline.
+
+`ocaml-docs-ci status-by-pipeline --ci-cap <path to cap file> --name <package-name>` show the build status of all versions of a package in the latest pipeline and the latest-but-one pipeline.
+
+-- not yet implemented
+
 `ocaml-docs-ci status --ci-cap <path to cap file> --job <job-id>` show the build status of a single job
 
 `ocaml-docs-ci logs --ci-cap <path to cap file> --job <job-id>` display logs for an individual job (with a URL)

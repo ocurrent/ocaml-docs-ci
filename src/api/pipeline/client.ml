@@ -111,6 +111,22 @@ module Package = struct
                    { typ; job_id; status })
           in
           (package_version, status, steps)
+
+  let by_pipeline t pipeline_id =
+    let open Raw.Client.Package.ByPipeline in
+    let request, params = Capability.Request.create Params.init_pointer in
+    Params.pipeline_id_set params pipeline_id;
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map (fun x ->
+           x
+           |> Results.versions_get_list
+           |> List.map (fun x ->
+                  {
+                    version =
+                      Raw.Reader.PackageBuildStatus.version_get x
+                      |> OpamPackage.Version.of_string;
+                    status = Raw.Reader.PackageBuildStatus.status_get x;
+                  }))
 end
 
 module Pipeline = struct
@@ -127,4 +143,26 @@ module Pipeline = struct
     let request = Capability.Request.create_no_args () in
     Capability.call_for_value t method_id request
     |> Lwt_result.map Results.packages_get_list
+
+  let health t pipeline_id =
+    let open Raw.Client.Pipeline.Health in
+    let request, params = Capability.Request.create Params.init_pointer in
+    Params.pipeline_id_set params pipeline_id;
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map Results.health_get
+
+  let diff t pipeline_id_one pipeline_id_two =
+    let open Raw.Client.Pipeline.Diff in
+    let request, params = Capability.Request.create Params.init_pointer in
+    Params.pipeline_id_one_set params pipeline_id_one;
+    Params.pipeline_id_two_set params pipeline_id_two;
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map Results.failing_packages_get_list
+
+  let pipeline_ids t =
+    let open Raw.Client.Pipeline.PipelineIds in
+    let request, _params = Capability.Request.create Params.init_pointer in
+    Capability.call_for_value t method_id request
+    |> Lwt_result.map (fun x ->
+           (Results.latest_get x, Results.latest_but_one_get x))
 end
