@@ -176,14 +176,14 @@ let main_diff_pipelines ~ci_uri =
             | Ok failing_packages ->
                 if List.length failing_packages = 0 then
                   Fmt.pr
-                    "@[<v>Packages that fail in the latest pipeline, that did not fail \
-                     in the latest-but-one pipeline:@,\
+                    "@[<v>Packages that fail in the latest pipeline, that did \
+                     not fail in the latest-but-one pipeline:@,\
                      @,\
                      None."
                 else
                   Fmt.pr
-                    "@[<v>Packages that fail in the latest pipeline, that did not fail \
-                     in the latest-but-one pipeline:@,\
+                    "@[<v>Packages that fail in the latest pipeline, that did \
+                     not fail in the latest-but-one pipeline:@,\
                      @,\
                      %a@]@."
                     Fmt.(list pp_package_info)
