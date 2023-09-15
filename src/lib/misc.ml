@@ -32,7 +32,7 @@ let tag ocaml_version =
       Fmt.str "%d" (Ocaml_version.minor ocaml_version)
     else Fmt.str "%02d" (Ocaml_version.minor ocaml_version)
   in
-  Fmt.str "debian-11-ocaml-%d.%s%s"
+  Fmt.str "debian-12-ocaml-%d.%s%s"
     (* TODO Expose this as an ocurrent node or option *)
     (Ocaml_version.major ocaml_version)
     minor
