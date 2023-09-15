@@ -4,3 +4,6 @@
 [submodule "vendor/ocurrent"]
 	path = vendor/ocurrent
 	url = https://github.com/ocurrent/ocurrent
+[submodule "vendor/ocaml-version"]
+	path = vendor/ocaml-version
+	url = https://github.com/ocurrent/ocaml-version
