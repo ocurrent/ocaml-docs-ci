@@ -205,7 +205,8 @@ let make ~monitor =
          release_param_caps ();
 
          let response, results = Service.Response.create Results.init_pointer in
-         match Index.get_recent_pipeline_ids with
+         let t = Lazy.force Index.db in
+         match Index.get_recent_pipeline_ids t with
          | None -> Service.fail "Failed to get pipeline ids"
          | Some (latest, latest_but_one) ->
              Results.latest_set results latest;

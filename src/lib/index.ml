@@ -178,10 +178,9 @@ let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
   | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
   | _ -> Error "Failed to record pipeline."
 
-let get_recent_pipeline_ids =
-  let t = Lazy.force db in
+let get_recent_pipeline_ids t =
   let recent_pipeline_ids =
-    Db.query t.get_recent_pipeline_ids Sqlite3.Data.[]
+    Db.query t.get_recent_pipeline_ids []
     |> List.map @@ function
        | Sqlite3.Data.[ INT latest ] -> latest
        | row ->
