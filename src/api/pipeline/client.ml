@@ -53,11 +53,24 @@ end
 module Package = struct
   type t = Raw.Client.Package.t Capability.t
   type package_version = { version : OpamPackage.Version.t }
+  type package_info = Raw.Reader.PackageInfo.t
+
+  let package_info_to_yojson pi =
+    `Assoc [ ("package", `String (Raw.Reader.PackageInfo.name_get pi)) ]
+
+  type package_info_list = package_info list [@@deriving to_yojson]
 
   type package_status = {
     version : OpamPackage.Version.t;
     status : Build_status.t;
   }
+
+  let package_status_to_yojson { version; status } =
+    let version = `String (version |> OpamPackage.Version.to_string) in
+    let status = Build_status.to_yojson status in
+    `Assoc [ ("version", version); ("status", status) ]
+
+  type package_status_list = package_status list [@@deriving to_yojson]
 
   type step = { typ : string; job_id : string option; status : Build_status.t }
   [@@deriving to_yojson]
@@ -131,6 +144,29 @@ end
 
 module Pipeline = struct
   type t = Raw.Client.Pipeline.t Capability.t
+  type health = Raw.Reader.PipelineHealth.t
+
+  let health_to_yojson h =
+    let open Raw.Reader.PipelineHealth in
+    let epoch_html = epoch_html_get h in
+    let epoch_linked = epoch_linked_get h in
+    let voodoo_do = voodoo_do_commit_get h in
+    let voodoo_prep = voodoo_prep_commit_get h in
+    let voodoo_gen = voodoo_gen_commit_get h in
+    let failed_packages = failing_packages_get h |> Int64.to_int in
+    let running_packages = running_packages_get h |> Int64.to_int in
+    let passed_packages = passing_packages_get h |> Int64.to_int in
+    `Assoc
+      [
+        ("epoch_html", `String epoch_html);
+        ("epoch_linked", `String epoch_linked);
+        ("voodoo_do", `String voodoo_do);
+        ("voodoo_prep", `String voodoo_prep);
+        ("voodoo_gen", `String voodoo_gen);
+        ("failed_packages", `Int failed_packages);
+        ("running_packages", `Int running_packages);
+        ("passed_packages", `Int passed_packages);
+      ]
 
   let package t name =
     let open Raw.Client.Pipeline.Package in

@@ -27,23 +27,6 @@ let pp_package_info f (pi : Pipeline_api.Raw.Reader.PackageInfo.t) =
 let pp_package_build_status f (ps : Client.Build_status.t) =
   Client.Build_status.pp f ps
 
-let pp_pipeline_health f (h : Pipeline_api.Raw.Reader.PipelineHealth.t) =
-  let open Pipeline_api.Raw.Reader.PipelineHealth in
-  Fmt.pf f
-    "@[<v> Epoch-html: %s \n\
-    \ Epoch-linked: %s \n\
-    \ Voodoo-go: %s \n\
-    \ Voodoo-prep: %s \n\
-    \ Voodoo-gen: %s \n\
-    \ Failed-packages: %d \n\
-    \ Running-packages: %d \n\
-    \ Passed-packages: %d@]@." (epoch_html_get h) (epoch_linked_get h)
-    (voodoo_do_commit_get h) (voodoo_prep_commit_get h)
-    (voodoo_gen_commit_get h)
-    (Int64.to_int @@ failing_packages_get h)
-    (Int64.to_int @@ running_packages_get h)
-    (Int64.to_int @@ passing_packages_get h)
-
 let package_status f ({ version; status } : Client.Package.package_status) =
   Ocolor_format.prettify_formatter f;
   Fmt.pf f "@[%s/%a@] "
@@ -79,15 +62,30 @@ let list_versions_status package_name ?(version = None) package =
 
          Fmt.pr "%a@]@." Fmt.(list package_status) list)
 
-let list_versions_status_by_pipeline latest latest_but_one package =
+let list_versions_status_by_pipeline latest latest_but_one package_name package
+    =
+  let note =
+    if latest = latest_but_one then "Only one pipeline has been recorded."
+    else Fmt.str "Status of package %s" package_name
+  in
   Client.Package.by_pipeline package latest >>= function
   | Error _ as e -> Lwt.return e
   | Ok latest_packages -> (
       Client.Package.by_pipeline package latest_but_one >>= function
       | Error _ as e -> Lwt.return e
       | Ok latest_but_one_packages ->
-          Fmt.pr "%a@]@." Fmt.(list package_status) latest_packages;
-          Fmt.pr "%a@]@." Fmt.(list package_status) latest_but_one_packages;
+          Fmt.pr "@[<v>%s@]@."
+            (`Assoc
+               [
+                 ("note", `String note);
+                 ( "latest_pipeline",
+                   latest_packages
+                   |> Client.Package.package_status_list_to_yojson );
+                 ( "latest_but_one_pipeline",
+                   latest_but_one_packages
+                   |> Client.Package.package_status_list_to_yojson );
+               ]
+            |> Yojson.Safe.to_string);
           Lwt.return_ok ())
 
 let list_steps (_package_version : string) package =
@@ -131,7 +129,6 @@ let main_list_steps ~ci_uri ~package_name ~package_version =
         (list_steps package_version)
 
 let main_health ~ci_uri =
-  let pipeline_health f = Fmt.pf f "%a" pp_pipeline_health in
   let vat = Capnp_rpc_unix.client_only_vat () in
   match import_ci_ref ~vat ci_uri with
   | Error _ as e -> Lwt.return e
@@ -144,16 +141,26 @@ let main_health ~ci_uri =
           | Error _ as e -> Lwt.return e
           | Ok latest_health -> (
               if latest = latest_but_one then (
-                Fmt.pr "@[Only one pipeline has been recorded.@]@.";
-                Fmt.pr "%a" pipeline_health latest_health;
+                Fmt.pr "@[<v>%s@]@."
+                  (latest_health
+                  |> Client.Pipeline.health_to_yojson
+                  |> Yojson.Safe.to_string);
                 Lwt.return_ok ())
               else
                 Client.Pipeline.health ci latest_but_one >>= function
                 | Error _ as e -> Lwt.return e
                 | Ok latest_but_one_health ->
-                    Fmt.pr "Latest: @.%a@]@." pipeline_health latest_health;
-                    Fmt.pr "Latest-but-one: @.%a@]@." pipeline_health
-                      latest_but_one_health;
+                    Fmt.pr "@[<v>%s@]@."
+                      (`Assoc
+                         [
+                           ( "latest",
+                             latest_health |> Client.Pipeline.health_to_yojson
+                           );
+                           ( "latest-but-one",
+                             latest_but_one_health
+                             |> Client.Pipeline.health_to_yojson );
+                         ]
+                      |> Yojson.Safe.to_string);
                     Lwt.return_ok ())))
 
 let main_diff_pipelines ~ci_uri =
@@ -166,29 +173,47 @@ let main_diff_pipelines ~ci_uri =
       | Error _ as e -> Lwt.return e
       | Ok (latest, latest_but_one) -> (
           if latest = latest_but_one then (
-            Fmt.pr
-              "@[Only one pipeline has been recorded. Please try again when a \
-               new pipeline has run.@]@.";
+            Fmt.pr "@[<v>%s@]@."
+              (`Assoc
+                 [
+                   ( "note",
+                     `String
+                       "Only one pipeline has been recorded. Please try again \
+                        when a new pipeline has run." );
+                   ("packages", `List []);
+                 ]
+              |> Yojson.Safe.to_string);
             Lwt.return_ok ())
           else
             Client.Pipeline.diff ci latest latest_but_one >>= function
             | Error _ as e -> Lwt.return e
             | Ok failing_packages ->
-                if List.length failing_packages = 0 then
-                  Fmt.pr
-                    "@[<v>Packages that fail in the latest pipeline, that did \
-                     not fail in the latest-but-one pipeline:@,\
-                     @,\
-                     None."
-                else
-                  Fmt.pr
-                    "@[<v>Packages that fail in the latest pipeline, that did \
-                     not fail in the latest-but-one pipeline:@,\
-                     @,\
-                     %a@]@."
-                    Fmt.(list pp_package_info)
-                    failing_packages;
-                Lwt.return_ok ()))
+                if List.length failing_packages = 0 then (
+                  Fmt.pr "@[<v>%s@]@."
+                    (`Assoc
+                       [
+                         ( "note",
+                           `String
+                             "Packages that fail in the latest pipeline, that \
+                              did not fail in the latest-but-one pipeline." );
+                         ("packages", `List []);
+                       ]
+                    |> Yojson.Safe.to_string);
+                  Lwt.return_ok ())
+                else (
+                  Fmt.pr "@[<v>%s@]@."
+                    (`Assoc
+                       [
+                         ( "note",
+                           `String
+                             "Packages that fail in the latest pipeline, that \
+                              did not fail in the latest-but-one pipeline." );
+                         ( "packages",
+                           failing_packages
+                           |> Client.Package.package_info_list_to_yojson );
+                       ]
+                    |> Yojson.Safe.to_string);
+                  Lwt.return_ok ())))
 
 let main_status_by_pipelines ~ci_uri ~package_name =
   let vat = Capnp_rpc_unix.client_only_vat () in
@@ -199,18 +224,13 @@ let main_status_by_pipelines ~ci_uri ~package_name =
       Client.Pipeline.pipeline_ids ci >>= function
       | Error _ as e -> Lwt.return e
       | Ok (latest, latest_but_one) -> (
-          if latest = latest_but_one then (
-            Fmt.pr
-              "@[Only one pipeline has been recorded. Please try again when a \
-               new pipeline has run.@]@.";
-            Lwt.return_ok ())
-          else
-            match package_name with
-            | None -> Lwt.return_error (`Msg "Missing package name")
-            | Some package_name ->
-                with_ref
-                  (Client.Pipeline.package ci package_name)
-                  (list_versions_status_by_pipeline latest latest_but_one)))
+          match package_name with
+          | None -> Lwt.return_error (`Msg "Missing package name")
+          | Some package_name ->
+              with_ref
+                (Client.Pipeline.package ci package_name)
+                (list_versions_status_by_pipeline latest latest_but_one
+                   package_name)))
 
 (* Command-line parsing *)
 

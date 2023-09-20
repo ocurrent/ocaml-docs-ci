@@ -23,12 +23,17 @@ end
 module Package : sig
   type t = Raw.Client.Package.t Capability.t
   type package_version = { version : OpamPackage.Version.t }
+  type package_info = Raw.Reader.PackageInfo.t
+  type package_info_list = package_info list [@@deriving to_yojson]
 
   type package_status = {
     version : OpamPackage.Version.t;
     status : Build_status.t;
   }
 
+  val package_status_to_yojson : package_status -> Yojson.Safe.t
+
+  type package_status_list = package_status list [@@deriving to_yojson]
   type step = { typ : string; job_id : string option; status : Build_status.t }
 
   type package_steps = {
@@ -37,9 +42,8 @@ module Package : sig
     steps : step list;
   }
 
-  type package_steps_list = package_steps list
+  type package_steps_list = package_steps list [@@deriving to_yojson]
 
-  val package_steps_list_to_yojson : package_steps_list -> Yojson.Safe.t
   val package_steps_to_yojson : package_steps -> Yojson.Safe.t
   val step_to_yojson : step -> Yojson.Safe.t
 
@@ -61,6 +65,14 @@ end
 module Pipeline : sig
   type t = Raw.Client.Pipeline.t Capability.t
   (** The top level object for ocaml-docs-ci. *)
+
+  type health = Raw.Reader.PipelineHealth.t
+  (** General information and health of the pipeline. Includes information about
+      voodoo, the epochs, and the number of failing, running and passing
+      packages *)
+
+  val health_to_yojson :
+    health -> [> `Assoc of (string * [> `Int of int | `String of string ]) list ]
 
   val package : t -> string -> Raw.Reader.Package.t Capability.t
 
