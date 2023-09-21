@@ -11,7 +11,7 @@ suitable for ocaml.org server to present.
 
 Get the code with:
 
-``` shell
+```shell
 git clone --recursive https://github.com/ocurrent/ocaml-docs-ci.git
 cd ocaml-docs-ci
 ```
@@ -20,7 +20,7 @@ Note: you need to clone with --recursive because this project uses submodules (i
 
 Then you need an opam 2.1 switch using OCaml 4.14. Recommend using this command to setup a local switch just for `docs-ci`.
 
-``` shell
+```shell
 # Create a local switch with packages and test dependencies installed
 opam switch create . 4.14.1 --deps-only --with-test -y
 
@@ -47,7 +47,7 @@ For further details on how `docs-ci` works read the [pipeline diagram](doc/pipel
 Environments:
 
 | Environment | www                       | pipeline                          | git branch | data                               | voodoo branch |
-|-------------|---------------------------|-----------------------------------|------------|------------------------------------|---------------|
+| ----------- | ------------------------- | --------------------------------- | ---------- | ---------------------------------- | ------------- |
 | Production  | https://ocaml.org         | https://docs.ci.ocaml.org         | live       | http://docs-data.ocaml.org         | main          |
 | Staging     | https://staging.ocaml.org | https://staging.docs.ci.ocaml.org | staging    | http://staging.docs-data.ocaml.org | staging       |
 
@@ -94,14 +94,24 @@ dune exec -- ocaml-docs-ci \
 
 A [docker-compose.yml](docker-compose.yml) is provided to setup an entire `docs-ci` environment including:
 
- * ocluster scheduler
- * ocluster Linux x86 worker
- * nginx webserver for generated docs
- * docs-ci built from the local git checkout
+- ocluster scheduler
+- ocluster Linux x86 worker
+- nginx webserver for generated docs
+- docs-ci built from the local git checkout
 
 Run this command to create an environment:
 
-``` shell
+```shell
 $ docker-compose -f docker-compose.yml up
 ```
+
 You should then be able to watch the pipeline in action at `http://localhost:8080`.
+
+### Migrations
+
+Migrations are managed using omigrate. If you are using an opam switch for ocaml-docs-ci then omigrate should be installed and you can create a new migration by doing this from the project root:
+
+omigrate create --dir migrations <migration-name>
+This will create timestamped files in the migrations directory that you can then populate with the sql necessary to introduce and remove the migration (in the up and down files respectively).
+
+Migrations will not run unless the --migration-path flag is present when invoking ocaml-docs-ci-service.

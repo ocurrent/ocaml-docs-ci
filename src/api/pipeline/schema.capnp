@@ -123,6 +123,9 @@ struct PipelineHealth {
   failingPackages @5 :Int64;
   passingPackages @6 :Int64;
   runningPackages @7 :Int64;
+  voodooBranch @8 :Text;
+  voodooRepo @9 :Text;
+  odocCommit @10 :Text;
 }
 
 interface Package {

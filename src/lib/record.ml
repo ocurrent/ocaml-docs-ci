@@ -1,3 +1,5 @@
+module Git = Current_git
+
 module Record = struct
   type t = No_context
 
@@ -29,14 +31,20 @@ module Record = struct
 
     let generation = Epoch.v config voodoo in
     let voodoo_do_commit = Voodoo.Do.v voodoo |> Voodoo.Do.digest in
-    let voodoo_gen_commit = Voodoo.Gen.v voodoo |> Voodoo.Gen.digest in
+    let voodoo_gen_commit =
+      Voodoo.Gen.v voodoo |> Voodoo.Gen.commit |> Git.Commit_id.hash
+    in
+    let voodoo_repo = Config.voodoo_repo config in
+    let voodoo_branch = Config.voodoo_branch config in
+    let odoc_commit = Config.odoc config in
     let voodoo_prep_commit = Voodoo.Prep.v voodoo |> Voodoo.Prep.digest in
     let epoch_linked = (Epoch.digest `Linked) generation in
     let epoch_html = (Epoch.digest `Html) generation in
 
     let result =
       Index.record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit
-        ~voodoo_prep_commit ~epoch_html ~epoch_linked
+        ~voodoo_prep_commit ~voodoo_repo ~voodoo_branch ~odoc_commit ~epoch_html
+        ~epoch_linked
     in
     match result with
     | Ok pipeline_id -> Lwt.return_ok (pipeline_id |> Int64.to_int)
