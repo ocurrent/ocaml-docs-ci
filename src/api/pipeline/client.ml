@@ -153,6 +153,9 @@ module Pipeline = struct
     let voodoo_do = voodoo_do_commit_get h in
     let voodoo_prep = voodoo_prep_commit_get h in
     let voodoo_gen = voodoo_gen_commit_get h in
+    let voodoo_branch = voodoo_branch_get h in
+    let voodoo_repo = voodoo_repo_get h in
+    let odoc_commit = odoc_commit_get h in
     let failed_packages = failing_packages_get h |> Int64.to_int in
     let running_packages = running_packages_get h |> Int64.to_int in
     let passed_packages = passing_packages_get h |> Int64.to_int in
@@ -163,6 +166,9 @@ module Pipeline = struct
         ("voodoo_do", `String voodoo_do);
         ("voodoo_prep", `String voodoo_prep);
         ("voodoo_gen", `String voodoo_gen);
+        ("odoc", `String odoc_commit);
+        ("voodoo_repo", `String voodoo_repo);
+        ("voodoo_branch", `String voodoo_branch);
         ("failed_packages", `Int failed_packages);
         ("running_packages", `Int running_packages);
         ("passed_packages", `Int passed_packages);

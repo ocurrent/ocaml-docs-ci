@@ -108,8 +108,8 @@ let db =
      and record_pipeline =
        Sqlite3.prepare db
          "INSERT INTO docs_ci_pipeline_index (epoch_html, epoch_linked, \
-          voodoo_do, voodoo_gen, voodoo_prep) VALUES (?, ?, ?, ?, ?) returning \
-          id"
+          voodoo_do, voodoo_gen, voodoo_prep, voodoo_branch, voodoo_repo, \
+          odoc_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?) returning id"
      and get_recent_pipeline_ids =
        Sqlite3.prepare db
          "SELECT id FROM docs_ci_pipeline_index ORDER BY id DESC LIMIT 2"
@@ -127,8 +127,9 @@ let db =
           pipeline_id = ?"
      and get_pipeline_data =
        Sqlite3.prepare db
-         "SELECT epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep \
-          FROM docs_ci_pipeline_index WHERE id = ?"
+         "SELECT epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep, \
+          voodoo_branch, voodoo_repo, odoc_commit FROM docs_ci_pipeline_index \
+          WHERE id = ?"
      in
 
      {
@@ -162,7 +163,7 @@ let record package pipeline_id package_status step_list =
       ]
 
 let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
-    ~epoch_html ~epoch_linked =
+    ~odoc_commit ~voodoo_repo ~voodoo_branch ~epoch_html ~epoch_linked =
   let t = Lazy.force db in
   match
     Db.query_one t.record_pipeline
@@ -173,6 +174,9 @@ let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
           TEXT voodoo_do_commit;
           TEXT voodoo_gen_commit;
           TEXT voodoo_prep_commit;
+          TEXT voodoo_branch;
+          TEXT voodoo_repo;
+          TEXT odoc_commit;
         ]
   with
   | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
@@ -229,6 +233,9 @@ type pipeline_data = {
   voodoo_do : string;
   voodoo_gen : string;
   voodoo_prep : string;
+  voodoo_branch : string;
+  voodoo_repo : string;
+  odoc_commit : string;
 }
 
 let get_pipeline_counts pipeline_id =
@@ -255,13 +262,42 @@ let get_pipeline_data pipeline_id =
              TEXT voodoo_do;
              TEXT voodoo_gen;
              TEXT voodoo_prep;
+             TEXT voodoo_branch;
+             TEXT voodoo_repo;
+             TEXT odoc_commit;
            ] ->
-           (epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep)
+           ( epoch_html,
+             epoch_linked,
+             voodoo_do,
+             voodoo_gen,
+             voodoo_prep,
+             voodoo_branch,
+             voodoo_repo,
+             odoc_commit )
        | row -> Fmt.failwith "get_pipeline_data: invalid row %a" Db.dump_row row
   in
   match result with
-  | [ (epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep) ] ->
-      Some { epoch_html; epoch_linked; voodoo_do; voodoo_gen; voodoo_prep }
+  | [
+   ( epoch_html,
+     epoch_linked,
+     voodoo_do,
+     voodoo_gen,
+     voodoo_prep,
+     voodoo_branch,
+     voodoo_repo,
+     odoc_commit );
+  ] ->
+      Some
+        {
+          epoch_html;
+          epoch_linked;
+          voodoo_do;
+          voodoo_gen;
+          voodoo_prep;
+          voodoo_branch;
+          voodoo_repo;
+          odoc_commit;
+        }
   | _ -> None
 
 (* packages - (name, version) that are failing in the latest pipeline that are passing in the latest but one *)

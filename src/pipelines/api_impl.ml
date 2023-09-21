@@ -170,6 +170,9 @@ let make ~monitor =
              voodoo_do_commit_set health_slot pipeline_data.voodoo_do;
              voodoo_gen_commit_set health_slot pipeline_data.voodoo_gen;
              voodoo_prep_commit_set health_slot pipeline_data.voodoo_prep;
+             voodoo_branch_set health_slot pipeline_data.voodoo_branch;
+             voodoo_repo_set health_slot pipeline_data.voodoo_repo;
+             odoc_commit_set health_slot pipeline_data.odoc_commit;
              epoch_html_set health_slot pipeline_data.epoch_html;
              epoch_linked_set health_slot pipeline_data.epoch_linked;
              failing_packages_set health_slot @@ Int64.of_int failed_count;
