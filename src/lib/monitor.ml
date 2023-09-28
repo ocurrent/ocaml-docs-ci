@@ -33,8 +33,7 @@ type step_status = Err of string | Active | Blocked | OK
 type step = { typ : string; job_id : string option; status : step_status }
 [@@deriving show, eq, to_yojson]
 
-type steps_list = step list [@@deriving show, eq, to_yojson]
-type package_build_status = { version : OpamPackage.Version.t; status : state }
+type steps_list = step list [@@deriving to_yojson]
 
 type package_steps = {
   package : OpamPackage.t;
@@ -393,15 +392,6 @@ let lookup_status t ~name =
       |> List.flatten
     in
     List.concat [ passed_packages; failed_packages; pending_packages ]
-
-let lookup_status' t package : state =
-  let statuses = lookup_status t ~name:(OpamPackage.to_string package) in
-  let x =
-    List.find_opt
-      (fun (_, version, _) -> version = OpamPackage.version package)
-      statuses
-  in
-  match x with None -> Running | Some (_, _, s) -> s
 
 let lookup_steps' t (package : OpamPackage.t) =
   let status = opam_package_state t package in
