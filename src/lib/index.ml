@@ -262,6 +262,26 @@ let get_pipeline_data pipeline_id =
              TEXT voodoo_do;
              TEXT voodoo_gen;
              TEXT voodoo_prep;
+             NULL;
+             (* these are new nullable columns so this option is for backward compatibility *)
+             NULL;
+             NULL;
+           ] ->
+           ( epoch_html,
+             epoch_linked,
+             voodoo_do,
+             voodoo_gen,
+             voodoo_prep,
+             "",
+             "",
+             "" )
+       | Sqlite3.Data.
+           [
+             TEXT epoch_html;
+             TEXT epoch_linked;
+             TEXT voodoo_do;
+             TEXT voodoo_gen;
+             TEXT voodoo_prep;
              TEXT voodoo_branch;
              TEXT voodoo_repo;
              TEXT odoc_commit;
