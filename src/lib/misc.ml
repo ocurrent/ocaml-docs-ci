@@ -70,9 +70,19 @@ module PeekerBody = struct
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Current.Level.Mostly_harmless job in
     Current.Job.log job "tag: %s" (tag key);
-    let+ res =
-      Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key))
+    let r : (Docker_hub.t, Docker_hub.fetch_errors) result Lwt.t =
+      Lwt_preemptive.(
+        detach
+          (fun () ->
+            run_in_main (fun _t ->
+                Docker_hub.fetch_manifests ~repo:"ocaml/opam"
+                  ~tag:(Some (tag key))))
+          ())
     in
+    (* let+ res = *)
+    (*   Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key)) *)
+    (* in *)
+    let+ res = r in
     match res with
     | Ok manifests ->
         Result.map
