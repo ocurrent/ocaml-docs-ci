@@ -212,9 +212,9 @@ let cmdliner =
     $ take_n_last_versions
     $ Ssh.cmdliner)
 
-(* odoc pinned to tag 2.2.0 *)
+(* odoc pinned to tag 2.2.1+tmcgilchrist *)
 let odoc _ =
-  "https://github.com/ocaml/odoc.git#103dac4c370aa2ad5aca7ba54f02f8e06adb941b"
+  "https://github.com/tmcgilchrist/odoc.git#b4f11fcff450691a74987a3bf1131f0a52154cc3"
 
 let pool _ = "linux-x86_64"
 let jobs t = t.jobs
