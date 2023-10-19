@@ -154,6 +154,8 @@ let blacklist =
     "ocamlfind-secondary";
     "ocaml-src";
     "ocaml-freestanding";
+    "dkml-component-staging-ocamlrun";
+    "dkml-component-offline-ocamlrun";
   ]
 
 let rec with_context_fold lst fn =
