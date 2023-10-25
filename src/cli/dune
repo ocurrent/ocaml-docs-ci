@@ -1,7 +1,7 @@
-(executable
- (public_name ocaml-docs-ci-client)
+(executables
+ (public_names ocaml-docs-ci-client epoch)
  (package ocaml-docs-ci-client)
- (name main)
+ (names main epoch)
  (libraries
   ocaml-docs-ci.pipeline_api
   current_rpc
@@ -10,8 +10,9 @@
   logs.fmt
   fmt.cli
   fmt.tty
+  dune-build-info
   timedesc))
 
 (mdx
- (files ocaml-docs-ci-client.md)
+ (files ocaml-docs-ci-client.md epoch.md)
  (package ocaml-docs-ci-client))
