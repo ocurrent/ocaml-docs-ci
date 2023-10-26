@@ -17,7 +17,6 @@ $ dune install epoch
 The primary use of epoch is to trim the directories that exist in `prep` and `compile` that are no longer linked from an `epoch-*`. These directories can accumulate many Gb of data, causing ocaml-docs-ci pipelines to fail with not enough disk space.
 
 ```sh
-$ mkdir -d -p tmp
-...
-$ epoch --base-dir ./tmp
+DATA=$(docker volume inspect infra_docs-data -f '{{.Mountpoint}}')
+$ epoch --base-dir $DATA
 ```
