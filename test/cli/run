@@ -13,8 +13,7 @@ ${EPOCH_BIN} --version
 ${EPOCH_BIN} --help
 
 EPOCH_DATA_TEMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'data')
-# EPOCH_DATA_TEMP=./tmp
-trap "rm -rf \"${EPOCH_DATA_TEMP}\"" EXIT
+trap 'rm -rf \"${EPOCH_DATA_TEMP}\"' EXIT
 
 # Linked universes - DO NOT prune
 # # find . -name bf6f7d00b40806e7dd74ad1828a0aa6d
@@ -58,45 +57,21 @@ mkdir -p "$EPOCH_DATA_TEMP/prep/universes/3e4e2c1d81edea2e42fbfaba428f5965"
 mkdir -p "$EPOCH_DATA_TEMP/compile/u/5e2dcd36d81e7c2394110782b5bf906f"
 mkdir -p "$EPOCH_DATA_TEMP/prep/universes/5e2dcd36d81e7c2394110782b5bf906f"
 
-tree $EPOCH_DATA_TEMP
+tree "$EPOCH_DATA_TEMP"
 
-${EPOCH_BIN} --base-dir $EPOCH_DATA_TEMP
+${EPOCH_BIN} --base-dir "$EPOCH_DATA_TEMP"
 
-tree $EPOCH_DATA_TEMP
+tree "$EPOCH_DATA_TEMP"
 
-check() {
+check_universe() {
     UNIVERSE_HASH=$1
-    [ -d "$EPOCH_DATA_TEMP/epoch-3820829bb005c559218fffb16ee32f3b/linked/u/7ee85f63014c898d8cb21b3436d42150" ] &&
-        ./epoch-097e46a4d589b9e34ed2903beecd1a04/html-raw/u/bf6f7d00b40806e7dd74ad1828a0aa6d
-        ./epoch-410108220dc0168ea4d9bd697dfa8e34/linked/u/bf6f7d00b40806e7dd74ad1828a0aa6d
-        ./compile/u/bf6f7d00b40806e7dd74ad1828a0aa6d
-        ./prep/universes/bf6f7d00b40806e7dd74ad1828a0aa6d
+    NUMBER_OCCURANCE=$2
+    FOUND=$(find "$EPOCH_DATA_TEMP" -name "$UNIVERSE_HASH" |wc -l |tr -d '[:space:]')
+    [ "$FOUND" = "$NUMBER_OCCURANCE" ] || { echo "Expected to find $NUMBER_OCCURANCE universes instead found $FOUND universes" ; exit 1; }
 }
 
-# TODO Implement validation of the linked universes
-# check_linked_universe "bf6f7d00b40806e7dd74ad1828a0aa6d"
-# check_linked_universe "7ee85f63014c898d8cb21b3436d42150"
+check_universe "bf6f7d00b40806e7dd74ad1828a0aa6d" 4
+check_universe "7ee85f63014c898d8cb21b3436d42150" 6
 
-# check_orphan_universe "3e4e2c1d81edea2e42fbfaba428f5965"
-# check_orphan_universe "5e2dcd36d81e7c2394110782b5bf906f"
-
-# check() {
-#   MAFIA_REPO=$1
-#   MAFIA_DIR=$2
-#   MAFIA_ENTRY=$3
-
-#   cd ${MAFIA_TEMP}
-#   if [ ! -d "${MAFIA_REPO}" ]; then
-#     git clone https://github.com/haskell-mafia/${MAFIA_REPO}
-#   fi
-
-#   cd ${MAFIA_DIR}
-#   MAFIA_HOME=${MAFIA_TEMP} ${MAFIA} build
-#   MAFIA_HOME=${MAFIA_TEMP} ${MAFIA} build
-#   MAFIA_HOME=${MAFIA_TEMP} ${MAFIA} quick ${MAFIA_ENTRY} <<EOF
-#     :q
-# EOF
-# }
-
-# check mafia-test-one    mafia-test-one                         src/Test/Mafia/One.hs
-# check mafia-test-multi  mafia-test-multi/mafia-test-multi-two  src/Test/Mafia/Multi/Two.hs
+check_universe "3e4e2c1d81edea2e42fbfaba428f5965" 0
+check_universe "5e2dcd36d81e7c2394110782b5bf906f" 0
