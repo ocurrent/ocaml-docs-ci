@@ -204,9 +204,8 @@ module Do = struct
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network ~cache
-             "opam pin -ny odoc.dev \
-              https://github.com/ocaml/odoc.git#34a48e2543f6ea5716e9ee922954fa0917561dd7 \
-              && opam depext -iy odoc";
+             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
+             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s && opam depext -iy voodoo-do"
              (remote_uri t.commit);
            run
@@ -231,9 +230,8 @@ module Gen = struct
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
            run ~network ~cache
-             "opam pin -ny odoc.dev \
-              https://github.com/ocaml/odoc.git#34a48e2543f6ea5716e9ee922954fa0917561dd7 \
-              && opam depext -iy odoc";
+             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
+             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-gen"
              (remote_uri t.commit);
            run
