@@ -1,7 +1,7 @@
 FROM ocaml/opam:debian-12-ocaml-4.14@sha256:45b04e2a4c933c57549382045dfac12cb7e872cace0456f92f4b022066e48111 AS build
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apt-get update && sudo apt-get install -y capnproto graphviz libcapnp-dev libev-dev libffi-dev libgmp-dev libsqlite3-dev pkg-config
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard cf93548ddc4f36b87b006f4858fac7ae73ccaa0f && opam update
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard ad6e2e1786b2097fda5be14d6411b60597e97058 && opam update
 COPY --chown=opam \
     vendor/ocurrent/current_github.opam \
     vendor/ocurrent/current_git.opam \
