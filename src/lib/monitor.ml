@@ -316,12 +316,29 @@ let map_versions t =
 
 let map_max_versions t = map_versions t |> OpamPackage.Name.Map.map max_version
 
+let render_passing_packages t =
+  let max_version = map_max_versions t in
+  let passed = lookup_done t in
+  let open Tyxml_html in
+  [
+    h1 [ txt "Passing packages" ];
+    p [ txt ("total: " ^ Int.to_string (List.length passed)) ];
+    ul
+      (List.map
+         (fun (n, v) ->
+           render_pkg
+             ~max_version:(OpamPackage.Name.Map.find n max_version)
+             (n, v))
+         (group_by_pkg passed |> OpamPackage.Name.Map.bindings));
+  ]
+
 let render_package_root t =
   let max_version = map_max_versions t in
   let failed, pending = lookup_failed_pending t in
   let open Tyxml_html in
   [
     h1 [ txt "Failed packages" ];
+    p [ txt ("total: " ^ Int.to_string (List.length failed)) ];
     ul
       (List.map
          (fun (n, v) ->
@@ -330,6 +347,7 @@ let render_package_root t =
              (n, v))
          (group_by_pkg failed |> OpamPackage.Name.Map.bindings));
     h1 [ txt "Running packages" ];
+    p [ txt ("total: " ^ Int.to_string (List.length pending)) ];
     ul
       (List.map
          (fun (n, v) ->
@@ -338,6 +356,13 @@ let render_package_root t =
              (n, v))
          (group_by_pkg pending |> OpamPackage.Name.Map.bindings));
     h1 [ txt "Solver failures" ];
+    p
+      [
+        txt
+          ("total: "
+          ^ Int.to_string
+              (List.length @@ OpamPackage.Map.bindings t.solve_failures));
+      ];
     ul (List.map render_link (OpamPackage.Map.bindings t.solve_failures));
   ]
 
@@ -460,6 +485,17 @@ let register t solve_failures preps blessing trees =
   t.trees <- trees;
   Lwt.dont_wait (fun () -> collect_metrics t |> Lwt.return) ignore
 
+let handle_passing t ~engine:_ =
+  object
+    inherit Current_web.Resource.t
+    method! nav_link = Some "Passing"
+    val! can_get = `Viewer
+
+    method! private get context =
+      let response = render_passing_packages t in
+      Current_web.Context.respond_ok context response
+  end
+
 let handle_root t ~engine:_ =
   object
     inherit Current_web.Resource.t
@@ -476,4 +512,5 @@ let routes t engine =
     [
       (s "package" / str /? nil) @--> handle t ~engine;
       (s "package" /? nil) @--> handle_root t ~engine;
+      (s "passing" /? nil) @--> handle_passing t ~engine;
     ]
