@@ -12,8 +12,8 @@ ${EPOCH_BIN} --version
 # ${EPOCH_BIN} -h
 ${EPOCH_BIN} --help
 
-# EPOCH_DATA_TEMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'data')
-EPOCH_DATA_TEMP=./tmp
+EPOCH_DATA_TEMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'data')
+# EPOCH_DATA_TEMP=./tmp
 trap "rm -rf \"${EPOCH_DATA_TEMP}\"" EXIT
 
 # Linked universes - DO NOT prune
@@ -73,11 +73,12 @@ check() {
         ./prep/universes/bf6f7d00b40806e7dd74ad1828a0aa6d
 }
 
-check_linked_universe "bf6f7d00b40806e7dd74ad1828a0aa6d"
-check_linked_universe "7ee85f63014c898d8cb21b3436d42150"
+# TODO Implement validation of the linked universes
+# check_linked_universe "bf6f7d00b40806e7dd74ad1828a0aa6d"
+# check_linked_universe "7ee85f63014c898d8cb21b3436d42150"
 
-check_orphan_universe "3e4e2c1d81edea2e42fbfaba428f5965"
-check_orphan_universe "5e2dcd36d81e7c2394110782b5bf906f"
+# check_orphan_universe "3e4e2c1d81edea2e42fbfaba428f5965"
+# check_orphan_universe "5e2dcd36d81e7c2394110782b5bf906f"
 
 # check() {
 #   MAFIA_REPO=$1

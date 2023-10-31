@@ -12,7 +12,6 @@
   fmt.tty
   dune-build-info
   timedesc))
-
 (mdx
  (files ocaml-docs-ci-client.md epoch.md)
  (package ocaml-docs-ci-client))
