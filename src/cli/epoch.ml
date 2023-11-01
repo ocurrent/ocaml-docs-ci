@@ -2,27 +2,39 @@ let ( / ) = Filename.concat
 
 module SS = Set.Make (String)
 
-let remove ~root files =
+let remove ~root f files =
   let num = SS.cardinal files in
-  let () = Printf.printf "Deleting %i files\n" num in
+  Progress.interject_with (fun () -> print_endline (Fmt.str "Deleting %i files in %s" num root));
   let _ = SS.fold (fun del (i, l) ->
+    f 1;
     let pcent = Int.div (100 * i) num in
-    let nl = if pcent > l then
-        let () = Printf.printf "%i%%\r" pcent in
-        let () = flush stdout in pcent
-      else l in
+    let nl = if pcent > l then pcent else l in
+    Unix.sleepf 0.025;
     let _ = Sys.command ("rm -rf " ^ (root / del)) in
     (i + 1, nl)) files (0, 0) in
-  Printf.printf "Completed.\n"
+  ()
 
 let print files =
   let total = SS.fold (fun del i ->
-    let () = if i < 10 then Printf.printf "%s\n" del in
+    let () = if i < 10 then print_endline @@ Fmt.str "%s" del in
     i + 1) files 0 in
   if total >= 10 then
-    Printf.printf "... plus %i more\n" (total - 10)
+    print_endline @@ Fmt.str "... plus %i more\n" (total - 10)
+
+
+let bar ~total =
+  let open Progress in
+  let open Progress.Line in
+  let frames = ["⠋"; "⠙"; "⠹"; "⠸"; "⠼"; "⠴"; "⠦"; "⠧"; "⠇"; "⠏"]in
+  list
+    [ spinner ~frames ~color:(Progress.Color.ansi `green) ()
+    ; bar ~color:((Progress.Color.ansi `blue)) ~style:`UTF8 total
+    ; count_to total
+    ]
 
 let main base_dir dry_run =
+  Fmt.set_style_renderer Fmt.stderr `Ansi_tty;
+
   let path = base_dir in
 
   let epochs =
@@ -44,9 +56,12 @@ let main base_dir dry_run =
       let universes = path / universe in
       let univ_files = Array.fold_right SS.add (Sys.readdir universes) SS.empty in
       let debris = SS.diff univ_files epoch_files in
-      let () = Printf.printf "Files to be deleted in %s:\n" universe in
+      let total = SS.elements debris |> List.length in
+      let () = print_endline @@ Fmt.str "Files to be deleted in %s" universe in
       let () = print debris in
-      if not dry_run then remove ~root:universes debris)
+      Progress.with_reporter (bar ~total) (fun f ->
+          if not dry_run then remove ~root:universes f debris)
+    )
     [ "prep/universes"; "compile/u" ]
 
 (* Command-line parsing *)

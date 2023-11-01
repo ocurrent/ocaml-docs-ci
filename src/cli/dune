@@ -1,17 +1,22 @@
 (executables
- (public_names ocaml-docs-ci-client epoch)
+ (public_names ocaml-docs-ci-client epoch cargo )
  (package ocaml-docs-ci-client)
- (names main epoch)
+ (names main epoch cargo)
  (libraries
   ocaml-docs-ci.pipeline_api
   current_rpc
   capnp-rpc-unix
   logs.cli
   logs.fmt
+  logs.threaded
   fmt.cli
   fmt.tty
   dune-build-info
+  progress
+  mtime
+  mtime.clock.os
   timedesc))
+
 (mdx
  (files ocaml-docs-ci-client.md epoch.md)
  (package ocaml-docs-ci-client))

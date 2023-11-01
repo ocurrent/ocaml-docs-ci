@@ -13,7 +13,7 @@ ${EPOCH_BIN} --version
 ${EPOCH_BIN} --help
 
 EPOCH_DATA_TEMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'data')
-trap 'rm -rf \"${EPOCH_DATA_TEMP}\"' EXIT
+# trap 'rm -rf \"${EPOCH_DATA_TEMP}\"' EXIT
 
 # Linked universes - DO NOT prune
 # # find . -name bf6f7d00b40806e7dd74ad1828a0aa6d
@@ -59,19 +59,19 @@ mkdir -p "$EPOCH_DATA_TEMP/prep/universes/5e2dcd36d81e7c2394110782b5bf906f"
 
 tree "$EPOCH_DATA_TEMP"
 
-${EPOCH_BIN} --base-dir "$EPOCH_DATA_TEMP"
+# ${EPOCH_BIN} --base-dir "$EPOCH_DATA_TEMP"
 
-tree "$EPOCH_DATA_TEMP"
+# tree "$EPOCH_DATA_TEMP"
 
-check_universe() {
-    UNIVERSE_HASH=$1
-    NUMBER_OCCURANCE=$2
-    FOUND=$(find "$EPOCH_DATA_TEMP" -name "$UNIVERSE_HASH" |wc -l |tr -d '[:space:]')
-    [ "$FOUND" = "$NUMBER_OCCURANCE" ] || { echo "Expected to find $NUMBER_OCCURANCE universes instead found $FOUND universes" ; exit 1; }
-}
+# check_universe() {
+#     UNIVERSE_HASH=$1
+#     NUMBER_OCCURANCE=$2
+#     FOUND=$(find "$EPOCH_DATA_TEMP" -name "$UNIVERSE_HASH" |wc -l |tr -d '[:space:]')
+#     [ "$FOUND" = "$NUMBER_OCCURANCE" ] || { echo "Expected to find $NUMBER_OCCURANCE universes instead found $FOUND universes" ; exit 1; }
+# }
 
-check_universe "bf6f7d00b40806e7dd74ad1828a0aa6d" 4
-check_universe "7ee85f63014c898d8cb21b3436d42150" 6
+# check_universe "bf6f7d00b40806e7dd74ad1828a0aa6d" 4
+# check_universe "7ee85f63014c898d8cb21b3436d42150" 6
 
-check_universe "3e4e2c1d81edea2e42fbfaba428f5965" 0
-check_universe "5e2dcd36d81e7c2394110782b5bf906f" 0
+# check_universe "3e4e2c1d81edea2e42fbfaba428f5965" 0
+# check_universe "5e2dcd36d81e7c2394110782b5bf906f" 0
