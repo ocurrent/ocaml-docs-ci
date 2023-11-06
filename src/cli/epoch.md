@@ -43,10 +43,8 @@ The primary use of epoch is to trim the directories that exist in `prep` and `co
 
 CLI tool can be installed as `epoch` in the current opam switch.
 
-```sh
+```shell skip
 $ dune install epoch
-...
-[1]
 ```
 
 It is distributed in the `infra_storage-server` docker image and can be run as:

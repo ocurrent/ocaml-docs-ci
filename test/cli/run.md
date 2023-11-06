@@ -2,50 +2,42 @@
 
 `epoch` - command line tool for managing epochs and storage in ocaml-docs-ci
 
-What is an Epoch?
-
-Directory structure
-
-CLI tool can be installed as `epoch` in the current opam switch.
-
+Epoch tool provides version information about git version it was built with:
 ```sh
-$ dune install epoch
-...
-[1]
+$ epoch --version
+n/a
 ```
 
-The primary use of epoch is to trim the directories that exist in `prep` and `compile` that are no longer linked from an `epoch-*`. These directories can accumulate many Gb of data, causing ocaml-docs-ci pipelines to fail with not enough disk space.
-
+Epoch provides a manpage with help options:
 ```sh
-$ ./run
-+ EPOCH_BIN='dune exec -- epoch'
-+ dune exec -- epoch --version
-n/a
-+ dune exec -- epoch --help
-EPOCH(1)                         Epoch Manual                         EPOCH(1)
-
-NNAAMMEE
+$ epoch --help
+NAME
        epoch - Epoch pruning
 
-SSYYNNOOPPSSIISS
-       eeppoocchh [----bbaassee--ddiirr=_B_A_S_E___D_I_R] [_O_P_T_I_O_N]…
+SYNOPSIS
+       epoch [--base-dir=BASE_DIR] [--dry-run] [-s] [OPTION]…
 
-OOPPTTIIOONNSS
-       ----bbaassee--ddiirr=_B_A_S_E___D_I_R (required)
+OPTIONS
+       --base-dir=BASE_DIR (required)
            Base directory containing epochs. eg
            /var/lib/docker/volumes/infra_docs-data/_data
 
-CCOOMMMMOONN OOPPTTIIOONNSS
-       ----hheellpp[=_F_M_T] (default=aauuttoo)
-           Show this help in format _F_M_T. The value _F_M_T must be one of aauuttoo,
-           ppaaggeerr, ggrrooffff or ppllaaiinn. With aauuttoo, the format is ppaaggeerr or ppllaaiinn
-           whenever the TTEERRMM env var is dduummbb or undefined.
+       --dry-run
+           If set, only list the files to be deleted but do not deleted them
 
-       ----vveerrssiioonn
+       -s  Run epoch tool silently emitting no progress bars.
+
+COMMON OPTIONS
+       --help[=FMT] (default=auto)
+           Show this help in format FMT. The value FMT must be one of auto,
+           pager, groff or plain. With auto, the format is pager or plain
+           whenever the TERM env var is dumb or undefined.
+
+       --version
            Show version information.
 
-EEXXIITT SSTTAATTUUSS
-       eeppoocchh exits with:
+EXIT STATUS
+       epoch exits with:
 
        0   on success.
 
@@ -55,9 +47,23 @@ EEXXIITT SSTTAATTUUSS
 
        125 on unexpected internal errors (bugs).
 
-Epoch n/a                                                             EPOCH(1)
-++ mktemp -d
-+ EPOCH_DATA_TEMP=/var/folders/_l/v2016jrx2kndvkdf6p9phy_80000gn/T/tmp.BZBvj9Cj
-+ trap 'rm -rf "/var/folders/_l/v2016jrx2kndvkdf6p9phy_80000gn/T/tmp.BZBvj9Cj"' EXIT
-+ rm -rf /var/folders/_l/v2016jrx2kndvkdf6p9phy_80000gn/T/tmp.BZBvj9Cj
+```
+
+The primary use of epoch is to trim the directories that exist in `prep` and `compile` that are no longer linked from an `epoch-*`. These directories can accumulate many Gb of data, causing ocaml-docs-ci pipelines to fail with not enough disk space.
+
+Running the tests should delete orphan universes and leave linked universe alone:
+```sh
+$ ./run
+Creating linked universe bf6f7d00b40806e7dd74ad1828a0aa6d
+Creating linked universe 7ee85f63014c898d8cb21b3436d42150
+Created orphan universe 3e4e2c1d81edea2e42fbfaba428f5965
+Created orphan universe 5e2dcd36d81e7c2394110782b5bf906f
+Files to be deleted in prep/universes
+3e4e2c1d81edea2e42fbfaba428f5965
+5e2dcd36d81e7c2394110782b5bf906f
+Deleting 2 files in prep/universes
+Files to be deleted in compile/u
+3e4e2c1d81edea2e42fbfaba428f5965
+5e2dcd36d81e7c2394110782b5bf906f
+Deleting 2 files in compile/u
 ```

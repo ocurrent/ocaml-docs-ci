@@ -18,5 +18,6 @@
   timedesc))
 
 (mdx
- (files ocaml-docs-ci-client.md epoch.md)
+ (files ocaml-docs-ci-client.md)
+ (deps %{bin:ocaml-docs-ci-client})
  (package ocaml-docs-ci-client))

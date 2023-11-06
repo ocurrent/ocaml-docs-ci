@@ -2,10 +2,7 @@ let ( / ) = Filename.concat
 
 module SS = Set.Make (String)
 
-let remove ~root f files =
-  let num = SS.cardinal files in
-  Progress.interject_with (fun () ->
-      print_endline (Fmt.str "Deleting %i files in %s" num root));
+let remove ~root f files num =
   let _ =
     SS.fold
       (fun del (i, l) ->
@@ -40,7 +37,7 @@ let bar ~total =
       count_to total;
     ]
 
-let main base_dir dry_run =
+let main base_dir dry_run silent =
   Fmt.set_style_renderer Fmt.stderr `Ansi_tty;
 
   let path = base_dir in
@@ -74,8 +71,15 @@ let main base_dir dry_run =
       let total = SS.elements debris |> List.length in
       let () = print_endline @@ Fmt.str "Files to be deleted in %s" universe in
       let () = print debris in
-      Progress.with_reporter (bar ~total) (fun f ->
-          if not dry_run then remove ~root:universes f debris))
+      let num = SS.cardinal debris in
+      if not dry_run then (
+        print_endline (Fmt.str "Deleting %i files in %s" num universe);
+
+        match silent with
+        | false ->
+            Progress.with_reporter (bar ~total) (fun f ->
+                remove ~root:universes f debris num)
+        | true -> remove ~root:universes (fun _ -> ()) debris num))
     [ "prep/universes"; "compile/u" ]
 
 (* Command-line parsing *)
@@ -106,9 +110,16 @@ let version =
   | None -> "n/a"
   | Some v -> Build_info.V1.Version.to_string v
 
+let silent =
+  Arg.(
+    value
+    @@ flag
+    @@ info ~docv:"SILENT"
+         ~doc:"Run epoch tool silently emitting no progress bars." [ "s" ])
+
 let cmd =
   let doc = "Epoch pruning" in
   let info = Cmd.info "epoch" ~doc ~version in
-  Cmd.v info Term.(const main $ base_dir $ dry_run)
+  Cmd.v info Term.(const main $ base_dir $ dry_run $ silent)
 
 let () = exit @@ Cmd.eval cmd

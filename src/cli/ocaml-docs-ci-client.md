@@ -1,12 +1,6 @@
 # Ocaml-docs-ci-client CLI
 
-ocaml-docs-ci-client - command line tool for interacting with ocaml-docs-ci
-
-```sh
-$ dune install ocaml-docs-ci-client
-...
-[1]
-```
+ocaml-docs-ci-client - command line tool for interacting with ocaml-docs-ci.
 
 Running the default command displays basic usage.
 ```sh
@@ -21,42 +15,40 @@ Runnning the help command brings up the manpage.
 
 ```sh
 $ ocaml-docs-ci-client --help
-OCAML-DOCS-CI-CLIENT(1)   Ocaml-docs-ci-client Manual  OCAML-DOCS-CI-CLIENT(1)
-
-NNAAMMEE
+NAME
        ocaml-docs-ci-client - Cli client for ocaml-docs-ci.
 
-SSYYNNOOPPSSIISS
-       ooccaammll--ddooccss--ccii--cclliieenntt _C_O_M_M_A_N_D …
+SYNOPSIS
+       ocaml-docs-ci-client COMMAND …
 
-DDEESSCCRRIIPPTTIIOONN
+DESCRIPTION
        Command line client for ocaml-docs-ci.
 
-CCOOMMMMAANNDDSS
-       ddiiffff--ppiippeelliinneess [----ccii--ccaapp=_C_A_P] [----ddrryy--rruunn] [_O_P_T_I_O_N]…
+COMMANDS
+       diff-pipelines [--ci-cap=CAP] [--dry-run] [OPTION]…
            Packages that have started failing in the latest pipeline.
 
-       hheeaalltthh--cchheecckk [----ccii--ccaapp=_C_A_P] [----ddrryy--rruunn] [_O_P_T_I_O_N]…
+       health-check [--ci-cap=CAP] [--dry-run] [OPTION]…
            Information about a pipeline.
 
-       ssttaattuuss [----ccii--ccaapp=_C_A_P] [----ddrryy--rruunn] [----ppaacckkaaggee=_p_a_c_k_a_g_e] [_O_P_T_I_O_N]…
+       status [--ci-cap=CAP] [--dry-run] [--package=package] [OPTION]…
            Build status of a package.
 
-       ssttaattuuss--bbyy--ppiippeelliinnee [----ccii--ccaapp=_C_A_P] [----ddrryy--rruunn] [----ppaacckkaaggee=_p_a_c_k_a_g_e]
-       [_O_P_T_I_O_N]…
+       status-by-pipeline [--ci-cap=CAP] [--dry-run] [--package=package]
+       [OPTION]…
            Build status of a package in the two most recent pipeline runs.
 
-       sstteeppss [----ccii--ccaapp=_C_A_P] [----ddrryy--rruunn] [----ppaacckkaaggee=_p_a_c_k_a_g_e] [_O_P_T_I_O_N]…
+       steps [--ci-cap=CAP] [--dry-run] [--package=package] [OPTION]…
            Build steps of a package.
 
-CCOOMMMMOONN OOPPTTIIOONNSS
-       ----hheellpp[=_F_M_T] (default=aauuttoo)
-           Show this help in format _F_M_T. The value _F_M_T must be one of aauuttoo,
-           ppaaggeerr, ggrrooffff or ppllaaiinn. With aauuttoo, the format is ppaaggeerr or ppllaaiinn
-           whenever the TTEERRMM env var is dduummbb or undefined.
+COMMON OPTIONS
+       --help[=FMT] (default=auto)
+           Show this help in format FMT. The value FMT must be one of auto,
+           pager, groff or plain. With auto, the format is pager or plain
+           whenever the TERM env var is dumb or undefined.
 
-EEXXIITT SSTTAATTUUSS
-       ooccaammll--ddooccss--ccii--cclliieenntt exits with:
+EXIT STATUS
+       ocaml-docs-ci-client exits with:
 
        0   on success.
 
@@ -66,7 +58,6 @@ EEXXIITT SSTTAATTUUSS
 
        125 on unexpected internal errors (bugs).
 
-Ocaml-docs-ci-client                                   OCAML-DOCS-CI-CLIENT(1)
 ```
 
 Running the status command queries the current status of a package, showing all versions, or a specific package version.
