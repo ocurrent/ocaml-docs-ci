@@ -1,7 +1,7 @@
 (executables
- (public_names ocaml-docs-ci-client epoch cargo )
+ (public_names ocaml-docs-ci-client epoch)
  (package ocaml-docs-ci-client)
- (names main epoch cargo)
+ (names main epoch)
  (libraries
   ocaml-docs-ci.pipeline_api
   current_rpc

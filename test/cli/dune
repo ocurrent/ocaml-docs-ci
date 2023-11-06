@@ -4,5 +4,6 @@
 ;  (package ocaml-docs-ci-client))
 
 (rule
- (alias  runtest)
- (action (run ./run)))
+ (alias runtest)
+ (action
+  (run ./run)))
