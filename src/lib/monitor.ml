@@ -468,6 +468,14 @@ let collect_metrics t =
   in
   let known_packages = lookup_known_packages t in
   List.iter (fun name -> register_status_for_package t name) known_packages;
+
+  (* TODO
+   Environment pipeline packages:
+     Passing:      2848 - Package version has built successfully
+     Failed:       4034 - Package version build has failed
+     Running:      10   - Package version build is currently running
+     Solver fails: 240  - Solver failed to find solution for this package version.
+  *)
   Prometheus.Gauge.set
     (Metrics.package_status_total "ok")
     (float_of_int !ok_count);
@@ -476,14 +484,17 @@ let collect_metrics t =
     (float_of_int !failed_count);
   Prometheus.Gauge.set
     (Metrics.package_status_total "running")
-    (float_of_int !running_count)
+    (float_of_int !running_count);
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "solver_failed")
+    (float_of_int (t.solve_failures |> OpamPackage.Map.keys |> List.length))
 
 let register t solve_failures preps blessing trees =
   t.solve_failures <- OpamPackage.Map.of_list solve_failures;
   t.preps <- U preps;
   t.blessing <- blessing;
-  t.trees <- trees;
-  Lwt.dont_wait (fun () -> collect_metrics t |> Lwt.return) ignore
+  t.trees <- trees(* ; *)
+  (* Lwt.dont_wait (fun () -> collect_metrics t |> Lwt.return) ignore *)
 
 let handle_passing t ~engine:_ =
   object
@@ -507,10 +518,43 @@ let handle_root t ~engine:_ =
       Current_web.Context.respond_ok context response
   end
 
+let do_lookups t =
+  let failed, pending = lookup_failed_pending t in
+  let passed = lookup_done t in
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "ok")
+    (float_of_int (List.length passed));
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "failed")
+    (float_of_int (List.length failed));
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "running")
+    (float_of_int (List.length pending));
+  Prometheus.Gauge.set
+    (Metrics.package_status_total "solver_failed")
+    (float_of_int (t.solve_failures |> OpamPackage.Map.keys |> List.length))
+
+(* Override the OCurrent metrics to add ocaml-docs-ci specific data. *)
+let handle_metrics t ~engine = object
+    inherit Current_web.Resource.t
+
+    val! can_get = `Monitor
+
+    method! private get _context =
+      let open Lwt in
+      do_lookups t;
+      Current.Engine.(update_metrics engine);
+      Prometheus.CollectorRegistry.(collect default) >>= fun data ->
+      let body = Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data in
+      let headers = Cohttp.Header.init_with "Content-Type" "text/plain; version=0.0.4" in
+      Cohttp_lwt_unix.Server.respond_string ~headers ~status:`OK ~body ()
+  end
+
 let routes t engine =
   Routes.
     [
       (s "package" / str /? nil) @--> handle t ~engine;
       (s "package" /? nil) @--> handle_root t ~engine;
       (s "passing" /? nil) @--> handle_passing t ~engine;
+      (s "metrics" / s "packages" /? nil) @--> handle_metrics t ~engine;
     ]
