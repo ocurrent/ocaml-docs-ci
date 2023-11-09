@@ -1,3 +1,15 @@
+module Metrics = struct
+  open Prometheus
+
+  let namespace = "docs_ci"
+  let subsystem = "docker"
+
+  let docker_peek_events =
+    let help = "Incoming docker peek events" in
+    Gauge.v ~help ~namespace ~subsystem "peek_events"
+end
+
+
 module Platform : sig
   val v : packages:Package.t list -> Ocaml_version.t option
   val to_string : Ocaml_version.t -> string
@@ -79,9 +91,6 @@ module PeekerBody = struct
                   ~tag:(Some (tag key))))
           ())
     in
-    (* let+ res = *)
-    (*   Docker_hub.fetch_manifests ~repo:"ocaml/opam" ~tag:(Some (tag key)) *)
-    (* in *)
     let+ res = r in
     match res with
     | Ok manifests ->
@@ -92,7 +101,7 @@ module PeekerBody = struct
             tag_sha)
           (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error)
     | Error (`Msg _) as e -> e
-    | Error (`Api_error (_response, _opt)) -> Error (`Msg "Api_error")
+    | Error (`Api_error (_response, _opt)) -> Error (`Msg ("Api_error: " ^ Option.value ~default:"" _opt))
     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str))
 
   let pp = Ocaml_version.pp
@@ -107,14 +116,18 @@ end = struct
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
 
   let real_peek ocaml_version =
-    (* let* _ = Current_docker.Default.pull ~schedule:weekly ~arch tag in *)
     Peeker.get ~schedule:weekly () ocaml_version
 
   let peek ocaml_version =
+    Prometheus.Gauge.inc_one Metrics.docker_peek_events;
     let tag = tag ocaml_version in
     Current.primitive
       ~info:(Current.component "Docker image peek %s" tag)
-      (fun () -> real_peek ocaml_version)
+      (fun () ->
+        let res = real_peek ocaml_version in
+        Prometheus.Gauge.dec_one Metrics.docker_peek_events;
+        res
+      )
       (Current.return ())
 end
 
