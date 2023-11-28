@@ -1,0 +1,76 @@
+#!/bin/sh -eu
+
+absolute_path() {
+  echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+}
+
+EPOCH_BIN="epoch -s"
+EPOCH_DATA_TEMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'data')
+trap 'rm -rf \"${EPOCH_DATA_TEMP}\"' EXIT
+
+# Linked universes - DO NOT prune
+# # find . -name bf6f7d00b40806e7dd74ad1828a0aa6d
+# ./epoch-097e46a4d589b9e34ed2903beecd1a04/html-raw/u/bf6f7d00b40806e7dd74ad1828a0aa6d
+# ./epoch-410108220dc0168ea4d9bd697dfa8e34/linked/u/bf6f7d00b40806e7dd74ad1828a0aa6d
+# ./compile/u/bf6f7d00b40806e7dd74ad1828a0aa6d
+# ./prep/universes/bf6f7d00b40806e7dd74ad1828a0aa6d
+echo "Creating linked universe bf6f7d00b40806e7dd74ad1828a0aa6d"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-097e46a4d589b9e34ed2903beecd1a04/html-raw/u/bf6f7d00b40806e7dd74ad1828a0aa6d"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-410108220dc0168ea4d9bd697dfa8e34/linked/u/bf6f7d00b40806e7dd74ad1828a0aa6d"
+mkdir -p "$EPOCH_DATA_TEMP/compile/u/bf6f7d00b40806e7dd74ad1828a0aa6d"
+mkdir -p "$EPOCH_DATA_TEMP/prep/universes/bf6f7d00b40806e7dd74ad1828a0aa6d"
+
+# # find . -name 7ee85f63014c898d8cb21b3436d42150
+# ./epoch-3820829bb005c559218fffb16ee32f3b/linked/u/7ee85f63014c898d8cb21b3436d42150
+# ./epoch-9baa5939aca1673d141e85b6ecd1e770/html-raw/u/7ee85f63014c898d8cb21b3436d42150
+# ./epoch-097e46a4d589b9e34ed2903beecd1a04/html-raw/u/7ee85f63014c898d8cb21b3436d42150
+# ./epoch-410108220dc0168ea4d9bd697dfa8e34/linked/u/7ee85f63014c898d8cb21b3436d42150
+# ./compile/u/7ee85f63014c898d8cb21b3436d42150
+# ./prep/universes/7ee85f63014c898d8cb21b3436d42150
+
+echo "Creating linked universe 7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-3820829bb005c559218fffb16ee32f3b/linked/u/7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-9baa5939aca1673d141e85b6ecd1e770/html-raw/u/7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-097e46a4d589b9e34ed2903beecd1a04/html-raw/u/7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/epoch-410108220dc0168ea4d9bd697dfa8e34/linked/u/7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/compile/u/7ee85f63014c898d8cb21b3436d42150"
+mkdir -p "$EPOCH_DATA_TEMP/prep/universes/7ee85f63014c898d8cb21b3436d42150"
+
+# Orphan universes - can be pruned
+# # find . -name 3e4e2c1d81edea2e42fbfaba428f5965
+# ./compile/u/3e4e2c1d81edea2e42fbfaba428f5965
+# ./prep/universes/3e4e2c1d81edea2e42fbfaba428f5965
+
+echo "Created orphan universe 3e4e2c1d81edea2e42fbfaba428f5965"
+mkdir -p "$EPOCH_DATA_TEMP/compile/u/3e4e2c1d81edea2e42fbfaba428f5965"
+mkdir -p "$EPOCH_DATA_TEMP/prep/universes/3e4e2c1d81edea2e42fbfaba428f5965"
+
+# # find . -name 5e2dcd36d81e7c2394110782b5bf906f
+# ./compile/u/5e2dcd36d81e7c2394110782b5bf906f
+# ./prep/universes/5e2dcd36d81e7c2394110782b5bf906f
+
+echo "Created orphan universe 5e2dcd36d81e7c2394110782b5bf906f"
+mkdir -p "$EPOCH_DATA_TEMP/compile/u/5e2dcd36d81e7c2394110782b5bf906f"
+mkdir -p "$EPOCH_DATA_TEMP/prep/universes/5e2dcd36d81e7c2394110782b5bf906f"
+
+# Tree is useful to debug what the structure of the epoch folder looks like
+# tree "$EPOCH_DATA_TEMP"
+
+${EPOCH_BIN} --base-dir "$EPOCH_DATA_TEMP"
+
+# tree "$EPOCH_DATA_TEMP"
+
+check_universe() {
+    UNIVERSE_HASH=$1
+    NUMBER_OCCURANCE=$2
+    FOUND=$(find "$EPOCH_DATA_TEMP" -name "$UNIVERSE_HASH" |wc -l |tr -d '[:space:]')
+    [ "$FOUND" = "$NUMBER_OCCURANCE" ] || { echo "Expected to find $NUMBER_OCCURANCE universes instead found $FOUND universes" ; exit 1; }
+}
+
+# Expect to find these universes untouched
+check_universe "bf6f7d00b40806e7dd74ad1828a0aa6d" 4
+check_universe "7ee85f63014c898d8cb21b3436d42150" 6
+
+# Expect these universes to get pruned
+check_universe "3e4e2c1d81edea2e42fbfaba428f5965" 0
+check_universe "5e2dcd36d81e7c2394110782b5bf906f" 0

@@ -203,7 +203,10 @@ module Do = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
-           run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-do"
+           run ~network ~cache
+             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
+             (Config.odoc t.config);
+           run ~network ~cache "opam pin -ny %s && opam depext -iy voodoo-do"
              (remote_uri t.commit);
            run
              "cp $(opam config var bin)/odoc $(opam config var bin)/voodoo-do \
@@ -226,6 +229,9 @@ module Gen = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
+           run ~network ~cache
+             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
+             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-gen"
              (remote_uri t.commit);
            run

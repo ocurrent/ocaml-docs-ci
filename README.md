@@ -2,10 +2,8 @@
 
 [![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Focaml.ci.dev%2Fbadge%2Focurrent%2Focaml-docs-ci%2Fmain&logo=ocaml)](https://ocaml.ci.dev/github/ocurrent/ocaml-docs-ci)
 
-OCaml Docs CI (aka docs-ci) is an OCurrent pipeline used for building the documentation for ocaml.org website.
-It uses the metadata from opam-repository to work out how to build documentation for individual
-packages using [voodoo](), the OCaml package documentation generator, and generates a HTML output
-suitable for ocaml.org server to present.
+OCaml Docs CI (aka ocaml-docs-ci or just docs-ci) is an OCurrent pipeline used to build the documentation for ocaml.org website.
+It uses the metadata from opam-repository to work out how to build documentation for individual packages using [voodoo](https://github.com/ocaml-doc/voodoo), the OCaml package documentation generator, and generates a HTML output suitable for ocaml.org server.
 
 ## Installation
 
@@ -31,12 +29,12 @@ dune build
 dune build @runtest
 ```
 
-## Documentation
+## Architecture
 
-At a high level `docs-ci` purpose is to compile the documentation of every package in the `opamverse`. To do this is generates
+At a high level `docs-ci` purpose is to compile the documentation of every package in the `opamverse`. To do this it generates
 a dependency universe. For each package (along with the version), the documentation is generated for it plus all of its
 dependencies. This documentation is then collected into a `documentation set` and provided to the ocaml.org service.
-The [voodoo]() tool defines the on disk format for the `documentation set`.
+The [voodoo](https://github.com/ocaml-doc/voodoo) tool defines the on disk format for the `documentation set`.
 
 For further details on how `docs-ci` works read the [pipeline diagram](doc/pipeline-diagram.md).
 
@@ -54,14 +52,13 @@ Environments:
 OAuth integration provided by GitHub OAuth Apps hosted under the OCurrent organisation.
 See https://github.com/organizations/ocurrent/settings/applications
 
-The infrastructure for `ocaml-docs-ci` is managed via Ansible.
-Contact @tmcgilchrist or @mtelvers if you need access or have questions.
+The infrastructure for `docs-ci` is managed via Ansible, contact @tmcgilchrist or @mtelvers if you need access or have questions.
 
 To deploy a new version of `docs-ci`:
 
 1. Create a PR and wait for the GH Checks to run (ocaml-ci compiles the code and ocurrent-deployer checks it can build the Dockerfiles for the project)
 1. Test the changes on `staging` environment by git cherry picking the commits to that branch and pushing it
-1. Check [deploy.ci.ocaml.org](https://deploy.ci.ocaml.org/?repo=ocurrent/ocaml-docs-ci&) for `ocaml-docs-ci`
+1. Check [deploy.ci.ocaml.org](https://deploy.ci.ocaml.org/?repo=ocurrent/ocaml-docs-ci&) for `docs-ci`
 
 Follow a similar process for `live` exercising extra caution as it could impact the live ocaml.org service.
 
@@ -70,13 +67,19 @@ Those branches should be the same as `main` plus or minus some commits from a PR
 
 ## Remote API
 
-TODO Provide cli over canpnp.
+`docs-ci` has a cli tool (`ocaml-docs-ci-client`) for interacting with the pipeline over CapnP. It provides commands to:
 
-[voodoo]: https://github.com/ocaml-doc/voodoo
+ * diff-pipelines - to show the changes between two pipeline runs
+ * health-check - to provide information about a specific pipeline run
+ * status - build status of a package
+ * status-by-pipeline - build status of a package in the two most recent pipeline runs
+ * steps - build steps of a package
+
+The output is via json, which is intended to be combined with `jq` to display and query for pieces of information.
 
 ## Local Development
 
-`docs-ci` is runable as:
+`ocaml-docs-ci` is runable as:
 
 ```
 dune exec -- ocaml-docs-ci \
@@ -97,7 +100,7 @@ A [docker-compose.yml](docker-compose.yml) is provided to setup an entire `docs-
 - ocluster scheduler
 - ocluster Linux x86 worker
 - nginx webserver for generated docs
-- docs-ci built from the local git checkout
+- ocaml-docs-ci built from the local git checkout
 
 Run this command to create an environment:
 
@@ -109,9 +112,16 @@ You should then be able to watch the pipeline in action at `http://localhost:808
 
 ### Migrations
 
-Migrations are managed using omigrate. If you are using an opam switch for ocaml-docs-ci then omigrate should be installed and you can create a new migration by doing this from the project root:
+Migrations are managed using [omigrate](https://github.com/tmattio/omigrate). If you are using an opam switch for ocaml-docs-ci then omigrate should be installed and you can create a new migration by doing this from the project root:
 
-omigrate create --dir migrations <migration-name>
+``` shell
+$ omigrate create --dir migrations <migration-name>
+```
+
 This will create timestamped files in the migrations directory that you can then populate with the sql necessary to introduce and remove the migration (in the up and down files respectively).
 
 Migrations will not run unless the --migration-path flag is present when invoking ocaml-docs-ci-service.
+
+### Epoch management
+Epochs are used in ocaml-docs-ci to organise sets of artifacts all produced by the same odoc/voodoo version.
+There is a cli tool for managing epochs described in [epoch.md](./src/cli/epoch.md).
