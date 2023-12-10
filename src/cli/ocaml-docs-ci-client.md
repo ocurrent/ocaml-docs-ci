@@ -14,7 +14,7 @@ Try 'ocaml-docs-ci-client --help' for more information.
 Runnning the help command brings up the manpage.
 
 ```sh
-$ ocaml-docs-ci-client --help
+$ ocaml-docs-ci-client --help=plain
 NAME
        ocaml-docs-ci-client - Cli client for ocaml-docs-ci.
 
