@@ -469,12 +469,11 @@ let collect_metrics t =
   let known_packages = lookup_known_packages t in
   List.iter (fun name -> register_status_for_package t name) known_packages;
 
-  (* TODO
-   Environment pipeline packages:
-     Passing:      2848 - Package version has built successfully
-     Failed:       4034 - Package version build has failed
-     Running:      10   - Package version build is currently running
-     Solver fails: 240  - Solver failed to find solution for this package version.
+  (* Environment pipeline package version statuses:
+     ok: Package version has built successfully
+     failed: Package version build has failed
+     running: Package version build is currently running
+     solver_failed: Solver failed to find solution for this package version.
   *)
   Prometheus.Gauge.set
     (Metrics.package_status_total "ok")
@@ -493,8 +492,7 @@ let register t solve_failures preps blessing trees =
   t.solve_failures <- OpamPackage.Map.of_list solve_failures;
   t.preps <- U preps;
   t.blessing <- blessing;
-  t.trees <- trees(* ; *)
-  (* Lwt.dont_wait (fun () -> collect_metrics t |> Lwt.return) ignore *)
+  t.trees <- trees
 
 let handle_passing t ~engine:_ =
   object
@@ -535,9 +533,9 @@ let do_lookups t =
     (float_of_int (t.solve_failures |> OpamPackage.Map.keys |> List.length))
 
 (* Override the OCurrent metrics to add ocaml-docs-ci specific data. *)
-let handle_metrics t ~engine = object
+let handle_metrics t ~engine =
+  object
     inherit Current_web.Resource.t
-
     val! can_get = `Monitor
 
     method! private get _context =
@@ -546,7 +544,9 @@ let handle_metrics t ~engine = object
       Current.Engine.(update_metrics engine);
       Prometheus.CollectorRegistry.(collect default) >>= fun data ->
       let body = Fmt.to_to_string Prometheus_app.TextFormat_0_0_4.output data in
-      let headers = Cohttp.Header.init_with "Content-Type" "text/plain; version=0.0.4" in
+      let headers =
+        Cohttp.Header.init_with "Content-Type" "text/plain; version=0.0.4"
+      in
       Cohttp_lwt_unix.Server.respond_string ~headers ~status:`OK ~body ()
   end
 

@@ -148,7 +148,9 @@ let get_base_image packages =
     Platform.v ~packages |> Option.value ~default:Ocaml_version.Releases.latest
   in
   (* let* image = Docker.pull ~label:(tag version) ~schedule:weekly ~arch:"amd64" "ocaml/opam" in *)
-  let+ tag = Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version) in
+  let+ tag =
+    Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version)
+  in
   (* let+ tag = Image.peek version in *)
   (* TODO Include comment on which image this is?
      Resolves to something like:
@@ -161,7 +163,9 @@ let get_base_image packages =
 let default_base_image =
   let open Current.Syntax in
   let version = Ocaml_version.Releases.latest in
-  let+ tag = Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version) in
+  let+ tag =
+    Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version)
+  in
   Spec.make tag
 
 let spec_of_job job =
