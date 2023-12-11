@@ -556,5 +556,5 @@ let routes t engine =
       (s "package" / str /? nil) @--> handle t ~engine;
       (s "package" /? nil) @--> handle_root t ~engine;
       (s "passing" /? nil) @--> handle_passing t ~engine;
-      (s "metrics" / s "packages" /? nil) @--> handle_metrics t ~engine;
+      (s "metrics" /? nil) @--> handle_metrics t ~engine;
     ]
