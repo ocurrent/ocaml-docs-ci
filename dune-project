@@ -38,17 +38,14 @@
   (ppx_deriving (>= 5.2.1))
   (ppx_deriving_yojson (>= 3.7.0))
   (git-unix (>= 3.13.0))
-  (dockerfile (>= 8.2.1))
   conf-libev
   dune-build-info
   (ocaml-version (>= 3.6.1))
   (obuilder-spec (>= 0.5.1))
-  (docker_hub (>= 0.1.1))
   (ocolor (>= 1.3.0))
   (memtrace (>= 0.1.1)) ; required for memory profiling
   (alcotest (and (>= 1.7.0) :with-test))
   (alcotest-lwt (and (>= 1.7.0) :with-test))
-  (docker_hub (>= 0.1.1))
   (mirage-crypto-rng (>= 0.8.7))
   (prometheus-app (>= 1.2))
   (omigrate (>= 0.3.2))))
@@ -57,7 +54,7 @@
  (name ocaml-docs-ci-client)
  (synopsis "Command-line client for ocaml-docs-ci")
  (depends
-  (ocaml (>= 4.14))
+  (ocaml (>= 4.14.1))
   (logs (>= 0.7.0))
   (fmt (>= 0.8.9))
   current_rpc

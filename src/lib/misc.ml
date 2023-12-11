@@ -52,87 +52,6 @@ let tag ocaml_version =
     | None -> ""
     | Some x -> "-" ^ x |> String.map (function '+' -> '-' | x -> x))
 
-(* module PeekerBody = struct *)
-(*   type t = unit *)
-
-(*   let id = "docker-peek" *)
-
-(*   module Key = struct *)
-(*     type t = Ocaml_version.t *)
-
-(*     let digest x = "v2" ^ Ocaml_version.to_string x *)
-(*   end *)
-
-(*   module Value = struct *)
-(*     type t = string *)
-
-(*     let marshal x = x *)
-(*     let unmarshal x = x *)
-(*   end *)
-
-(*   let conv_error = function *)
-(*     | Ok x -> Ok x *)
-(*     | Error (`Malformed_json s) -> Error (`Msg ("Malformed json: " ^ s)) *)
-(*     | Error `No_corresponding_arch_found -> *)
-(*         Error (`Msg "No corresponding arch found") *)
-(*     | Error `No_corresponding_os_found -> *)
-(*         Error (`Msg "No corresponding OS found") *)
-
-(*   let build () job key = *)
-(*     let open Lwt.Syntax in *)
-(*     let* () = Current.Job.start ~level:Current.Level.Mostly_harmless job in *)
-(*     Current.Job.log job "tag: %s" (tag key); *)
-(*     let res : (Docker_hub.t, Docker_hub.fetch_errors) result Lwt.t = *)
-(*       Lwt_preemptive.( *)
-(*         detach *)
-(*           (fun () -> *)
-(*             run_in_main (fun _t -> *)
-(*                 Current.Job.log job "running Docker_hub.fetch_manifests"; *)
-(*                 Docker_hub.fetch_manifests ~repo:"ocaml/opam" *)
-(*                   ~tag:(Some (tag key)))) *)
-(*           ()) *)
-(*     in *)
-(*     let+ res in *)
-(*     match res with *)
-(*     | Ok manifests -> *)
-(*        let a = (Docker_hub.digest ~os:"linux" ~arch:"amd64" manifests |> conv_error) in *)
-(*         Result.map *)
-(*           (fun r -> *)
-(*             let tag_sha = "ocaml/opam@" ^ r in *)
-(*             Current.Job.log job "result: %s" tag_sha; *)
-(*             tag_sha) *)
-(*           a *)
-(*     | Error (`Msg _) as e -> e *)
-(*     | Error (`Api_error (_response, _opt)) -> Error (`Msg ("Api_error: " ^ Option.value ~default:"" _opt)) *)
-(*     | Error (`Malformed_json str) -> Error (`Msg ("Malformed_json" ^ str)) *)
-
-(*   let pp = Ocaml_version.pp *)
-(*   let auto_cancel = true *)
-(* end *)
-
-(* module Peeker = Current_cache.Make (PeekerBody) *)
-
-(* module Image : sig *)
-(*   val peek : Ocaml_version.t -> string Current.t *)
-(* end = struct *)
-(*   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) () *)
-
-(*   let real_peek ocaml_version = *)
-(*     Peeker.get ~schedule:weekly () ocaml_version *)
-
-(*   let peek ocaml_version = *)
-(*     Prometheus.Gauge.inc_one Metrics.docker_peek_events; *)
-(*     let tag = tag ocaml_version in *)
-(*     Current.primitive *)
-(*       ~info:(Current.component "Docker image peek %s" tag) *)
-(*       (fun () -> *)
-(*         let res = real_peek ocaml_version in *)
-(*         Prometheus.Gauge.dec_one Metrics.docker_peek_events; *)
-(*         res *)
-(*       ) *)
-(*       (Current.return ()) *)
-(* end *)
-
 let cache_hint package =
   let packages = Package.all_deps package in
   Platform.v ~packages
@@ -151,7 +70,6 @@ let get_base_image packages =
   let+ tag =
     Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version)
   in
-  (* let+ tag = Image.peek version in *)
   (* TODO Include comment on which image this is?
      Resolves to something like:
      `ocaml/opam@sha256:04a0b3ee7288fb3aa7e608c2ccbbbaa289c1810f57265365dd849fc5cc46d9ed`
