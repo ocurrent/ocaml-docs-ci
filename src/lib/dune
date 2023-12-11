@@ -1,5 +1,3 @@
-;;
-
 (library
  (name docs_ci_lib)
  (package ocaml-docs-ci)
@@ -28,7 +26,6 @@
   solver_api
   ocaml-version
   omigrate
-  omigrate.sqlite3
-  docker_hub)
+  omigrate.sqlite3)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))

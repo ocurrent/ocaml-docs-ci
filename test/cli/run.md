@@ -10,7 +10,7 @@ n/a
 
 Epoch provides a manpage with help options:
 ```sh
-$ epoch --help
+$ epoch --help=plain
 NAME
        epoch - Epoch pruning
 
