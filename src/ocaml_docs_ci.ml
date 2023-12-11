@@ -132,8 +132,8 @@ let main () current_config github_auth mode capnp_public_address
           let routes =
             Routes.(
               (s "login" /? nil) @--> Current_github.Auth.login github_auth)
-            :: Current_web.routes engine
-            @ Docs_ci_lib.Monitor.routes monitor engine
+            :: Docs_ci_lib.Monitor.routes monitor engine
+            @ Current_web.routes engine
           in
           Current_web.Site.(v ?authn ~has_role ~secure_cookies)
             ~name:program_name routes
