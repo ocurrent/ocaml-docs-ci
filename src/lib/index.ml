@@ -109,7 +109,7 @@ let db =
        Sqlite3.prepare db
          "INSERT INTO docs_ci_pipeline_index (epoch_html, epoch_linked, \
           voodoo_do, voodoo_gen, voodoo_prep, voodoo_branch, voodoo_repo) \
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?) returning id"
+          VALUES (?, ?, ?, ?, ?, ?, ?) returning id"
      and get_recent_pipeline_ids =
        Sqlite3.prepare db
          "SELECT id FROM docs_ci_pipeline_index ORDER BY id DESC LIMIT 2"
@@ -175,7 +175,6 @@ let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
           TEXT voodoo_prep_commit;
           TEXT voodoo_branch;
           TEXT voodoo_repo;
-          TEXT "DEPRECATED";
         ]
   with
   | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
