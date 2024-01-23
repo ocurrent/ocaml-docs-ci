@@ -163,7 +163,7 @@ let record package pipeline_id package_status step_list =
       ]
 
 let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
-    ~odoc_commit ~voodoo_repo ~voodoo_branch ~epoch_html ~epoch_linked =
+   ~voodoo_repo ~voodoo_branch ~epoch_html ~epoch_linked =
   let t = Lazy.force db in
   match
     Db.query_one t.record_pipeline
@@ -176,7 +176,7 @@ let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
           TEXT voodoo_prep_commit;
           TEXT voodoo_branch;
           TEXT voodoo_repo;
-          TEXT odoc_commit;
+          TEXT "DEPRECATED";
         ]
   with
   | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
@@ -235,7 +235,6 @@ type pipeline_data = {
   voodoo_prep : string;
   voodoo_branch : string;
   voodoo_repo : string;
-  odoc_commit : string;
 }
 
 let get_pipeline_counts pipeline_id =
@@ -273,7 +272,6 @@ let get_pipeline_data pipeline_id =
              voodoo_gen,
              voodoo_prep,
              "",
-             "",
              "" )
        | Sqlite3.Data.
            [
@@ -284,7 +282,7 @@ let get_pipeline_data pipeline_id =
              TEXT voodoo_prep;
              TEXT voodoo_branch;
              TEXT voodoo_repo;
-             TEXT odoc_commit;
+             TEXT _odoc_commit;
            ] ->
            ( epoch_html,
              epoch_linked,
@@ -292,8 +290,7 @@ let get_pipeline_data pipeline_id =
              voodoo_gen,
              voodoo_prep,
              voodoo_branch,
-             voodoo_repo,
-             odoc_commit )
+             voodoo_repo )
        | row -> Fmt.failwith "get_pipeline_data: invalid row %a" Db.dump_row row
   in
   match result with
@@ -304,8 +301,7 @@ let get_pipeline_data pipeline_id =
      voodoo_gen,
      voodoo_prep,
      voodoo_branch,
-     voodoo_repo,
-     odoc_commit );
+     voodoo_repo );
   ] ->
       Some
         {
@@ -316,7 +312,6 @@ let get_pipeline_data pipeline_id =
           voodoo_prep;
           voodoo_branch;
           voodoo_repo;
-          odoc_commit;
         }
   | _ -> None
 

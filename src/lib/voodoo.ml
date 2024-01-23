@@ -203,9 +203,6 @@ module Do = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
-           run ~network ~cache
-             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
-             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s && opam depext -iy voodoo-do"
              (remote_uri t.commit);
            run
@@ -219,9 +216,9 @@ end
 
 module Gen = struct
   type voodoo = t
-  type t = { commit : Git.Commit_id.t; config : Config.t }
+  type t = { commit : Git.Commit_id.t }
 
-  let v { voodoo_gen; config; _ } = { commit = voodoo_gen; config }
+  let v { voodoo_gen; _ } = { commit = voodoo_gen }
 
   let spec ~base t =
     let open Obuilder_spec in
@@ -229,9 +226,6 @@ module Gen = struct
     |> Spec.add
          [
            run ~network "sudo apt-get update && sudo apt-get install -yy m4";
-           run ~network ~cache
-             "opam pin -ny odoc.dev %s && opam depext -iy odoc"
-             (Config.odoc t.config);
            run ~network ~cache "opam pin -ny %s  && opam depext -iy voodoo-gen"
              (remote_uri t.commit);
            run
@@ -239,6 +233,6 @@ module Gen = struct
               /home/opam";
          ]
 
-  let digest t = Git.Commit_id.hash t.commit ^ Config.odoc t.config
+  let digest t = Git.Commit_id.hash t.commit
   let commit t = t.commit
 end
