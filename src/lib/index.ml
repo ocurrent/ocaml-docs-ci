@@ -108,8 +108,8 @@ let db =
      and record_pipeline =
        Sqlite3.prepare db
          "INSERT INTO docs_ci_pipeline_index (epoch_html, epoch_linked, \
-          voodoo_do, voodoo_gen, voodoo_prep, voodoo_branch, voodoo_repo, \
-          odoc_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?) returning id"
+          voodoo_do, voodoo_gen, voodoo_prep, voodoo_branch, voodoo_repo) \
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?) returning id"
      and get_recent_pipeline_ids =
        Sqlite3.prepare db
          "SELECT id FROM docs_ci_pipeline_index ORDER BY id DESC LIMIT 2"
@@ -128,7 +128,7 @@ let db =
      and get_pipeline_data =
        Sqlite3.prepare db
          "SELECT epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep, \
-          voodoo_branch, voodoo_repo, odoc_commit FROM docs_ci_pipeline_index \
+          voodoo_branch, voodoo_repo FROM docs_ci_pipeline_index \
           WHERE id = ?"
      in
 
@@ -264,7 +264,6 @@ let get_pipeline_data pipeline_id =
              NULL;
              (* these are new nullable columns so this option is for backward compatibility *)
              NULL;
-             NULL;
            ] ->
            ( epoch_html,
              epoch_linked,
@@ -282,7 +281,6 @@ let get_pipeline_data pipeline_id =
              TEXT voodoo_prep;
              TEXT voodoo_branch;
              TEXT voodoo_repo;
-             TEXT _odoc_commit;
            ] ->
            ( epoch_html,
              epoch_linked,
