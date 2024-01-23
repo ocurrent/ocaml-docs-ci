@@ -16,7 +16,7 @@ module Record = struct
   module Key = struct
     type t = { voodoo : Voodoo.t; config : Config.t }
 
-    let key { voodoo; config = _} =
+    let key { voodoo; config = _ } =
       let t = Epoch.v voodoo in
       Fmt.str "%a" Epoch.pp t
 

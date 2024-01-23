@@ -128,8 +128,7 @@ let db =
      and get_pipeline_data =
        Sqlite3.prepare db
          "SELECT epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep, \
-          voodoo_branch, voodoo_repo FROM docs_ci_pipeline_index \
-          WHERE id = ?"
+          voodoo_branch, voodoo_repo FROM docs_ci_pipeline_index WHERE id = ?"
      in
 
      {
@@ -163,7 +162,7 @@ let record package pipeline_id package_status step_list =
       ]
 
 let record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit ~voodoo_prep_commit
-   ~voodoo_repo ~voodoo_branch ~epoch_html ~epoch_linked =
+    ~voodoo_repo ~voodoo_branch ~epoch_html ~epoch_linked =
   let t = Lazy.force db in
   match
     Db.query_one t.record_pipeline
@@ -265,13 +264,7 @@ let get_pipeline_data pipeline_id =
              (* these are new nullable columns so this option is for backward compatibility *)
              NULL;
            ] ->
-           ( epoch_html,
-             epoch_linked,
-             voodoo_do,
-             voodoo_gen,
-             voodoo_prep,
-             "",
-             "" )
+           (epoch_html, epoch_linked, voodoo_do, voodoo_gen, voodoo_prep, "", "")
        | Sqlite3.Data.
            [
              TEXT epoch_html;
