@@ -212,10 +212,6 @@ let cmdliner =
     $ take_n_last_versions
     $ Ssh.cmdliner)
 
-(* odoc pinned to tag 2.2.2 *)
-let odoc _ =
-  "https://github.com/ocaml/odoc.git#34a48e2543f6ea5716e9ee922954fa0917561dd7"
-
 let pool _ = "linux-x86_64"
 let jobs t = t.jobs
 let voodoo_branch t = t.voodoo_branch

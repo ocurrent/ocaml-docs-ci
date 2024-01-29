@@ -16,8 +16,8 @@ module Record = struct
   module Key = struct
     type t = { voodoo : Voodoo.t; config : Config.t }
 
-    let key { voodoo; config } =
-      let t = Epoch.v config voodoo in
+    let key { voodoo; config = _ } =
+      let t = Epoch.v voodoo in
       Fmt.str "%a" Epoch.pp t
 
     let digest t = key t |> Digest.string |> Digest.to_hex
@@ -29,29 +29,28 @@ module Record = struct
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
 
-    let generation = Epoch.v config voodoo in
+    let generation = Epoch.v voodoo in
     let voodoo_do_commit = Voodoo.Do.v voodoo |> Voodoo.Do.digest in
     let voodoo_gen_commit =
       Voodoo.Gen.v voodoo |> Voodoo.Gen.commit |> Git.Commit_id.hash
     in
     let voodoo_repo = Config.voodoo_repo config in
     let voodoo_branch = Config.voodoo_branch config in
-    let odoc_commit = Config.odoc config in
     let voodoo_prep_commit = Voodoo.Prep.v voodoo |> Voodoo.Prep.digest in
     let epoch_linked = (Epoch.digest `Linked) generation in
     let epoch_html = (Epoch.digest `Html) generation in
 
     let result =
       Index.record_new_pipeline ~voodoo_do_commit ~voodoo_gen_commit
-        ~voodoo_prep_commit ~voodoo_repo ~voodoo_branch ~odoc_commit ~epoch_html
+        ~voodoo_prep_commit ~voodoo_repo ~voodoo_branch ~epoch_html
         ~epoch_linked
     in
     match result with
     | Ok pipeline_id -> Lwt.return_ok (pipeline_id |> Int64.to_int)
     | Error msg -> Lwt.return_error (`Msg msg)
 
-  let pp f Key.{ config; voodoo } =
-    let generation = Epoch.v config voodoo in
+  let pp f Key.{ config = _; voodoo } =
+    let generation = Epoch.v voodoo in
     Epoch.pp f generation
 
   let auto_cancel = true
