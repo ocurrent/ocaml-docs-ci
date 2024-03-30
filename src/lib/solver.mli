@@ -4,11 +4,13 @@ type t
 type key
 
 val keys : t -> key list
-val failures : t -> (OpamPackage.t * string) list
+val failures : t -> (OpamPackage.t list * string) list
 val get : key -> Package.t
 
 val incremental :
-  config:Config.t ->
+  ?group:bool ->
+  ?nb_jobs:int ->
+  ?config:Config.t ->
   blacklist:string list ->
   opam:Git.Commit.t Current.t ->
   Track.t list Current.t ->

@@ -27,7 +27,7 @@ let to_base_repo = function
 
 let base_folder ~blessed ~prep package =
   let universes = if prep then "universes" else "u" in
-  let universe = Package.universe package |> Package.Universe.hash in
+  let universe = Package.universes_hash package in
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
   let version = OpamPackage.version_to_string opam in

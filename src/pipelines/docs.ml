@@ -280,7 +280,9 @@ let v ~config ~opam ~monitor ~migrations () =
   in
   Log.info (fun f -> f "1) Tracked");
   (* 2) For each package.version, call the solver. *)
-  let solver_result_c = Solver.incremental ~config ~blacklist ~opam tracked in
+  let solver_result_c =
+    Solver.incremental ~group:true ~config ~blacklist ~opam tracked
+  in
   let* solver_result = solver_result_c in
   Log.info (fun f -> f "2) Solver result");
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
@@ -326,6 +328,13 @@ let v ~config ~opam ~monitor ~migrations () =
   Log.info (fun f -> f "5) Prep nodes");
   (* 6) Promote packages to the main tree *)
   let blessed =
+    let all_packages_jobs = Package.Set.of_list all_packages_jobs in
+    let all_packages =
+      (* Make sure not losing the packages which carry a group.*)
+      Package.Set.filter_map
+        (fun pkg -> Package.Set.find_opt pkg all_packages_jobs)
+        all_packages
+    in
     let counts =
       let counts_mut = ref Package.Map.empty in
       Package.Set.iter
@@ -390,7 +399,10 @@ let v ~config ~opam ~monitor ~migrations () =
 
   (* 7.b) Inform the monitor *)
   let () =
-    let solver_failures = Solver.failures solver_result in
+    let solver_failures =
+      List.map (fun (pkgs, s) -> (List.hd pkgs, s))
+      @@ Solver.failures solver_result
+    in
     let successes = List.length (Solver.keys solver_result) in
     Log.info (fun f ->
         f "7.b) Inform the monitor: successes %i, failures %i" successes

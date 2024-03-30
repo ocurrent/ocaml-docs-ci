@@ -116,7 +116,8 @@ services:
       # - --voodoo-branch=""    # Git branch from the voodoo repository
       - --jobs=6
       - --limit=1               # Only build the most recent version of each package
-      - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
+      - --filter=cmdliner      # NOTE Only build capnp-rpc documentation.
+      # - --filter=current_github      # NOTE Only build capnp-rpc documentation.
       - --capnp-listen-address=tcp:0.0.0.0:9080
       - --capnp-public-address=tcp:localhost:9080
       - --migration-path=/migrations

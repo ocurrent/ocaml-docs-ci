@@ -142,7 +142,7 @@ module Gen = struct
               (OpamPackage.Version.Map.add version root_odoc)
               OpamPackage.Version.Map.empty !packages
         else
-          let digest = package |> Package.universe |> Package.Universe.hash in
+          let digest = package |> Package.universes_hash in
           universes :=
             StringMap.(
               add digest

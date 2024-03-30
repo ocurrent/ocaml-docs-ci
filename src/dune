@@ -1,7 +1,7 @@
-(executable
- (public_name ocaml-docs-ci)
+(executables
+ (public_names ocaml-docs-ci stats counts)
  (package ocaml-docs-ci)
- (name ocaml_docs_ci)
+ (names ocaml_docs_ci stats counts)
  (libraries
   current
   current.cache

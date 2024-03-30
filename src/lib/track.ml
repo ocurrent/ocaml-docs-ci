@@ -13,6 +13,19 @@ module OpamPackage = struct
     | _ -> Error "failed to parse version"
 end
 
+module Url_repo = struct
+  include OpamUrl
+
+  let comparable_repo t =
+    t.path
+    |> Astring.String.span ~rev:true ~min:0 ~max:4
+    |> (fun (p, git) -> if git = ".git" then p else t.path)
+    |> (fun path ->
+         Astring.String.span ~min:0 ~max:4 path |> fun (git, p) ->
+         if git = "git@" then p else path)
+    |> Astring.String.map (fun c -> if c = ':' then '/' else c)
+end
+
 module Track = struct
   type t = No_context
 
@@ -20,13 +33,21 @@ module Track = struct
   let auto_cancel = true
 
   module Key = struct
-    type t = { limit : int option; repo : Git.Commit.t; filter : string list }
+    type t = {
+      limit : int option;
+      repo : Git.Commit.t;
+      filter : string list;
+      group : bool;
+    }
 
-    let digest { repo; filter; limit } =
+    let digest { repo; filter; limit; group } =
       Git.Commit.hash repo
       ^ String.concat ";" filter
-      ^ "; "
-      ^ (limit |> Option.map string_of_int |> Option.value ~default:"")
+      ^
+      if group then "; "
+      else
+        "(group); "
+        ^ (limit |> Option.map string_of_int |> Option.value ~default:"")
   end
 
   let pp f { Key.repo; filter; _ } =
@@ -35,10 +56,10 @@ module Track = struct
       filter
 
   module Value = struct
-    type package_definition = { package : OpamPackage.t; digest : string }
+    type group_packages = { packages : OpamPackage.t list; digest : string }
     [@@deriving yojson]
 
-    type t = package_definition list [@@deriving yojson]
+    type t = group_packages list [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
@@ -55,7 +76,7 @@ module Track = struct
   let get_file path =
     Lwt_io.with_file ~mode:Input (Fpath.to_string path) Lwt_io.read
 
-  let get_versions ~limit path =
+  let get_versions ~group ~limit path =
     let open Lwt.Syntax in
     let open Rresult in
     Bos.OS.Dir.contents path
@@ -63,32 +84,76 @@ module Track = struct
           versions
           |> Lwt_list.map_p (fun path ->
                  let+ content = get_file Fpath.(path / "opam") in
-                 Value.
-                   {
-                     package = path |> Fpath.basename |> OpamPackage.of_string;
-                     digest = Digest.(string content |> to_hex);
-                   }))
+                 let package =
+                   path |> Fpath.basename |> OpamPackage.of_string
+                 in
+                 if not group then
+                   ((None, Digest.(string content |> to_hex)), package)
+                 else
+                   OpamFile.OPAM.read_from_string content |> fun opam ->
+                   ( ( OpamFile.OPAM.dev_repo opam
+                       |> Option.map Url_repo.comparable_repo,
+                       Digest.(string content |> to_hex) ),
+                     package )))
     |> Result.get_ok
     |> Lwt.map (fun v ->
            v
-           |> List.sort (fun a b ->
-                  -OpamPackage.compare a.Value.package b.package)
+           |> List.sort (fun a b -> -OpamPackage.compare (snd a) (snd b))
            |> take limit)
 
-  let build No_context job { Key.repo; filter; limit } =
+  let digest_concat digest =
+    match digest with
+    | d :: [] -> d
+    | group -> Astring.String.concat group |> Digest.string |> Digest.to_hex
+
+  let build No_context job { Key.repo; filter; limit; group } =
     let open Lwt.Syntax in
     let open Rresult in
+    let open Lwt.Infix in
     let filter name =
       match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst
     in
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->
+    let repo_version_group = Hashtbl.create 10 in
     let result =
       Bos.OS.Dir.contents Fpath.(dir / "packages") >>| fun packages ->
       packages
       |> List.filter filter
-      |> Lwt_list.map_s (get_versions ~limit)
-      |> Lwt.map (fun v -> List.flatten v)
+      |> Lwt_list.map_s (get_versions ~group ~limit)
+      >>= fun v ->
+      List.flatten v |> fun v ->
+      Current.Job.log job "Tracked packages: %d" (List.length v);
+      v
+      |> Lwt_list.iter_s (fun ((dev_repo, digest), pkg) ->
+             let key =
+               match dev_repo with
+               | None -> OpamPackage.to_string pkg
+               | Some repo ->
+                   OpamPackage.version pkg |> OpamPackage.Version.to_string
+                   |> fun version ->
+                   repo ^ version |> Digest.string |> Digest.to_hex
+               (* The need to group the packages by their dev-repo and version *)
+             in
+             match Hashtbl.find_opt repo_version_group key with
+             | Some group ->
+                 Lwt.return
+                 @@ Hashtbl.replace repo_version_group key
+                      ((pkg, digest) :: group)
+             | None ->
+                 Lwt.return
+                 @@ Hashtbl.replace repo_version_group key [ (pkg, digest) ])
+      |> Lwt.map (fun () ->
+             Current.Job.log job "Tracked jobs: %d"
+             @@ Hashtbl.length repo_version_group;
+             Hashtbl.to_seq repo_version_group
+             |> Seq.map (fun (_, group) ->
+                    let group = List.rev group in
+                    {
+                      Value.packages = List.map fst group;
+                      digest = digest_concat @@ List.map snd group;
+                    })
+             |> List.of_seq)
     in
     match result with
     | Ok v -> Lwt.map Result.ok v
@@ -98,26 +163,18 @@ end
 module TrackCache = Misc.LatchedBuilder (Track)
 open Track.Value
 
-type t = package_definition [@@deriving yojson]
+type t = group_packages [@@deriving yojson]
 
-let pkg t = t.package
+let pkgs t = t.packages
 let digest t = t.digest
 
-module Map = OpamStd.Map.Make (struct
-  type nonrec t = t
-
-  let compare a b = O.OpamPackage.compare a.package b.package
-
-  let to_json { package; digest } =
-    `A [ OpamPackage.to_json package; `String digest ]
-
-  let of_json _ = None
-  let to_string t = OpamPackage.to_string t.package
-end)
-
-let v ~limit ~(filter : string list) (repo : Git.Commit.t Current.t) =
+let v ?(group = false) ~limit ~(filter : string list)
+    (repo : Git.Commit.t Current.t) =
   let open Current.Syntax in
   Current.component "Track packages - %a" Fmt.(list string) filter
   |> let> repo in
-     (* opkey is a constant because we expect only one instance of track *)
-     TrackCache.get ~opkey:"track" No_context { filter; repo; limit }
+     if not group then
+       TrackCache.get ~opkey:"track" No_context { filter; repo; limit; group }
+     else
+       TrackCache.get ~opkey:"track-(group)" No_context
+         { filter; repo; limit; group }

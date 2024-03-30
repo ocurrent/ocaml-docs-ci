@@ -31,31 +31,66 @@ end
 and Package : sig
   type t [@@deriving yojson]
 
+  val group : t -> t list option
   val opam : t -> OpamPackage.t
   val commit : t -> string
   val universe : t -> Universe.t
+  val universes : t -> Universe.t list
   val digest : t -> string
+  val universes_hash : t -> string
   val id : t -> string
   val pp : t Fmt.t
   val compare : t -> t -> int
-  val v : OpamPackage.t -> t list -> string -> t
+  val v : ?group:Package.t list -> OpamPackage.t -> t list -> string -> t
 
   val make :
+    ?group:OpamPackage.t list ->
     blacklist:string list ->
     commit:string ->
     root:OpamPackage.t ->
     (OpamPackage.t * OpamPackage.t list) list ->
     t
 end = struct
-  type t = { opam : O.OpamPackage.t; universe : Universe.t; commit : string }
+  type t = {
+    group : Package.t list option;
+    opam : O.OpamPackage.t;
+    universe : Universe.t;
+    commit : string;
+  }
   [@@deriving yojson]
 
+  let group t = t.group
   let universe t = t.universe
+
+  let universes t =
+    Option.value ~default:[ universe t ]
+    @@ Option.map (fun pkg -> List.map universe pkg) (group t)
+
+  let universes_hash t =
+    match t.group with
+    | None -> universe t |> Universe.hash
+    | Some group ->
+        let hashes =
+          List.map (fun pkg -> universe pkg |> Universe.hash) group
+        in
+        String.concat "" hashes |> Digest.string |> Digest.to_hex
+
   let opam t = t.opam
   let commit t = t.commit
-  let id t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
+  let id t = OpamPackage.to_string t.opam ^ "-" ^ universes_hash t
   let digest = id
-  let v opam deps commit = { opam; universe = Universe.v deps; commit }
+
+  let universes_hash t =
+    let univs =
+      (t.universe |> Universe.hash)
+      :: List.map
+           (fun pkg -> universe pkg |> Universe.hash)
+           (Option.to_list t.group |> List.flatten)
+    in
+    String.concat "" univs |> Digest.string |> Digest.to_hex
+
+  let v ?group opam deps commit =
+    { group; opam; universe = Universe.v deps; commit }
 
   let pp f { universe; opam; _ } =
     Fmt.pf f "%s; %a" (OpamPackage.to_string opam) Universe.pp universe
@@ -75,7 +110,7 @@ end = struct
     |> List.filter (fun (pkg, _) -> filter pkg)
     |> List.map (fun (pkg, deps) -> (pkg, List.filter filter deps))
 
-  let make ~blacklist ~commit ~root deps =
+  let make ?group ~blacklist ~commit ~root deps =
     let deps = remove_blacklisted_packages ~blacklist deps in
     let memo = ref OpamPackage.Map.empty in
     let package_deps = OpamPackage.Map.of_list deps in
@@ -93,12 +128,23 @@ end = struct
           memo := OpamPackage.Map.add package pkg !memo;
           pkg
     in
-    obtain root |> Option.get
+    let group =
+      group
+      |> Option.map (fun group ->
+             List.map (fun pkg -> obtain pkg |> Option.get) group)
+    in
+    obtain root |> Option.map (fun t -> { t with group }) |> Option.get
 end
 
 include Package
 
-let all_deps pkg = pkg :: (pkg |> universe |> Universe.deps)
+let all_deps pkg =
+  let deps pkg = pkg :: (pkg |> universe |> Universe.deps) in
+  match Package.group pkg with
+  | None -> deps pkg
+  | Some group ->
+      (* The root pkg is also in the group *)
+      List.map (fun pkg -> deps pkg) group |> List.flatten
 
 module PackageMap = Map.Make (Package)
 module PackageSet = Set.Make (Package)
@@ -121,13 +167,14 @@ module Blessing = struct
       blessed : Package.t option;
     }
 
-    let universe_size u = Universe.deps u |> List.length
+    let universes_size u =
+      List.map Universe.deps u |> List.flatten |> List.length
 
     let empty (opam : OpamPackage.t) : t =
       { opam; universe = ""; blessed = None }
 
     module Universe_info = struct
-      type t = { universe : Universe.t; deps_count : int; revdeps_count : int }
+      type t = { pkg : Package.t; deps_count : int; revdeps_count : int }
 
       (* To compare two possibilities, we want first to maximize the number of dependencies
          in the universe (to favorize optional dependencies) and then maximize the number of revdeps:
@@ -138,9 +185,13 @@ module Blessing = struct
         | v -> v
 
       let make ~counts package =
-        let universe = Package.universe package in
-        let deps_count = universe_size universe in
-        { universe; deps_count; revdeps_count = PackageMap.find package counts }
+        let universes = Package.universes package in
+        let deps_count = universes_size universes in
+        {
+          pkg = package;
+          deps_count;
+          revdeps_count = PackageMap.find package counts;
+        }
     end
 
     let v ~counts (packages : Package.t list) : t =
@@ -161,7 +212,7 @@ module Blessing = struct
       in
       {
         opam;
-        universe = Universe.hash best_universe.universe;
+        universe = Package.universes_hash best_universe.pkg;
         blessed = Some best_package;
       }
 

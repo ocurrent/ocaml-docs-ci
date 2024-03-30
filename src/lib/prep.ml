@@ -21,7 +21,7 @@ let not_base x =
 let universes_assoc packages =
   packages
   |> List.map (fun pkg ->
-         let hash = pkg |> Package.universe |> Package.Universe.hash in
+         let hash = pkg |> Package.universes_hash in
          let name = pkg |> Package.opam |> OpamPackage.name_to_string in
          name ^ ":" ^ hash)
   |> String.concat ","

@@ -81,13 +81,13 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam
       raise exn)
 
 let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
-  let package = Track.pkg track in
+  let packages = Track.pkgs track in
   let constraints =
-    [
-      ( OpamPackage.name_to_string package,
-        `Eq,
-        OpamPackage.version_to_string package );
-    ]
+    packages
+    |> List.map (fun package ->
+           ( OpamPackage.name_to_string package,
+             `Eq,
+             OpamPackage.version_to_string package ))
   in
   let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
   perform_constrained_solve ~solver ~pool ~job ~platform ~opam
@@ -100,8 +100,9 @@ let solver_version = "v2"
 module Cache = struct
   let fname id track =
     let digest = Track.digest track in
-    let name = Track.pkg track |> OpamPackage.name_to_string in
-    let name_version = Track.pkg track |> OpamPackage.version_to_string in
+    let pkg = Track.pkgs track |> List.hd in
+    let name = pkg |> OpamPackage.name_to_string in
+    let name_version = pkg |> OpamPackage.version_to_string in
     Fpath.(Current.state_dir id / name / name_version / digest)
 
   let id = "solver-cache-" ^ solver_version
@@ -142,7 +143,7 @@ let get key = Cache.read key |> Option.get (* is in cache ? *) |> Result.get_ok
 let failures t =
   t.failures
   |> List.map (fun k ->
-         (Track.pkg k, Cache.read k |> Option.get |> Result.get_error))
+         (Track.pkgs k, Cache.read k |> Option.get |> Result.get_error))
 
 (* is solved ? *)
 
@@ -157,7 +158,7 @@ module Solver = struct
   let latched = true
 
   (* A single instance of the solver is expected. *)
-  module Key = Current.Unit
+  module Key = Current.String
 
   module Value = struct
     type t = {
@@ -172,7 +173,9 @@ module Solver = struct
       (Git.Commit.hash opam_commit :: blacklist)
       @ List.map
           (fun t ->
-            (Track.pkg t |> OpamPackage.to_string) ^ "-" ^ Track.digest t)
+            (Track.pkgs t |> List.hd |> OpamPackage.to_string)
+            ^ "-"
+            ^ Track.digest t)
           packages
       |> Digestif.SHA256.digestv_string
       |> Digestif.SHA256.to_hex
@@ -185,7 +188,7 @@ module Solver = struct
     let unmarshal t = Marshal.from_string t 0
   end
 
-  let run (solver, pool) job ()
+  let run (solver, pool) job _
       Value.{ packages; blacklist; platform; opam_commit } =
     let open Lwt.Syntax in
     let* () = Current.Job.start ~level:Harmless job in
@@ -193,22 +196,28 @@ module Solver = struct
     let to_do = List.filter (fun x -> not (Cache.mem x)) packages in
     let* solved =
       Lwt_list.map_p
-        (fun pkg ->
+        (fun track ->
           let+ res =
-            perform_solve ~solver ~pool ~job ~opam:opam_commit ~platform pkg
+            perform_solve ~solver ~pool ~job ~opam:opam_commit ~platform track
           in
-          let root = Track.pkg pkg in
+          let group = Track.pkgs track in
+          let root = List.hd group in
           let result =
             match res with
             | Ok (packages, commit) ->
-                Ok (Package.make ~blacklist ~commit ~root packages)
+                if List.tl group <> [] then
+                  Ok (Package.make ~group ~blacklist ~commit ~root packages)
+                else Ok (Package.make ~blacklist ~commit ~root packages)
             | Error (`Msg msg) ->
-                Current.Job.log job "Solving failed for %s: %s"
-                  (OpamPackage.to_string root)
-                  msg;
+                let roots =
+                  List.map (fun root -> OpamPackage.to_string root) group
+                in
+                Current.Job.log job "Solving failed for %a@.: %s"
+                  Fmt.(list string)
+                  roots msg;
                 Error msg
           in
-          Cache.write (pkg, result);
+          Cache.write (track, result);
           Result.is_ok result)
         to_do
     in
@@ -239,24 +248,29 @@ module SolverCache = Current_cache.Generic (Solver)
 
 let solver_pool = ref None
 
-let solver_pool config =
-  match !solver_pool with
-  | None ->
-      let jobs = Config.jobs config in
-      let s = Solver_pool.spawn_local ~jobs () in
-      let pool = Current.Pool.create ~label:"solver" jobs in
-      solver_pool := Some (s, pool);
-      (s, pool)
-  | Some s -> s
+let solver_pool ?nb_jobs ?config () =
+  let spool jobs =
+    let s = Solver_pool.spawn_local ~jobs () in
+    let pool = Current.Pool.create ~label:"solver" jobs in
+    solver_pool := Some (s, pool);
+    (s, pool)
+  in
+  match (!solver_pool, config, nb_jobs) with
+  | None, Some config, _ -> spool @@ Config.jobs config
+  | None, _, Some jobs -> spool jobs
+  | Some s, _, _ -> s
+  | _, _, _ -> Fmt.failwith "The number of jobs is not configured"
 
-let incremental ~config ~(blacklist : string list)
+let incremental ?(group = false) ?nb_jobs ?config ~(blacklist : string list)
     ~(opam : Git.Commit.t Current.t) (packages : Track.t list Current.t) :
     t Current.t =
   let open Current.Syntax in
-  let solver_pool = solver_pool config in
-  Current.component "incremental solver"
+  let solver_pool = solver_pool ?nb_jobs ?config () in
+  Current.component
+    (if group then "incremental solver(Group)" else "incremental solver")
   |> let> opam and> packages in
-     SolverCache.run solver_pool ()
+     SolverCache.run solver_pool
+       (if group then "Grouping" else "Without grouping")
        {
          packages;
          blacklist;

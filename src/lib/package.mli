@@ -7,20 +7,18 @@ module rec Universe : sig
 
   val deps : t -> Package.t list
   (** Retrieve the list of dependencies *)
-
-  val hash : t -> string
-  (** Get the universe hash *)
 end
 
 and Package : sig
   type t
   (** A package in the ocaml-docs-ci sense: it's composed of the package name,
-      version, and its dependency universe. *)
+      ver ion, and its dependency universe. *)
 end
 
 type t = Package.t
 
 val make :
+  ?group:OpamPackage.t list ->
   blacklist:string list ->
   commit:string ->
   root:OpamPackage.t ->
@@ -38,7 +36,9 @@ val opam : t -> OpamPackage.t
 val universe : t -> Universe.t
 val digest : t -> string
 val commit : t -> string
+val universes_hash : t -> string
 val id : t -> string
+val group : t -> t list option
 
 module Map : Map.S with type key = t
 module Set : Set.S with type elt = t
