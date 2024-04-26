@@ -1,4 +1,4 @@
 available: [ arch != "x86_32" ]
 pin-depends: [
-  ["ocaml-version.dev" "git+https://github.com/ocurrent/ocaml-version#496b14cdf826a737841526b753ebad8c3656a85a"]
+  ["ocaml-version.dev" "git+https://github.com/ocurrent/ocaml-version#7a8d86e1fc66329b189a155136147970e03a3a54"]
 ]
