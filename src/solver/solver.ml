@@ -31,7 +31,7 @@ let universes ~packages (resolutions : OpamPackage.t list) =
           |> OpamFile.OPAM.depends
           |> OpamFilter.partial_filter_formula
                (OpamFilter.deps_var_env ~build:true ~post:false ~test:false
-                  ~doc:true ~dev:false)
+                  ~doc:false ~dev:false)
           |> get_names
           |> OpamPackage.Name.Set.of_list
         in
