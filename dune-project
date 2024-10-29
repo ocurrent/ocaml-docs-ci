@@ -18,11 +18,13 @@
  (depends
   (ocaml (>= 4.14.1))
   (opam-format (>= 2.1.4))
-  (current (>= 0.6))
+  (current (>= 0.6.6))
    current_web
    current_git
    current_github
    current_ocluster
+   current_docker
+   current_rpc
   (cstruct (>= 6.1.0))
   (opam-0install (>= 0.4.3))
   (capnp-rpc-unix (>= 1.2))
@@ -40,7 +42,7 @@
   (git-unix (>= 3.13.0))
   conf-libev
   dune-build-info
-  (ocaml-version (>= 3.6.1))
+  (ocaml-version (>= 3.6.9))
   (obuilder-spec (>= 0.5.1))
   (ocolor (>= 1.3.0))
   (memtrace (>= 0.1.1)) ; required for memory profiling
@@ -57,7 +59,7 @@
   (ocaml (>= 4.14.1))
   (logs (>= 0.7.0))
   (fmt (>= 0.8.9))
-  current_rpc
+  (current_rpc (>= 0.6.6))
   (capnp-rpc-unix (>= 1.2))
   dockerfile
   (mdx :with-test)

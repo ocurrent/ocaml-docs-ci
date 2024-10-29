@@ -14,8 +14,6 @@ git clone --recursive https://github.com/ocurrent/ocaml-docs-ci.git
 cd ocaml-docs-ci
 ```
 
-Note: you need to clone with --recursive because this project uses submodules (it depends on some packages that aren't released yet). If you forget, `git submodule update --init` will fetch them.
-
 Then you need an opam 2.1 switch using OCaml 4.14. Recommend using this command to setup a local switch just for `docs-ci`.
 
 ```shell
