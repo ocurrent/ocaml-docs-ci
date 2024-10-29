@@ -2,12 +2,16 @@ FROM ocaml/opam:debian-12-ocaml-4.14@sha256:14f4cc396d19e5eba0c4cd8258eedd104509
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apt-get update
 RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 56e31a3bc1fd0bfd87e5251972e806b8f78082a5 && opam update
+
 WORKDIR /src
+# See https://github.com/ocurrent/ocaml-docs-ci/pull/177#issuecomment-2445338172
+RUN sudo chown opam:opam $(pwd)
 
 COPY --chown=opam ocaml-docs-ci.opam ocaml-docs-ci-client.opam /src/
-RUN opam install --deps-only .
+RUN opam install -y --deps-only .
 ADD --chown=opam . .
-RUN opam exec -- dune build ./_build/install/default/bin/epoch && cp ./_build/install/default/bin/epoch .
+RUN opam exec -- dune build ./_build/install/default/bin/epoch
+RUN cp ./_build/install/default/bin/epoch .
 
 FROM debian:12
 ENV DEBIAN_FRONTEND=noninteractive
