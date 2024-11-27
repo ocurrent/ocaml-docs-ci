@@ -1,34 +1,22 @@
-FROM ocaml/opam:debian-12-ocaml-4.14@sha256:45b04e2a4c933c57549382045dfac12cb7e872cace0456f92f4b022066e48111 AS build
+FROM ocaml/opam:debian-12-ocaml-4.14@sha256:14f4cc396d19e5eba0c4cd8258eedd1045091f887920ba53431e1e05110311fc AS build
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apt-get update
-RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard ad6e2e1786b2097fda5be14d6411b60597e97058 && opam update
-COPY --chown=opam \
-    vendor/ocurrent/current_github.opam \
-    vendor/ocurrent/current_git.opam \
-    vendor/ocurrent/current.opam \
-    vendor/ocurrent/current_web.opam \
-    /src/vendor/ocurrent/
-COPY --chown=opam \
-    vendor/ocluster/current_ocluster.opam \
-    vendor/ocluster/ocluster-api.opam \
-    /src/vendor/ocluster/
+RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 56e31a3bc1fd0bfd87e5251972e806b8f78082a5 && opam update
+
 WORKDIR /src
-RUN opam pin add -yn current_github.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_git.dev "./vendor/ocurrent" && \
-    opam pin add -yn current.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_web.dev "./vendor/ocurrent" && \
-    opam pin add -yn current_ocluster.dev "./vendor/ocluster" && \
-    opam pin add -yn ocluster-api.dev "./vendor/ocluster"
+# See https://github.com/ocurrent/ocaml-docs-ci/pull/177#issuecomment-2445338172
+RUN sudo chown opam:opam $(pwd)
 
 COPY --chown=opam ocaml-docs-ci.opam ocaml-docs-ci-client.opam /src/
-RUN opam install --deps-only .
+RUN opam install -y --deps-only .
 ADD --chown=opam . .
-RUN opam exec -- dune build ./_build/install/default/bin/epoch && cp ./_build/install/default/bin/epoch .
+RUN opam exec -- dune build ./_build/install/default/bin/epoch
+RUN cp ./_build/install/default/bin/epoch .
 
 FROM debian:12
-ENV DEBIAN_FRONTEND noninteractive
-ENV LANG C.UTF-8
-ENV NOTVISIBLE "in users profile"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV NOTVISIBLE="in users profile"
 
 RUN apt-get update && \
     apt-get install -y openssh-server rsync git && \
