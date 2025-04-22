@@ -60,32 +60,34 @@ let cache_hint package =
 
 let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) ()
 
-module ImgCache = Map.Make(String)
+module ImgCache = Map.Make (String)
+
 (** Select base image to use *)
 let get_base_image =
   let cache = ref ImgCache.empty in
   fun package ->
-  let open Current.Syntax in
-  let version = Package.ocaml_version package in
-  let version_str = Ocaml_version.to_string version in
-  (* let* image = Docker.pull ~label:(tag version) ~schedule:weekly ~arch:"amd64" "ocaml/opam" in *)
-  match ImgCache.find_opt version_str !cache with
-  | Some x -> x
-  | None ->
-    let result =
-      let+ tag =
-        Docker.peek ~schedule:weekly ~arch:"amd64" ("ocaml/opam:" ^ tag version)
-      in
-      (* TODO Include comment on which image this is?
+    let open Current.Syntax in
+    let version = Package.ocaml_version package in
+    let version_str = Ocaml_version.to_string version in
+    (* let* image = Docker.pull ~label:(tag version) ~schedule:weekly ~arch:"amd64" "ocaml/opam" in *)
+    match ImgCache.find_opt version_str !cache with
+    | Some x -> x
+    | None ->
+        let result =
+          let+ tag =
+            Docker.peek ~schedule:weekly ~arch:"amd64"
+              ("ocaml/opam:" ^ tag version)
+          in
+          (* TODO Include comment on which image this is?
         Resolves to something like:
         `ocaml/opam@sha256:04a0b3ee7288fb3aa7e608c2ccbbbaa289c1810f57265365dd849fc5cc46d9ed`
 
         debian-12-ocaml-%d.%s%s
       *)
-      Spec.make tag
-    in
-    cache := ImgCache.add version_str result !cache;
-    result
+          Spec.make tag
+        in
+        cache := ImgCache.add version_str result !cache;
+        result
 
 let default_base_image =
   let open Current.Syntax in
@@ -191,8 +193,9 @@ let fold_logs build_job fn =
 let tar_cmd folder =
   let f = Fpath.to_string folder in
   Fmt.str
-    "shopt -s nullglob && ((echo LISTING %s && [ ! -z \"$(ls -A %s)\" ] && tar -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar \
-     %s/content.tar) || (echo 'Empty directory'))"
+    "shopt -s nullglob && ((echo LISTING %s && [ ! -z \"$(ls -A %s)\" ] && tar \
+     -cvf %s.tar %s/*  && rm -R %s/* && mv %s.tar %s/content.tar) || (echo \
+     'Empty directory'))"
     f f f f f f f
 
 module Cmd = struct
@@ -202,17 +205,18 @@ module Cmd = struct
     let open Fmt in
     to_to_string (list ~sep:(const string " && ") (fun f -> pf f "(%s)"))
 
-  let list_list ?(max=64*1024) l =
+  let list_list ?(max = 64 * 1024) l =
     match l with
     | [] -> []
-      | _ ->
-      let (cmd, split) =
-        List.fold_right (fun x (str, acc) ->
-          if String.length str + String.length x > max then
-            ((Printf.sprintf "(%s)" x), str :: acc)
-          else
-            (Printf.sprintf "(%s) && %s" x str, acc)
-        ) l (Printf.sprintf "(%s)" (List.hd l), [])
-      in
-      cmd :: split
+    | _ ->
+        let cmd, split =
+          List.fold_right
+            (fun x (str, acc) ->
+              if String.length str + String.length x > max then
+                (Printf.sprintf "(%s)" x, str :: acc)
+              else (Printf.sprintf "(%s) && %s" x str, acc))
+            l
+            (Printf.sprintf "(%s)" (List.hd l), [])
+        in
+        cmd :: split
 end
