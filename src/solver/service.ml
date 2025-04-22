@@ -92,15 +92,20 @@ end = struct
         | _ -> Fmt.failwith "BUG: bad output: %s" results)
 
   let handle ~log request t =
-    let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; constraints } =
+    let {
+      Worker.Solve_request.opam_repository_commit;
+      platforms;
+      pkgs;
+      constraints;
+    } =
       request
     in
-    Log.info log "Solving for %a, constraints %a using opam_repository_commit %s"
+    Log.info log
+      "Solving for %a, constraints %a using opam_repository_commit %s"
       Fmt.(list ~sep:comma string)
       pkgs
       Fmt.(list ~sep:comma Worker.Solve_request.pp_constraint)
-      constraints
-      opam_repository_commit;
+      constraints opam_repository_commit;
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
     platforms
     |> Lwt_list.map_p (fun p ->
@@ -110,7 +115,9 @@ end = struct
            | Error _ as e -> Lwt.return (id, e)
            | Ok packages ->
                let repo_packages =
-                 List.map (fun (pkg, _opam, _) -> OpamPackage.of_string pkg) packages.link_universes
+                 List.map
+                   (fun (pkg, _opam, _) -> OpamPackage.of_string pkg)
+                   packages.link_universes
                in
                Opam_repository.oldest_commit_with repo_packages
                  ~from:opam_repository_commit ~log
@@ -172,7 +179,7 @@ let v ~n_workers ~create_worker =
                    (* TODO Pass in a switch here to handle Cancellation.
                       handle t ~switch:(Lwt_switch.create ()) ~log request
                    *)
-                     (fun () -> handle t ~log request >|= Result.ok)
+                   (fun () -> handle t ~log request >|= Result.ok)
                    (function
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))

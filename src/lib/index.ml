@@ -126,8 +126,8 @@ let db =
           pipeline_id = ?"
      and get_pipeline_data =
        Sqlite3.prepare db
-         "SELECT epoch_html, epoch_linked, odoc_commit FROM docs_ci_pipeline_index \
-          WHERE id = ?"
+         "SELECT epoch_html, epoch_linked, odoc_commit FROM \
+          docs_ci_pipeline_index WHERE id = ?"
      in
 
      {
@@ -164,12 +164,7 @@ let record_new_pipeline ~odoc_commit ~epoch_html ~epoch_linked =
   let t = Lazy.force db in
   match
     Db.query_one t.record_pipeline
-      Sqlite3.Data.
-        [
-          TEXT epoch_html;
-          TEXT epoch_linked;
-          TEXT odoc_commit;
-        ]
+      Sqlite3.Data.[ TEXT epoch_html; TEXT epoch_linked; TEXT odoc_commit ]
   with
   | Sqlite3.Data.[ INT pipeline_id ] -> Ok pipeline_id
   | _ -> Error "Failed to record pipeline."
@@ -251,33 +246,15 @@ let get_pipeline_data pipeline_id =
              NULL;
              NULL;
            ] ->
-           ( epoch_html,
-             epoch_linked,
-             ""
-             )
-       | Sqlite3.Data.
-           [
-             TEXT epoch_html;
-             TEXT epoch_linked;
-             TEXT odoc_commit;
-           ] ->
-           ( epoch_html,
-             epoch_linked,
-             odoc_commit )
+           (epoch_html, epoch_linked, "")
+       | Sqlite3.Data.[ TEXT epoch_html; TEXT epoch_linked; TEXT odoc_commit ]
+         ->
+           (epoch_html, epoch_linked, odoc_commit)
        | row -> Fmt.failwith "get_pipeline_data: invalid row %a" Db.dump_row row
   in
   match result with
-  | [
-   ( epoch_html,
-     epoch_linked,
-     odoc_commit );
-  ] ->
-      Some
-        {
-          epoch_html;
-          epoch_linked;
-          odoc_commit;
-        }
+  | [ (epoch_html, epoch_linked, odoc_commit) ] ->
+      Some { epoch_html; epoch_linked; odoc_commit }
   | _ -> None
 
 (* packages - (name, version) that are failing in the latest pipeline that are passing in the latest but one *)

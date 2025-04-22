@@ -19,7 +19,11 @@ let running =
 let fakepkg ~blessing name =
   let open Docs_ci_lib in
   let root = OpamPackage.of_string name in
-  let pkg = Package.make ~ocaml_version:Ocaml_version.Releases.latest ~blacklist:[] ~commit:"0" ~root [] in
+  let deps = [ (root, []) ] in
+  let pkg =
+    Package.make ~ocaml_version:Ocaml_version.Releases.latest ~blacklist:[]
+      ~commit:"0" ~root deps deps
+  in
   let blessing =
     let set =
       Package.Blessing.Set.v ~counts:(Package.Map.singleton pkg 0) [ pkg ]
@@ -55,7 +59,8 @@ let pipeline monitor =
   let solve_failure =
     [ (OpamPackage.of_string "mirage.4.0.0", "solver failed") ]
   in
-  Monitor.register monitor solve_failure Package.Map.empty blessing values;
+  Monitor.register monitor solve_failure values blessing values
+    Package.Map.empty;
   monitor
 
 let package_step_list_testable =

@@ -39,7 +39,8 @@ val ocluster_connection_gen : t -> Current_ocluster.Connection.t
 (** Connection to the cluster for Gen *)
 
 val jobs : t -> int
-(** Number of jobs that can be spawned for the steps that are locally executed. *)
+(** Number of jobs that can be spawned for the steps that are locally executed.
+*)
 
 val track_packages : t -> string list
 (** List of packages to track (or all packages if the list is empty) *)

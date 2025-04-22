@@ -4,9 +4,7 @@ let set_current ~ssh name generation =
   let open Current.Syntax in
   Current.component "Set current folder"
   |> let> generation in
-     let new_generation_folder =
-       Storage.Base.generation_folder generation
-     in
+     let new_generation_folder = Storage.Base.generation_folder generation in
      let storage_folder =
        Fpath.(of_string (Ssh.storage_folder ssh) |> Result.get_ok)
      in
@@ -18,9 +16,7 @@ let set_live ~ssh name generation =
   let open Current.Syntax in
   Current.component "Set live folder"
   |> let> generation in
-     let new_generation_folder =
-       Storage.Base.generation_folder generation
-     in
+     let new_generation_folder = Storage.Base.generation_folder generation in
      let storage_folder =
        Fpath.(of_string (Ssh.storage_folder ssh) |> Result.get_ok)
      in
@@ -30,6 +26,4 @@ let set_live ~ssh name generation =
 
 let set_to ~ssh name generation =
   Current.all
-    [
-      set_current ~ssh name generation; set_live ~ssh name generation;
-    ]
+    [ set_current ~ssh name generation; set_live ~ssh name generation ]

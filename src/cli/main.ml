@@ -91,9 +91,10 @@ let list_versions_status_by_pipeline latest latest_but_one package_name package
 let list_steps (_package_version : string) package =
   Client.Package.steps package
   |> Lwt_result.map
-     @@ fun (package_steps' :
-              (string * Client.Build_status.t * Client.Package.step list) list)
-       ->
+     @@
+     fun (package_steps' :
+           (string * Client.Build_status.t * Client.Package.step list) list)
+     ->
      let package_steps : Client.Package.package_steps_list =
        List.map
          (fun (version, status, steps) : Client.Package.package_steps ->

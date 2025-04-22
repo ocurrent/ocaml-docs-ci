@@ -1,16 +1,16 @@
 module Ocaml_version = struct
   include Ocaml_version
 
-  let to_yojson x =
-    `String (Ocaml_version.to_string x)
+  let to_yojson x = `String (Ocaml_version.to_string x)
 
   let of_yojson x =
     match x with
-    | `String s ->
-      (match Ocaml_version.of_string s with | Ok x -> Ok x | Error (`Msg s) -> Error s)
-    | _ -> Error ("Ocaml_version.of_yojson")
+    | `String s -> (
+        match Ocaml_version.of_string s with
+        | Ok x -> Ok x
+        | Error (`Msg s) -> Error s)
+    | _ -> Error "Ocaml_version.of_yojson"
 end
-
 
 module rec Universe : sig
   type t [@@deriving yojson]
@@ -24,15 +24,18 @@ module rec Universe : sig
   val v : Ocaml_version.t -> Package.t list -> t
   val compare : t -> t -> int
 end = struct
-  type t = { ocaml_version : Ocaml_version.t; hash : string; deps : Package.t list; mutable extra_link_deps : Package.t list; } [@@deriving yojson]
+  type t = {
+    ocaml_version : Ocaml_version.t;
+    hash : string;
+    deps : Package.t list;
+    mutable extra_link_deps : Package.t list;
+  }
+  [@@deriving yojson]
 
   let hash t = t.hash
   let deps t = t.deps
-
   let ocaml_version t = t.ocaml_version
-
   let set_extra_link_deps t eld = t.extra_link_deps <- eld
-
   let extra_link_deps t = t.extra_link_deps
 
   let v ocaml_version deps =
@@ -65,7 +68,7 @@ and Package : sig
   val v : Ocaml_version.t -> OpamPackage.t -> t list -> string -> t
 
   val make :
-    ocaml_version : Ocaml_version.t ->
+    ocaml_version:Ocaml_version.t ->
     blacklist:string list ->
     commit:string ->
     root:OpamPackage.t ->
@@ -73,7 +76,12 @@ and Package : sig
     (OpamPackage.t * OpamPackage.t list) list ->
     t
 end = struct
-  type t = { ocaml_version : Ocaml_version.t; opam : O.OpamPackage.t; universe : Universe.t; commit : string }
+  type t = {
+    ocaml_version : Ocaml_version.t;
+    opam : O.OpamPackage.t;
+    universe : Universe.t;
+    commit : string;
+  }
   [@@deriving yojson]
 
   let universe t = t.universe
@@ -81,7 +89,9 @@ end = struct
   let commit t = t.commit
   let id t = OpamPackage.to_string t.opam ^ "-" ^ Universe.hash t.universe
   let digest = id
-  let v ocaml_version opam deps commit = { ocaml_version; opam; universe = Universe.v ocaml_version deps; commit }
+
+  let v ocaml_version opam deps commit =
+    { ocaml_version; opam; universe = Universe.v ocaml_version deps; commit }
 
   let pp f { universe; opam; _ } =
     Fmt.pf f "%s; %a" (OpamPackage.to_string opam) Universe.pp universe
@@ -121,47 +131,60 @@ end = struct
           pkg
     in
     let results = obtain root in
-    OpamPackage.Map.iter (fun opam_package pkg ->
-      let compile_deps = List.assoc opam_package compile_deps |> OpamPackage.Set.of_list in
-      let link_deps = List.assoc opam_package link_deps |> OpamPackage.Set.of_list in
-      let extras = OpamPackage.Set.diff link_deps compile_deps in
-      let extras = 
-        if OpamPackage.Set.cardinal extras = 0 then []
-        else OpamPackage.Set.(elements (add opam_package extras))
-      in
-        let extras = List.map (fun opam_package -> obtain opam_package) extras in
-      Universe.set_extra_link_deps pkg.universe extras
-      ) !memo;
+    OpamPackage.Map.iter
+      (fun opam_package pkg ->
+        let compile_deps =
+          List.assoc opam_package compile_deps |> OpamPackage.Set.of_list
+        in
+        let link_deps =
+          List.assoc opam_package link_deps |> OpamPackage.Set.of_list
+        in
+        let extras = OpamPackage.Set.diff link_deps compile_deps in
+        let extras =
+          if OpamPackage.Set.cardinal extras = 0 then []
+          else OpamPackage.Set.(elements (add opam_package extras))
+        in
+        let extras =
+          List.map (fun opam_package -> obtain opam_package) extras
+        in
+        Universe.set_extra_link_deps pkg.universe extras)
+      !memo;
     results
 end
 
 include Package
 
 let topo_sort packages =
-  let graph = List.map (fun pkg ->
-    let universe = universe pkg in
-    let deps = Universe.deps universe in
-    (pkg, deps)
-    ) packages
+  let graph =
+    List.map
+      (fun pkg ->
+        let universe = universe pkg in
+        let deps = Universe.deps universe in
+        (pkg, deps))
+      packages
   in
   let rec loop graph =
     match graph with
     | [] -> []
-    | _ -> 
-      let zero_deps,others = List.partition (fun (_,x) -> x = []) graph in
-      let zero_deps = List.map fst zero_deps in
-      let other = List.map (fun (x,y) -> (x, List.filter (fun dep -> not (List.mem dep zero_deps)) y)) others in
-      let sorted = List.sort compare zero_deps in
-      sorted :: loop other
+    | _ ->
+        let zero_deps, others = List.partition (fun (_, x) -> x = []) graph in
+        let zero_deps = List.map fst zero_deps in
+        let other =
+          List.map
+            (fun (x, y) ->
+              (x, List.filter (fun dep -> not (List.mem dep zero_deps)) y))
+            others
+        in
+        let sorted = List.sort compare zero_deps in
+        sorted :: loop other
   in
   List.flatten (loop graph)
 
-  
+let all_deps pkg =
+  (pkg :: (pkg |> universe |> Universe.deps))
+  @ (pkg |> universe |> Universe.extra_link_deps)
 
-let all_deps pkg = pkg :: (pkg |> universe |> Universe.deps) @ (pkg |> universe |> Universe.extra_link_deps)
-
-let ocaml_version pkg =
-  pkg |> universe |> Universe.ocaml_version
+let ocaml_version pkg = pkg |> universe |> Universe.ocaml_version
 
 module PackageMap = Map.Make (Package)
 module PackageSet = Set.Make (Package)
@@ -240,8 +263,8 @@ module Map = PackageMap
 module Set = PackageSet
 
 let important_packages : Set.t ref = ref Set.empty
+
 let add_important_packages packages =
   important_packages := Set.union !important_packages packages
-let should_cache package =
-  Set.mem package !important_packages
 
+let should_cache package = Set.mem package !important_packages

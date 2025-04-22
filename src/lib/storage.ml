@@ -1,16 +1,18 @@
 module Base = struct
-  type repository = HtmlRaw of Epoch.t | Linked of Epoch.t | Compile of Epoch.t | Prep | Prep0
+  type repository =
+    | HtmlRaw of Epoch.t
+    | Linked of Epoch.t
+    | Compile of Epoch.t
+    | Prep
+    | Prep0
 
   let generation_folder generation =
     Fpath.(v ("epoch-" ^ Epoch.digest generation))
 
   let folder = function
-    | HtmlRaw generation ->
-        Fpath.(generation_folder generation / "html-raw")
-    | Linked generation ->
-        Fpath.(generation_folder generation / "linked")
-    | Compile generation ->
-        Fpath.(generation_folder generation / "compile")
+    | HtmlRaw generation -> Fpath.(generation_folder generation / "html-raw")
+    | Linked generation -> Fpath.(generation_folder generation / "linked")
+    | Compile generation -> Fpath.(generation_folder generation / "compile")
     | Prep -> Fpath.v "prep"
     | Prep0 -> Fpath.v "prep0"
 end
@@ -50,17 +52,14 @@ let folder repository package =
     Base.folder (to_base_repo repository)
     // base_folder ~blessed ~prep:(repository = Prep) package)
 
-let cache repository package =
-  folder repository package
-  
 let split packages =
   let rec take n l =
-    match n,l with
-    | 0, _ -> [], l
-    | n, x::xs ->
-      let taken, rest = take (n-1) xs in
-      x :: taken, rest
-    | _, [] -> [], []
+    match (n, l) with
+    | 0, _ -> ([], l)
+    | n, x :: xs ->
+        let taken, rest = take (n - 1) xs in
+        (x :: taken, rest)
+    | _, [] -> ([], [])
   in
   let rec run remaining =
     match take 10 remaining with
@@ -91,13 +90,15 @@ module Tar = struct
     match extra_files with
     | [] ->
         Fmt.str
-          "HASH=$((sha256sum $1/content.tar 2>/dev/null | cut -d \" \" -f 1)  || echo -n \
-           'empty'); rm -f $1/content.tar; printf \"%s:$2:$HASH\\n\";"
+          "HASH=$((sha256sum $1/content.tar 2>/dev/null | cut -d \" \" -f 1)  \
+           || echo -n 'empty'); rm -f $1/content.tar; printf \
+           \"%s:$2:$HASH\\n\";"
           prefix
     | extra_files ->
         Fmt.str
           "HASH=$((sha256sum $1/content.tar %s | sort | sha256sum | cut -d \" \
-           \" -f 1)  || echo -n 'empty'); rm $1/content.tar; printf \"%s:$2:$HASH\\n\";"
+           \" -f 1)  || echo -n 'empty'); rm $1/content.tar; printf \
+           \"%s:$2:$HASH\\n\";"
           (List.map (fun f -> "\"$1/" ^ f ^ "\"") extra_files
           |> String.concat " ")
           prefix

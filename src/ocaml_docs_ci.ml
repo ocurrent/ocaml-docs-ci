@@ -108,7 +108,7 @@ let main () current_config github_auth mode capnp_public_address
         run_capnp capnp_public_address capnp_listen_address
         >>= fun (_vat, rpc_engine_resolver) ->
         let repo_opam =
-          Git.clone ~schedule:hourly 
+          Git.clone ~schedule:hourly
             "https://github.com/ocaml/opam-repository.git"
         in
         let monitor = Docs_ci_lib.Monitor.make () in

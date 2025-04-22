@@ -22,6 +22,7 @@ and Package : sig
 end
 
 type t = Package.t
+
 val to_yojson : t -> Yojson.Safe.t
 val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
 
@@ -66,7 +67,8 @@ module Blessing : sig
 
     type t
     (** The structure containing which packages are blessed or not. A blessed
-        package is a package aimed to be built for the main documentation pages. *)
+        package is a package aimed to be built for the main documentation pages.
+    *)
 
     val empty : OpamPackage.t -> t
     (** Construct [t] with an [OpamPackage.t] *)

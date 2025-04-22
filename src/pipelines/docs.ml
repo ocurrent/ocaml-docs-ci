@@ -11,7 +11,6 @@ end
 module OpamPackageNameCurrentMap = CurrentMap (OpamPackage.Name.Map)
 module OpamPackageVersionCurrentMap = CurrentMap (OpamPackage.Version.Map)
 
-
 let status = function
   | Error (`Msg msg) -> Monitor.Err msg
   | Error (`Active _) -> Active
@@ -51,8 +50,7 @@ let rec summarise description arr = function
         items
       |> current_list_flatten
 
-
-let count_refs (all:Package.Set.t) =
+let count_refs (all : Package.Set.t) =
   let prep_jobs : int ref Package.Map.t ref = ref Package.Map.empty in
 
   let rec get_prep_job package =
@@ -60,168 +58,169 @@ let count_refs (all:Package.Set.t) =
       let ref = Package.Map.find package !prep_jobs in
       incr ref
     with Not_found ->
-        let dependencies =
-          Package.universe package |> Package.Universe.deps
-        in
-        let () =
-          List.iter
-            (fun p ->
-              get_prep_job p)
-            dependencies
-        in
+      let dependencies = Package.universe package |> Package.Universe.deps in
+      let () = List.iter (fun p -> get_prep_job p) dependencies in
       prep_jobs := Package.Map.add package (ref 1) !prep_jobs
   in
   Package.Set.iter (fun x -> get_prep_job x) all;
   !prep_jobs
 
-type 'a compile_job =
-  { job: 'a Current.t;
-    monitor : Monitor.pipeline_tree;
-  }
-  
+type 'a compile_job = { job : 'a Current.t; monitor : Monitor.pipeline_tree }
+
 let compile ~generation ~config
     ~(blessed : Package.Blessing.Set.t Current.t OpamPackage.Map.t)
-    (preps : (Prep.t compile_job Package.Map.t)) =
-  let compilation_jobs : Compile.t compile_job option Package.Map.t ref = ref Package.Map.empty in
-  let link_jobs : Compile.t compile_job option Package.Map.t ref = ref Package.Map.empty in
+    (preps : Prep.t compile_job Package.Map.t) =
+  let compilation_jobs : Compile.t compile_job option Package.Map.t ref =
+    ref Package.Map.empty
+  in
+  let link_jobs : Compile.t compile_job option Package.Map.t ref =
+    ref Package.Map.empty
+  in
 
   let rec get_compilation_job link package =
     let name = package |> Package.opam |> OpamPackage.to_string in
     let extra_deps =
       Package.universe package |> Package.Universe.extra_link_deps
-     in
+    in
     let job_cache = if link then link_jobs else compilation_jobs in
     try Package.Map.find package !job_cache
-    with Not_found ->
+    with Not_found -> (
       let job =
         Package.Map.find_opt package preps
-        |> Option.map @@ fun { job=prep; _ } ->
+        |> Option.map @@ fun { job = prep; _ } ->
            let dependencies =
              Package.universe package |> Package.Universe.deps
            in
-           begin
-            if List.length extra_deps > 0 then
-              Logs.info (fun m -> m "Extra link deps for %s: %s (link: %b)"
-                name
-                (extra_deps |> List.map (fun x -> x |> Package.opam |> OpamPackage.to_string) |> String.concat ", ") link)
-            end;
+           if List.length extra_deps > 0 then
+             Logs.info (fun m ->
+                 m "Extra link deps for %s: %s (link: %b)" name
+                   (extra_deps
+                   |> List.map (fun x ->
+                          x |> Package.opam |> OpamPackage.to_string)
+                   |> String.concat ", ")
+                   link);
            let compile_dependencies_names =
              List.filter_map
                (fun p ->
-                 get_compilation_job false p |> Option.map (fun { job; _ } -> (p, job)))
+                 get_compilation_job false p
+                 |> Option.map (fun { job; _ } -> (p, job)))
                dependencies
            in
            let link_dependencies_names =
-            if link then
-              List.filter_map
-                (fun p ->
-                  get_compilation_job false p |> Option.map (fun { job; _ } -> (p, job)))
-                extra_deps
-            else
-              []
-            in
+             if link then
+               List.filter_map
+                 (fun p ->
+                   get_compilation_job false p
+                   |> Option.map (fun { job; _ } -> (p, job)))
+                 extra_deps
+             else []
+           in
            let compile_dependencies =
              compile_dependencies_names |> List.map snd
            in
-           let link_dependencies =
-              link_dependencies_names |> List.map snd
-           in
+           let link_dependencies = link_dependencies_names |> List.map snd in
 
            let blessing =
              OpamPackage.Map.find (Package.opam package) blessed
              |> Current.map (fun b -> Package.Blessing.Set.get b package)
            in
-           let deps, jobty = match List.length extra_deps, link with
-             | 0, _ -> (Current.list_seq compile_dependencies), Compile.CompileAndLink
+           let deps, jobty =
+             match (List.length extra_deps, link) with
+             | 0, _ ->
+                 (Current.list_seq compile_dependencies, Compile.CompileAndLink)
              | _, false ->
-              Logs.info (fun m -> m "Creating CompileOnly job");
-              (Current.list_seq compile_dependencies), Compile.CompileOnly
+                 Logs.info (fun m -> m "Creating CompileOnly job");
+                 (Current.list_seq compile_dependencies, Compile.CompileOnly)
              | _, true ->
-              Logs.info (fun m -> m "Creating LinkOnly job");
-              (Current.list_seq (compile_dependencies @ link_dependencies)), Compile.LinkOnly
+                 Logs.info (fun m -> m "Creating LinkOnly job");
+                 ( Current.list_seq (compile_dependencies @ link_dependencies),
+                   Compile.LinkOnly )
            in
            let node =
-             Compile.v ~generation ~config ~name ~blessing
-               ~deps
-               ~jobty
-               prep
+             Compile.v ~generation ~config ~name ~blessing ~deps ~jobty prep
            in
            let monitor =
-             Monitor.(
-               Seq
-                 [
-                   ( "do-deps",
-                     Item prep);
-                       
-                   ("do-compile", Item node);
-                 ])
+             Monitor.(Seq [ ("do-deps", Item prep); ("do-compile", Item node) ])
            in
-           (jobty, {job=node; monitor; })
+           (jobty, { job = node; monitor })
       in
       match job with
       | None -> None
       | Some (CompileAndLink, job) ->
-        compilation_jobs := Package.Map.add package (Some job) !compilation_jobs;
-        link_jobs := Package.Map.add package (Some job) !link_jobs;
-        Some job
+          compilation_jobs :=
+            Package.Map.add package (Some job) !compilation_jobs;
+          link_jobs := Package.Map.add package (Some job) !link_jobs;
+          Some job
       | Some (CompileOnly, job) ->
-        compilation_jobs := Package.Map.add package (Some job) !compilation_jobs;
-        Some job
+          compilation_jobs :=
+            Package.Map.add package (Some job) !compilation_jobs;
+          Some job
       | Some (LinkOnly, job) ->
-        link_jobs := Package.Map.add package (Some job) !link_jobs;
-        Some job
+          link_jobs := Package.Map.add package (Some job) !link_jobs;
+          Some job)
   in
-  let get_compilation_node package _ =
-    get_compilation_job true package
+  let get_compilation_node package _ = get_compilation_job true package in
+  let compile_jobs =
+    Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings
   in
-  let compile_jobs = Package.Map.filter_map get_compilation_node preps |> Package.Map.bindings in
   compile_jobs
 
-let prep ~config 
-  ~opamfiles (all:Package.Set.t) =
-  let prep_jobs : Prep.t compile_job Package.Map.t ref = ref Package.Map.empty in
+let prep ~config ~opamfiles (all : Package.Set.t) =
+  let prep_jobs : Prep.t compile_job Package.Map.t ref =
+    ref Package.Map.empty
+  in
 
   let rec get_prep_job package =
     try Package.Map.find package !prep_jobs
     with Not_found ->
       let job =
-        let dependencies =
-          Package.universe package |> Package.Universe.deps
+        let dependencies = Package.universe package |> Package.Universe.deps in
+        let dep_opams =
+          List.map Package.opam dependencies |> OpamPackage.Set.of_list
         in
-        let dep_opams = List.map Package.opam dependencies |> OpamPackage.Set.of_list in
-        let opams = OpamPackage.Set.add (Package.opam package) dep_opams |> OpamPackage.Set.to_list in
+        let opams =
+          OpamPackage.Set.add (Package.opam package) dep_opams
+          |> OpamPackage.Set.to_list
+        in
         let ocaml_version = Package.ocaml_version package in
         let all_opams = Prep.add_base ocaml_version opams in
-        
+
         let prep_dependencies_names =
           List.map
-            (fun p ->
-              get_prep_job p |> (fun {job; _} -> (p, job)))
+            (fun p -> get_prep_job p |> fun { job; _ } -> (p, job))
             dependencies
         in
-        let prep_dependencies =
-          prep_dependencies_names |> List.map snd
-        in
+        let prep_dependencies = prep_dependencies_names |> List.map snd in
         let base_image = Misc.get_base_image package in
-        let opamfiles = Current.map (fun x ->
-          List.filter_map (fun p -> try Some (p, OpamPackage.Map.find p x) with _ -> None) all_opams |> OpamPackage.Map.of_list) opamfiles in
+        let opamfiles =
+          Current.map
+            (fun x ->
+              List.filter_map
+                (fun p ->
+                  try Some (p, OpamPackage.Map.find p x) with _ -> None)
+                all_opams
+              |> OpamPackage.Map.of_list)
+            opamfiles
+        in
         let node =
           Prep.v ~config
-              ~deps:(Current.list_seq prep_dependencies)
-              ~spec:base_image ~opamfiles ~prep:package
+            ~deps:(Current.list_seq prep_dependencies)
+            ~spec:base_image ~opamfiles ~prep:package
         in
         let monitor =
           Monitor.(
             Seq
               [
                 ( "prep",
-                  And (("prep "^Package.id package, Item node) 
-                  :: List.map (fun (pkg, compile) ->
-                    ("prep dependency "^Package.id pkg, Item compile)) prep_dependencies_names));
-              ]
-          )
+                  And
+                    (("prep " ^ Package.id package, Item node)
+                    :: List.map
+                         (fun (pkg, compile) ->
+                           ("prep dependency " ^ Package.id pkg, Item compile))
+                         prep_dependencies_names) );
+              ])
         in
-        { job=node; monitor; }
+        { job = node; monitor }
       in
 
       prep_jobs := Package.Map.add package job !prep_jobs;
@@ -338,9 +337,7 @@ let v ~config ~opam ~monitor ~migrations () =
     | Some path -> Index.migrate path
     | None -> Current.return ()
   in
-  let generation =
-    Epoch.v config
-  in
+  let generation = Epoch.v config in
   (* 0) Housekeeping - run migrations *)
   let* _ = migrations in
   Log.info (fun f -> f "0) Migrations");
@@ -359,7 +356,9 @@ let v ~config ~opam ~monitor ~migrations () =
   Log.info (fun f -> f "2) Solver result");
   (* 3.a) From solver results, obtain a list of package.version.universe corresponding to prep jobs *)
   let all_packages_jobs =
-    solver_result |> Solver.keys |> List.filter_map (fun x -> try Some (Solver.get x) with _ -> None)
+    solver_result
+    |> Solver.keys
+    |> List.filter_map (fun x -> try Some (Solver.get x) with _ -> None)
   in
   Log.info (fun f -> f "2.5) Solver result...");
   (* 3.b) Expand that list to all the obtainable package.version.universe *)
@@ -368,14 +367,19 @@ let v ~config ~opam ~monitor ~migrations () =
     all_packages_jobs
     |> List.rev_map Package.all_deps
     |> List.flatten
-    |> List.filter (fun pkg -> Ocaml_version.compare (Package.ocaml_version pkg) (Ocaml_version.Releases.v4_04_2) >= 0)
+    |> List.filter (fun pkg ->
+           Ocaml_version.compare
+             (Package.ocaml_version pkg)
+             Ocaml_version.Releases.v4_04_2
+           >= 0)
     |> Package.Set.of_list
   in
-  Log.info (fun f -> f "3) All packages (%d)" (Package.Set.cardinal all_packages));
+  Log.info (fun f ->
+      f "3) All packages (%d)" (Package.Set.cardinal all_packages));
+
   (* 4) Schedule a somewhat small set of jobs to obtain at least one universe for each package.version *)
   (* 4a) Decide on a docker tag for each job *)
   (* 5) Run the preparation step *)
-
   let weekly = Current_cache.Schedule.v ~valid_for:(Duration.of_day 7) () in
 
   let repo_opam =
@@ -383,24 +387,37 @@ let v ~config ~opam ~monitor ~migrations () =
       "https://github.com/ocaml/opam-repository.git"
   in
 
-  let opamfiles = 
-    Current.component "opamfiles" |>
+  let opamfiles =
+    Current.component "opamfiles"
+    |>
     let> repo_opam in
-    let packages = Package.Set.to_list all_packages |> List.map Package.opam |> OpamPackage.Set.of_list in
-    let extra = [
-      "conf-graphviz.0.1";
-      "conf-which.1";
-      "base-threads.base";
-      "ocaml-options-vanilla.1";
-      "base-bigarray.base";
-      "base-domains.base";
-      "base-nnp.base";
-      "base-effects.base";
-      "host-arch-x86_64.1";
-      "host-system-other.1";
-    ] in
-    let packages = OpamPackage.Set.union (List.map OpamPackage.of_string extra |> OpamPackage.Set.of_list) packages |> OpamPackage.Set.to_list in
-    Prep.OpamFilesCache.get No_context Prep.OpamFiles.Key.{ repo = repo_opam; packages }
+    let packages =
+      Package.Set.to_list all_packages
+      |> List.map Package.opam
+      |> OpamPackage.Set.of_list
+    in
+    let extra =
+      [
+        "conf-graphviz.0.1";
+        "conf-which.1";
+        "base-threads.base";
+        "ocaml-options-vanilla.1";
+        "base-bigarray.base";
+        "base-domains.base";
+        "base-nnp.base";
+        "base-effects.base";
+        "host-arch-x86_64.1";
+        "host-system-other.1";
+      ]
+    in
+    let packages =
+      OpamPackage.Set.union
+        (List.map OpamPackage.of_string extra |> OpamPackage.Set.of_list)
+        packages
+      |> OpamPackage.Set.to_list
+    in
+    Prep.OpamFilesCache.get No_context
+      Prep.OpamFiles.Key.{ repo = repo_opam; packages }
   in
 
   let counts = count_refs all_packages in
@@ -412,26 +429,30 @@ let v ~config ~opam ~monitor ~migrations () =
 
   let counts = List.sort (fun (_, x) (_, y) -> compare !x !y) counts in
 
-  let (_, hd),tl = List.hd counts, List.tl counts in
-  let (last_count, last_val, count) = List.fold_left (fun (cur_count,cur_val,all) (_, count) ->
-    if cur_val = !count
-    then (cur_count + 1, cur_val, all)
-    else (1, !count, (cur_val, cur_count) :: all)) (1, !hd, []) tl in
+  let (_, hd), tl = (List.hd counts, List.tl counts) in
+  let last_count, last_val, count =
+    List.fold_left
+      (fun (cur_count, cur_val, all) (_, count) ->
+        if cur_val = !count then (cur_count + 1, cur_val, all)
+        else (1, !count, (cur_val, cur_count) :: all))
+      (1, !hd, []) tl
+  in
 
   let all_counts = (last_val, last_count) :: count in
-  List.iter (fun (v, count) ->
-    Printf.printf "%d %d\n%!" v count) all_counts;
+  List.iter (fun (v, count) -> Printf.printf "%d %d\n%!" v count) all_counts;
 
-  let cache_packages = List.fold_left (fun acc (v, count) -> 
-    if !count > Config.cache_threshold config
-    then Package.Set.add v acc
-    else acc) Package.Set.empty counts
+  let cache_packages =
+    List.fold_left
+      (fun acc (v, count) ->
+        if !count > Config.cache_threshold config then Package.Set.add v acc
+        else acc)
+      Package.Set.empty counts
   in
 
   Package.add_important_packages cache_packages;
 
   Log.info (fun f ->
-    f "4) Cache packages (%d)" (Package.Set.cardinal cache_packages));
+      f "4) Cache packages (%d)" (Package.Set.cardinal cache_packages));
 
   (* let cumulative =
     let x = ref 0 in
@@ -444,13 +465,10 @@ let v ~config ~opam ~monitor ~migrations () =
     Printf.printf "%d %d\n%!" v count) cumulative;
     
   ignore @@ exit 0; *)
-
   let prepped' : Prep.t compile_job Package.Map.t =
-    prep ~config
-    ~opamfiles all_packages
+    prep ~config ~opamfiles all_packages
   in
-  Log.info (fun f ->
-    f ".. %d prepped nodes" (Package.Map.cardinal prepped'));
+  Log.info (fun f -> f ".. %d prepped nodes" (Package.Map.cardinal prepped'));
 
   Log.info (fun f -> f "5) Prep nodes");
   (* 6) Promote packages to the main tree *)
@@ -470,7 +488,7 @@ let v ~config ~opam ~monitor ~migrations () =
     in
     let by_opam_package =
       Package.Map.fold
-        (fun package {job=prep; _ } opam_map ->
+        (fun package { job = prep; _ } opam_map ->
           let opam = Package.opam package in
           let job =
             let+ job = Current.state ~hidden:true prep in
@@ -497,29 +515,32 @@ let v ~config ~opam ~monitor ~migrations () =
 
   (* 7) Odoc compile and html-generate artifacts *)
   let html, html_input_node, package_pipeline_tree, html2 =
-    let compile_monitor =
-      compile ~generation ~config ~blessed
-       prepped'
+    let compile_monitor = compile ~generation ~config ~blessed prepped' in
+    let html2 =
+      List.map
+        (fun (pkg, { job = compile; _ }) -> (pkg, compile))
+        compile_monitor
     in
-    let html2 = List.map (fun (pkg, { job=compile; _ }) -> (pkg, compile)) compile_monitor in
     Log.info (fun f ->
         f ".. %d compilation nodes" (List.length compile_monitor));
     let c, compile_node =
       compile_monitor
-      |> List.map (fun (a, {job=b; _}) -> (a, b))
+      |> List.map (fun (a, { job = b; _ }) -> (a, b))
       |> compile_hierarchical_collapse ~input:solver_result_c
     in
     ( c |> List.to_seq |> Package.Map.of_seq,
       compile_node,
       compile_monitor
-      |> List.map (fun (a, { monitor=b; _}) -> (a, b))
+      |> List.map (fun (a, { monitor = b; _ }) -> (a, b))
       |> List.to_seq
       |> Package.Map.of_seq,
-      html2 |> Package.Map.of_list)
+      html2 |> Package.Map.of_list )
   in
   Log.info (fun f -> f "7) Odoc compile nodes");
 
-  let prep_pipeline_tree = Package.Map.map (fun (p : Prep.t compile_job) -> p.monitor) prepped' in
+  let prep_pipeline_tree =
+    Package.Map.map (fun (p : Prep.t compile_job) -> p.monitor) prepped'
+  in
 
   (* 7.b) Inform the monitor *)
   let () =

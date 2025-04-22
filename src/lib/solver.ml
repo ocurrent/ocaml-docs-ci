@@ -74,7 +74,10 @@ let perform_constrained_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam
                 (OpamPackage.of_string a, List.map OpamPackage.of_string b))
               u
           in
-          Ok (solution x.packages.compile_universes, solution x.packages.link_universes, x.commit)
+          Ok
+            ( solution x.packages.compile_universes,
+              solution x.packages.link_universes,
+              x.commit )
       | Ok _ -> Fmt.error_msg "??"
       | Error (`Msg msg) -> Fmt.error_msg "Error from solver: %s" msg)
     (fun exn ->
@@ -92,8 +95,7 @@ let perform_solve ~solver ~pool ~job ~(platform : Platform.t) ~opam track =
   in
   let latest = Ocaml_version.Releases.latest |> Ocaml_version.to_string in
   perform_constrained_solve ~solver ~pool ~job ~platform ~opam
-    (("ocaml-base-compiler", `Leq, latest)
-    :: constraints)
+    (("ocaml-base-compiler", `Leq, latest) :: constraints)
 
 let solver_version = "v2"
 
@@ -128,10 +130,12 @@ module Cache = struct
       match value with
       | Error _ -> Printf.fprintf oc "Failed"
       | Ok pkg ->
-        let all = Package.all_deps pkg in
-        List.iter (fun pkg ->
-          let opam = Package.opam pkg in
-          Printf.fprintf oc "%s\n" (OpamPackage.to_string opam)) all
+          let all = Package.all_deps pkg in
+          List.iter
+            (fun pkg ->
+              let opam = Package.opam pkg in
+              Printf.fprintf oc "%s\n" (OpamPackage.to_string opam))
+            all
     in
     close_out oc
 
@@ -149,14 +153,17 @@ type key = Track.t
 type t = { successes : Track.t list; failures : Track.t list }
 
 let keys t = t.successes
+
 let get key =
-  Format.eprintf "Trying to 'get' %s\n%!" (Track.pkg key |> OpamPackage.to_string);
-   Cache.read key |> Option.get (* is in cache ? *) |> Result.get_ok
+  Format.eprintf "Trying to 'get' %s\n%!"
+    (Track.pkg key |> OpamPackage.to_string);
+  Cache.read key |> Option.get (* is in cache ? *) |> Result.get_ok
 
 let failures t =
   t.failures
   |> List.filter_map (fun k ->
-         try Some (Track.pkg k, Cache.read k |> Option.get |> Result.get_error) with _ -> None)
+         try Some (Track.pkg k, Cache.read k |> Option.get |> Result.get_error)
+         with _ -> None)
 
 (* is solved ? *)
 
@@ -214,22 +221,39 @@ module Solver = struct
           let root = Track.pkg pkg in
           let result =
             match res with
-            | Ok (compile_packages, link_packages, commit) ->
+            | Ok (compile_packages, link_packages, commit) -> (
                 Current.Job.log job "Packages returned: ";
-                  begin try
-                    let root_deps = List.assoc root compile_packages in
-                    Current.Job.log job "Got the root package %s" (OpamPackage.to_string root);
-                    let ocaml_version = List.find
+                try
+                  let root_deps = List.assoc root compile_packages in
+                  Current.Job.log job "Got the root package %s"
+                    (OpamPackage.to_string root);
+                  let ocaml_version =
+                    List.find
                       (fun p ->
-                        Current.Job.log job "Checking %s" (OpamPackage.to_string p);
-                        List.mem (OpamPackage.name_to_string p) ["ocaml-base-compiler"; "ocaml"]) (root::root_deps) |> OpamPackage.version_to_string |> Ocaml_version.of_string_exn in
-                      Ok (Package.make ~ocaml_version ~blacklist ~commit ~root compile_packages link_packages)                    
-                    with Not_found ->
-                      Current.Job.log job "Package %s does not require OCaml" (OpamPackage.to_string root);
-                      let colon = Fmt.any ":" in
-                      Current.Job.log job "Packages returned: %a" Fmt.(list (pair ~sep:colon string (list ~sep:sp string))) (List.map (fun (a, b) -> (OpamPackage.to_string a, List.map OpamPackage.to_string b)) compile_packages);
-                      Error ("No OCaml dependency")  
-                  end
+                        Current.Job.log job "Checking %s"
+                          (OpamPackage.to_string p);
+                        List.mem
+                          (OpamPackage.name_to_string p)
+                          [ "ocaml-base-compiler"; "ocaml" ])
+                      (root :: root_deps)
+                    |> OpamPackage.version_to_string
+                    |> Ocaml_version.of_string_exn
+                  in
+                  Ok
+                    (Package.make ~ocaml_version ~blacklist ~commit ~root
+                       compile_packages link_packages)
+                with Not_found ->
+                  Current.Job.log job "Package %s does not require OCaml"
+                    (OpamPackage.to_string root);
+                  let colon = Fmt.any ":" in
+                  Current.Job.log job "Packages returned: %a"
+                    Fmt.(list (pair ~sep:colon string (list ~sep:sp string)))
+                    (List.map
+                       (fun (a, b) ->
+                         ( OpamPackage.to_string a,
+                           List.map OpamPackage.to_string b ))
+                       compile_packages);
+                  Error "No OCaml dependency")
             | Error (`Msg msg) ->
                 Current.Job.log job "Solving failed for %s: %s"
                   (OpamPackage.to_string root)

@@ -28,8 +28,8 @@ let filter_deps t pkg f =
   let test = OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
   f
   |> OpamFilter.partial_filter_formula (env t pkg)
-  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev ~dev_setup:false
-       ~default:false
+  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev
+       ~dev_setup:false ~default:false
 
 let candidates t name =
   match OpamPackage.Name.Map.find_opt name t.pins with
@@ -89,22 +89,34 @@ let read_package store pkg hash =
       )
 
 let extend_packages packages =
-  OpamPackage.Name.Map.map (fun versions ->
-    OpamPackage.Version.Map.map (fun opam ->
-      let extensions = OpamFile.OPAM.extensions opam in
-      let pp = OpamFormat.V.(package_formula `Conj (filtered_constraints ext_version)) in
-      (try
-        let extra_doc_deps = OpamStd.String.Map.find "x-extra-doc-deps" extensions in
-        let raw = OpamPp.parse pp ~pos:OpamTypesBase.pos_null extra_doc_deps in
-        let deps = OpamFile.OPAM.depends opam in
-        let x = (OpamFormula.ands_to_list raw) in
-        let y = (OpamFormula.ands_to_list deps) in
-        let deps = x @ y |> OpamFormula.ands in
-        let opam = OpamFile.OPAM.with_depends deps opam in
-        Format.eprintf "Extended dependencies for %s:\n%!" (OpamFile.OPAM.bug_reports opam |> String.concat ", ");
-        Format.eprintf "%s\n%!" (OpamFile.OPAM.write_to_string opam);
-        opam
-      with Not_found -> opam)) versions) packages
+  OpamPackage.Name.Map.map
+    (fun versions ->
+      OpamPackage.Version.Map.map
+        (fun opam ->
+          let extensions = OpamFile.OPAM.extensions opam in
+          let pp =
+            OpamFormat.V.(
+              package_formula `Conj (filtered_constraints ext_version))
+          in
+          try
+            let extra_doc_deps =
+              OpamStd.String.Map.find "x-extra-doc-deps" extensions
+            in
+            let raw =
+              OpamPp.parse pp ~pos:OpamTypesBase.pos_null extra_doc_deps
+            in
+            let deps = OpamFile.OPAM.depends opam in
+            let x = OpamFormula.ands_to_list raw in
+            let y = OpamFormula.ands_to_list deps in
+            let deps = x @ y |> OpamFormula.ands in
+            let opam = OpamFile.OPAM.with_depends deps opam in
+            Format.eprintf "Extended dependencies for %s:\n%!"
+              (OpamFile.OPAM.bug_reports opam |> String.concat ", ");
+            Format.eprintf "%s\n%!" (OpamFile.OPAM.write_to_string opam);
+            opam
+          with Not_found -> opam)
+        versions)
+    packages
 
 (* Get a map of the versions inside [entry] (an entry under "packages") *)
 let read_versions store (entry : Store.Value.Tree.entry) =

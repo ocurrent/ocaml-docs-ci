@@ -60,14 +60,14 @@ module Track = struct
     let open Rresult in
     Bos.OS.Dir.contents path
     >>| (fun versions ->
-          versions
-          |> Lwt_list.map_p (fun path ->
-                 let+ content = get_file Fpath.(path / "opam") in
-                 Value.
-                   {
-                     package = path |> Fpath.basename |> OpamPackage.of_string;
-                     digest = Digest.(string content |> to_hex);
-                   }))
+    versions
+    |> Lwt_list.map_p (fun path ->
+           let+ content = get_file Fpath.(path / "opam") in
+           Value.
+             {
+               package = path |> Fpath.basename |> OpamPackage.of_string;
+               digest = Digest.(string content |> to_hex);
+             }))
     |> Result.get_ok
     |> Lwt.map (fun v ->
            v
@@ -81,7 +81,8 @@ module Track = struct
     let filter name =
       match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst
     in
-    Log.info (fun f -> f "Tracking packages in %a" Fpath.pp (Git.Commit.repo repo));
+    Log.info (fun f ->
+        f "Tracking packages in %a" Fpath.pp (Git.Commit.repo repo));
     let* () = Current.Job.start ~level:Harmless job in
     Git.with_checkout ~job repo @@ fun dir ->
     let result =

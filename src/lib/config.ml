@@ -1,11 +1,12 @@
 open Cmdliner
 
 let random =
-(*  In_channel.with_open_bin "/dev/urandom" (fun
+  (*  In_channel.with_open_bin "/dev/urandom" (fun
       ch ->
         let str = String.init 4 (fun _ -> In_channel.input_byte ch |> Option.get |> Char.chr) in
         let str = Base64.encode_exn str in
-        str)*) "NOTRANDOM"
+        str)*)
+  "NOTRANDOM"
 
 module Ssh = struct
   type t = {
@@ -173,11 +174,10 @@ let take_n_last_versions =
 
 let cache_threshold =
   Arg.value
-  @@ Arg.opt Arg.(int) (10)
+  @@ Arg.opt Arg.(int) 10
   @@ Arg.info ~doc:"Cache threshold" ~docv:"THRESHOLD" [ "cache-threshold" ]
 
-let v cap_file jobs track_packages
-    take_n_last_versions ssh cache_threshold =
+let v cap_file jobs track_packages take_n_last_versions ssh cache_threshold =
   let vat = Capnp_rpc_unix.client_only_vat () in
   let cap = Capnp_rpc_unix.Cap_file.load vat cap_file |> Result.get_ok in
 
@@ -217,7 +217,6 @@ let odoc _ =
   "https://github.com/ocaml/odoc.git#90e679061f68c5e5ee5915e280f63d842f41f300"
 
 let sherlodoc _ = odoc ()
-
 let pool _ = "docs-pipeline"
 let jobs t = t.jobs
 let track_packages t = t.track_packages

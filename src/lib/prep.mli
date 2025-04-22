@@ -1,8 +1,8 @@
 type t
-(** The type for a prepped package (build objects in a universe/package folder) *)
+(** The type for a prepped package (build objects in a universe/package folder)
+*)
 
-module OpamFiles :sig
-
+module OpamFiles : sig
   type t = No_context
 
   module Key : sig
@@ -10,15 +10,17 @@ module OpamFiles :sig
   end
 
   module Value : sig
-    type t = ((bool * string), [`Msg of string]) result OpamPackage.Map.t
+    type t = (bool * string, [ `Msg of string ]) result OpamPackage.Map.t
     [@@deriving yojson]
   end
 end
 
 module OpamFilesCache : sig
-  val get : ?schedule:Current_cache.Schedule.t ->
+  val get :
+    ?schedule:Current_cache.Schedule.t ->
     OpamFiles.t ->
-    OpamFiles.Key.t -> OpamFiles.Value.t Current.Primitive.t
+    OpamFiles.Key.t ->
+    OpamFiles.Value.t Current.Primitive.t
 end
 
 val hash : t -> string

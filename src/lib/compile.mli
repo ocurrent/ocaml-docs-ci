@@ -5,13 +5,19 @@
     the compilation, link and html generation steps, outputting the results in
     the compile/ and html/ folders. *)
 
-type hashes = { compile_hash : string option; linked_hash : string option; html_hash : string option }
+type hashes = {
+  compile_hash : string option;
+  linked_hash : string option;
+  html_hash : string option;
+}
 
 type t
 (** A compiled package *)
 
-type jobty = | CompileAndLink | CompileOnly | LinkOnly
-(** The type of compilation job *)
+type jobty =
+  | CompileAndLink
+  | CompileOnly
+  | LinkOnly  (** The type of compilation job *)
 
 val hashes : t -> hashes
 (** Hash of the compiled artifacts *)
@@ -44,4 +50,5 @@ val v :
     contains the artifacts cache metadata to track eventual changes. [voodoo] is
     the voodoo-do tool tracker.
 
-    Notably, if compilation artifacts already exists, then the job is a no-op. *)
+    Notably, if compilation artifacts already exists, then the job is a no-op.
+*)

@@ -86,16 +86,18 @@ let render_level =
 
 let render_list ~bullet ~level ~items ~render =
   let open Tyxml_html in
-  Some (ul
-    (List.filter_map
-       (fun (name, item) ->
-         match render ~level:(level + 1) item with
-         | None -> None
-         | Some elt ->
-           Some (li
-             ~a:[ a_style ("list-style-type: " ^ bullet) ]
-             [ (render_level level) [ txt name ]; elt ]))
-       items))
+  Some
+    (ul
+       (List.filter_map
+          (fun (name, item) ->
+            match render ~level:(level + 1) item with
+            | None -> None
+            | Some elt ->
+                Some
+                  (li
+                     ~a:[ a_style ("list-style-type: " ^ bullet) ]
+                     [ (render_level level) [ txt name ]; elt ]))
+          items))
 
 let rec render ~level =
   let open Tyxml_html in
@@ -112,10 +114,13 @@ let rec render ~level =
           | Some { job_id = Some job_id; _ } ->
               fun v -> Some (a ~a:[ a_href ("/job/" ^ job_id) ] [ txt v ])
           | _ -> fun x -> Some (txt x)
-        with (* if current is not a primitive term *)
-        | Failure _ -> (fun x -> Some (txt x))
+        with
+        (* if current is not a primitive term *)
+        | Failure _ ->
+          fun x -> Some (txt x)
       in
       match result with
+      | Error (`Msg "blocked") -> None
       | Error (`Msg msg) -> container ("error: " ^ msg)
       | Error (`Active _) -> container "active"
       | Error `Blocked -> container "blocked"
@@ -136,10 +141,14 @@ let get_opam_package_info t opam_package =
   in
   match Package.Blessing.Set.blessed blessing_set with
   | None ->
-      let preps = Package.Map.filter (fun package _ ->
-        Package.opam package = opam_package) t.preps in
-      Or (Package.Map.bindings preps |> List.map (fun (package, tree) ->
-          (Package.id package, tree)))
+      let preps =
+        Package.Map.filter
+          (fun package _ -> Package.opam package = opam_package)
+          t.preps
+      in
+      Or
+        (Package.Map.bindings preps
+        |> List.map (fun (package, tree) -> (Package.id package, tree)))
   | Some blessed_package ->
       let blessed_pipeline = Package.Map.find blessed_package t.trees in
       blessed_pipeline
@@ -179,7 +188,11 @@ let rec to_steps description arr = function
 
 let render_package_state t opam_package =
   let name = OpamPackage.name_to_string opam_package in
-  let all = Package.Map.filter_map (fun p x -> if Package.opam p = opam_package then Some x else None) t.preps in
+  let all =
+    Package.Map.filter_map
+      (fun p x -> if Package.opam p = opam_package then Some x else None)
+      t.preps
+  in
   match OpamPackage.Map.find_opt opam_package t.solve_failures with
   | Some reason ->
       let open Tyxml_html in
@@ -193,14 +206,15 @@ let render_package_state t opam_package =
       let* blessed_pipeline = get_opam_package_info t opam_package in
       let open Tyxml_html in
       Ok
-        ([
-          h1 [ txt ("Package " ^ name) ]] @
-          (render ~level:1 (simplify blessed_pipeline) |> Option.to_list)
-          @ [h2 [ txt ("All universes")]]
-
-          @ List.flatten (List.map (fun (pkg, pipeline) ->
-          ([ h3 [ txt (Package.universe pkg |> Package.Universe.hash) ] ]
-          @ (render ~level:2 (simplify pipeline) |> Option.to_list))) (Package.Map.bindings all)))
+        ([ h1 [ txt ("Package " ^ name) ] ]
+        @ (render ~level:1 (simplify blessed_pipeline) |> Option.to_list)
+        @ [ h2 [ txt "All universes" ] ]
+        @ List.flatten
+            (List.map
+               (fun (pkg, pipeline) ->
+                 [ h3 [ txt (Package.universe pkg |> Package.Universe.hash) ] ]
+                 @ (render ~level:2 (simplify pipeline) |> Option.to_list))
+               (Package.Map.bindings all)))
 
 let handle t ~engine:_ str =
   object
@@ -270,33 +284,46 @@ let lookup_failed_compiles t =
   let error_active = ref 0 in
   let error_blocked = ref 0 in
   let ok = ref 0 in
-  let x = Package.Map.fold (fun _pkg current acc ->
-    let status : step_status =
-      match Current.observe current with
-      | Error (`Msg msg) -> incr error_msg; Err msg
-      | Error (`Active _) -> incr error_active; Active
-      | Error `Blocked -> incr error_blocked; Blocked
-      | Ok _ -> incr ok; OK
-    in
-    let container =
-      try
-        Current.Analysis.metadata current
-        |> Current.observe
-        |> Result.to_option
-        |> Option.join
-        |> function
-        | Some { job_id = Some job_id; _ } ->
-            fun v -> a ~a:[ a_href ("/job/" ^ job_id) ] [ txt v ]
-        | _ -> txt
-      with (* if current is not a primitive term *)
-      | Failure _ -> txt
-    in
-    match status with
-    | Err msg -> (container (Printf.sprintf "error: %s" msg)) :: acc
-    | _ -> acc)
-    t.html [] in
+  let x =
+    Package.Map.fold
+      (fun _pkg current acc ->
+        let status : step_status =
+          match Current.observe current with
+          | Error (`Msg msg) ->
+              incr error_msg;
+              Err msg
+          | Error (`Active _) ->
+              incr error_active;
+              Active
+          | Error `Blocked ->
+              incr error_blocked;
+              Blocked
+          | Ok _ ->
+              incr ok;
+              OK
+        in
+        let container =
+          try
+            Current.Analysis.metadata current
+            |> Current.observe
+            |> Result.to_option
+            |> Option.join
+            |> function
+            | Some { job_id = Some job_id; _ } ->
+                fun v -> a ~a:[ a_href ("/job/" ^ job_id) ] [ txt v ]
+            | _ -> txt
+          with
+          (* if current is not a primitive term *)
+          | Failure _ ->
+            txt
+        in
+        match status with
+        | Err msg -> container (Printf.sprintf "error: %s" msg) :: acc
+        | _ -> acc)
+      t.html []
+  in
   (x, !error_active, !error_blocked, !error_msg, !ok)
-     
+
 let lookup_solve_failures t =
   OpamPackage.Map.keys t.solve_failures |> List.map (fun k -> (k, Failed))
 
@@ -376,12 +403,11 @@ let render_passing_packages t =
 let render_package_root t =
   let max_version = map_max_versions t in
   let failed, pending = lookup_failed_pending t in
-  let (failed_do, n1, n2, n3, n4) = lookup_failed_compiles t in
+  let failed_do, n1, n2, n3, n4 = lookup_failed_compiles t in
   let open Tyxml_html in
   [
-    h1 [ txt (Printf.sprintf "Failed 'do' jobs (%d, %d, %d, %d)" n1 n2 n3 n4)];
-    ul (List.map (fun x ->
-      li [x]) failed_do);
+    h1 [ txt (Printf.sprintf "Failed 'do' jobs (%d, %d, %d, %d)" n1 n2 n3 n4) ];
+    ul (List.map (fun x -> li [ x ]) failed_do);
     h1 [ txt "Failed packages" ];
     p [ txt ("total: " ^ Int.to_string (List.length failed)) ];
     ul
@@ -496,7 +522,7 @@ let lookup_steps t ~name =
       let list_packages = List.map Result.get_ok oks in
       Ok list_packages
 
-let collect_metrics t =
+(*let collect_metrics t =
   let ok_count = ref 0 in
   let failed_count = ref 0 in
   let running_count = ref 0 in
@@ -532,7 +558,7 @@ let collect_metrics t =
   Prometheus.Gauge.set
     (Metrics.package_status_total "solver_failed")
     (float_of_int (t.solve_failures |> OpamPackage.Map.keys |> List.length))
-
+*)
 let register t solve_failures preps blessing trees html =
   t.solve_failures <- OpamPackage.Map.of_list solve_failures;
   t.preps <- preps;

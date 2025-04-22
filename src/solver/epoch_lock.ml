@@ -5,8 +5,7 @@ type 'a t = {
     [ `Idle
     | `Activating of unit Lwt.t (* Promise resolves after moving to [`Active] *)
     | `Active of string * 'a
-    | `Draining of
-      unit Lwt.t * unit Lwt_condition.t
+    | `Draining of unit Lwt.t * unit Lwt_condition.t
       (* Promise resolves after moving back to [`Active] *) ];
   mutable users : int;
   (* Zero unless active or draining *)

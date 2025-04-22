@@ -1,8 +1,11 @@
-type hashes = { compile_hash : string option; linked_hash : string option; html_hash : string option }
+type hashes = {
+  compile_hash : string option;
+  linked_hash : string option;
+  html_hash : string option;
+}
 [@@deriving yojson]
 
 type t = { package : Package.t; blessing : Package.Blessing.t; hashes : hashes }
-
 type jobty = CompileAndLink | CompileOnly | LinkOnly [@@deriving yojson]
 
 let pp_jobty =
@@ -17,12 +20,15 @@ let hashes t = t.hashes
 let blessing t = t.blessing
 let package t = t.package
 
-let spec_success ~ssh ~base ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~config ~deps ~blessing ~generation ~jobty prep =
+let spec_success ~ssh ~base ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~config
+    ~deps ~blessing ~generation ~jobty prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let prep_folder = Storage.folder Prep package in
   let prep0_folder = Storage.folder Prep0 package in
-  let compile_folder = Storage.folder (Compile (generation, blessing)) package in
+  let compile_folder =
+    Storage.folder (Compile (generation, blessing)) package
+  in
   let linked_folder = Storage.folder (Linked (generation, blessing)) package in
   let raw_folder = Storage.folder (HtmlRaw (generation, blessing)) package in
   let opam = package |> Package.opam in
@@ -38,35 +44,48 @@ let spec_success ~ssh ~base ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~config ~
         Obuilder_spec.Cache.v cache_name ~target:(Fpath.to_string dir)
         ) in *)
   let common =
-    (List.map (fun { blessing; package; _ } ->
-      let dir = Storage.folder (Compile (generation, blessing)) package in
-      Fmt.str "~/docs/docs-ci-scripts/download_compiled.sh %s %s %s %s %b" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string dir) (Package.digest package ^ "-" ^  Epoch.digest generation) (Package.should_cache package)
-      ) deps) @ 
-       [Fmt.str "~/docs/docs-ci-scripts/get_prep_for_compile.sh %s %s %s %s" (Config.Ssh.host ssh) (Config.Ssh.storage_folder ssh) (Fpath.to_string prep0_folder) (Fpath.to_string prep_folder);
+    List.map
+      (fun { blessing; package; _ } ->
+        let dir = Storage.folder (Compile (generation, blessing)) package in
+        Fmt.str "~/docs/docs-ci-scripts/download_compiled.sh %s %s %s %s %b"
+          (Config.Ssh.host ssh)
+          (Config.Ssh.storage_folder ssh)
+          (Fpath.to_string dir)
+          (Package.digest package ^ "-" ^ Epoch.digest generation)
+          (Package.should_cache package))
+      deps
+    @ [
+        Fmt.str "~/docs/docs-ci-scripts/get_prep_for_compile.sh %s %s %s %s"
+          (Config.Ssh.host ssh)
+          (Config.Ssh.storage_folder ssh)
+          (Fpath.to_string prep0_folder)
+          (Fpath.to_string prep_folder);
         "export OCAMLRUNPAM=b";
-  ] in
+      ]
+  in
   let post_compile =
     [
-    Misc.tar_cmd compile_folder;
-    Fmt.str "time rsync -aR ./%s %s:%s/."
-      (Fpath.to_string compile_folder)
-      (Config.Ssh.host ssh)
-      (Config.Ssh.storage_folder ssh);
-    Fmt.str "set '%s'; %s"
-      (Fpath.to_string compile_folder)
-      (Storage.Tar.hash_command ~prefix:"COMPILE" ())]
+      Misc.tar_cmd compile_folder;
+      Fmt.str "time rsync -aR ./%s %s:%s/."
+        (Fpath.to_string compile_folder)
+        (Config.Ssh.host ssh)
+        (Config.Ssh.storage_folder ssh);
+      Fmt.str "set '%s'; %s"
+        (Fpath.to_string compile_folder)
+        (Storage.Tar.hash_command ~prefix:"COMPILE" ());
+    ]
   in
   let post_link_and_html =
     [
-      Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/"
-        Fpath.pp
+      Fmt.str "mkdir -p linked && mkdir -p %a && mv linked %a/" Fpath.pp
         (Storage.Base.generation_folder generation)
         Fpath.pp
         (Storage.Base.generation_folder generation);
       Fmt.str "mkdir -p %a" Fpath.pp linked_folder;
       Misc.tar_cmd linked_folder;
       Fmt.str "echo raw_folder: %s" (Fpath.to_string raw_folder);
-      Fmt.str "~/docs/docs-ci-scripts/gen_status_json.sh %s" (Fpath.to_string raw_folder);
+      Fmt.str "~/docs/docs-ci-scripts/gen_status_json.sh %s"
+        (Fpath.to_string raw_folder);
       Fmt.str "time rsync -aR ./%s %s:%s/."
         Fpath.(to_string (parent linked_folder))
         (Config.Ssh.host ssh)
@@ -86,51 +105,88 @@ let spec_success ~ssh ~base ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~config ~
       Fmt.str "set '%s' raw; %s"
         (Fpath.to_string raw_folder)
         (Storage.hash_command ~prefix:"RAW");
-      "rm -rf /home/opam/docs/*"
-     ]
+      "rm -rf /home/opam/docs/*";
+    ]
   in
   let compile_caches =
-    [Obuilder_spec.Cache.v "compile-cache" ~target:(Fmt.str "/home/opam/.cache/%a/compile" Fpath.pp (Storage.Base.generation_folder generation))] in
-  let odoc_driver = Voodoo.OdocDriver.spec ~base:odoc_driver_base ~odoc_pin ~sherlodoc_pin |> Spec.finish in
+    [
+      Obuilder_spec.Cache.v "compile-cache"
+        ~target:
+          (Fmt.str "/home/opam/.cache/%a/compile" Fpath.pp
+             (Storage.Base.generation_folder generation));
+    ]
+  in
+  let odoc_driver =
+    Voodoo.OdocDriver.spec ~base:odoc_driver_base ~odoc_pin ~sherlodoc_pin
+    |> Spec.finish
+  in
   base
   |> Spec.children ~name:"tools" tools
   |> Spec.children ~name:"odoc_driver" odoc_driver
   |> Spec.add
        ([
-         workdir "/home/opam/docs/";
-         run "sudo chown opam:opam . ";
-         (* Import odoc and voodoo-do *)
-         copy ~from:(`Build "tools")
-           [ "/home/opam/odoc";]
-           ~dst:"/home/opam/";
-         copy ~from:(`Build "odoc_driver")
-           [ "/home/opam/odoc_driver_voodoo"; "/home/opam/sherlodoc"; "/home/opam/odoc-md"; ]
-           ~dst:"/home/opam/";
-         run "mv ~/sherlodoc $(opam config var bin)/sherlodoc";
-         run ~network:Misc.network "sudo apt install -y jq";
-         run ~network:Misc.network "git clone https://github.com/jonludlam/docs-ci-scripts.git && echo %s" Config.random;
-         (* obtain the compiled dependencies, prep folder and extract it *)
-       ] @ [ run ~network:Misc.network ~cache:compile_caches ~secrets:Config.Ssh.secrets "%s" @@ Misc.Cmd.list
-            ((Fmt.str "ssh -MNf %s" (Config.Ssh.host ssh)) ::
-            (* "rm -rf /home/opam/.cache/compile/*" :: *)
-            (common @ [
-                Fmt.str
-                  "time opam exec -- /home/opam/odoc_driver_voodoo --verbose --odoc /home/opam/odoc --odoc-md /home/opam/odoc-md --odoc-dir %a/compile --odocl-dir linked --html-dir %s --stats %s %s %s"
-                  Fpath.pp (Storage.Base.generation_folder generation) (Fpath.to_string (Storage.Base.folder (HtmlRaw generation)))
-                  name
-                  (match jobty with CompileAndLink -> "" | CompileOnly -> "--actions compile-only" | LinkOnly -> "--actions link-and-gen")
-                  (match blessing with Blessed -> "--blessed" | Universe -> "");
-                (* Fmt.str "/home/opam/odoc support-files -o %s"
+          workdir "/home/opam/docs/";
+          run "sudo chown opam:opam . ";
+          (* Import odoc and voodoo-do *)
+          copy ~from:(`Build "tools") [ "/home/opam/odoc" ] ~dst:"/home/opam/";
+          copy ~from:(`Build "odoc_driver")
+            [
+              "/home/opam/odoc_driver_voodoo";
+              "/home/opam/sherlodoc";
+              "/home/opam/odoc-md";
+            ]
+            ~dst:"/home/opam/";
+          run "mv ~/sherlodoc $(opam config var bin)/sherlodoc";
+          run ~network:Misc.network "sudo apt install -y jq";
+          run ~network:Misc.network
+            "git clone https://github.com/jonludlam/docs-ci-scripts.git && \
+             echo %s"
+            Config.random;
+          (* obtain the compiled dependencies, prep folder and extract it *)
+        ]
+       @ [
+           run ~network:Misc.network ~cache:compile_caches
+             ~secrets:Config.Ssh.secrets "%s"
+           @@ Misc.Cmd.list
+                (Fmt.str "ssh -MNf %s" (Config.Ssh.host ssh)
+                :: (* "rm -rf /home/opam/.cache/compile/*" :: *)
+                   (common
+                   @ [
+                       Fmt.str
+                         "time opam exec -- /home/opam/odoc_driver_voodoo \
+                          --verbose --odoc /home/opam/odoc --odoc-md \
+                          /home/opam/odoc-md --odoc-dir %a/compile --odocl-dir \
+                          linked --html-dir %s --stats %s %s %s"
+                         Fpath.pp
+                         (Storage.Base.generation_folder generation)
+                         (Fpath.to_string
+                            (Storage.Base.folder (HtmlRaw generation)))
+                         name
+                         (match jobty with
+                         | CompileAndLink -> ""
+                         | CompileOnly -> "--actions compile-only"
+                         | LinkOnly -> "--actions link-and-gen")
+                         (match blessing with
+                         | Blessed -> "--blessed"
+                         | Universe -> "");
+                       (* Fmt.str "/home/opam/odoc support-files -o %s"
                   (Fpath.to_string (Storage.Base.folder (HtmlRaw generation))); *)
-                Fmt.str "jq . driver-benchmarks.json || true";]
-                @ (match jobty with LinkOnly -> [] | _ -> post_compile)
-                @ (match jobty with CompileOnly -> [] | _ -> post_link_and_html))) ])
+                       Fmt.str "jq . driver-benchmarks.json || true";
+                     ]
+                   @ (match jobty with LinkOnly -> [] | _ -> post_compile)
+                   @
+                   match jobty with
+                   | CompileOnly -> []
+                   | _ -> post_link_and_html));
+         ])
 
 let spec_failure ~ssh ~base ~config ~blessing ~generation prep =
   let open Obuilder_spec in
   let package = Prep.package prep in
   let prep_folder = Storage.folder Prep package in
-  let compile_folder = Storage.folder (Compile (generation, blessing)) package in
+  let compile_folder =
+    Storage.folder (Compile (generation, blessing)) package
+  in
   let linked_folder = Storage.folder (Linked (generation, blessing)) package in
   let opam = Package.opam package in
   let name = OpamPackage.name_to_string opam in
@@ -144,7 +200,12 @@ let spec_failure ~ssh ~base ~config ~blessing ~generation prep =
          run "sudo chown opam:opam . ";
          (* Import odoc and voodoo-do *)
          copy ~from:(`Build "tools")
-           [ "/home/opam/odoc"; "/home/opam/odoc_driver_voodoo"; "/home/opam/sherlodoc"; "/home/opam/odoc-md" ]
+           [
+             "/home/opam/odoc";
+             "/home/opam/odoc_driver_voodoo";
+             "/home/opam/sherlodoc";
+             "/home/opam/odoc-md";
+           ]
            ~dst:"/home/opam/";
          run "mv ~/odoc $(opam config var bin)/odoc";
          run "mv ~/sherlodoc $(opam config var bin)/sherlodoc";
@@ -269,20 +330,29 @@ module Compile = struct
       blessing : Package.Blessing.t;
     }
 
-    let key { config = _; odoc; sherlodoc; deps; prep; blessing; base = _; odoc_driver_base = _; jobty } =
+    let key
+        {
+          config = _;
+          odoc;
+          sherlodoc;
+          deps;
+          prep;
+          blessing;
+          base = _;
+          odoc_driver_base = _;
+          jobty;
+        } =
       let odoc_sherl_hash =
-        Fmt.str "%s-%s" odoc sherlodoc |> Digest.string |> Digest.to_hex in
-      Fmt.str "v10-%s-%s-%s-%s-%a-%a"
-        odoc_sherl_hash
+        Fmt.str "%s-%s" odoc sherlodoc |> Digest.string |> Digest.to_hex
+      in
+      Fmt.str "v10-%s-%s-%s-%s-%a-%a" odoc_sherl_hash
         (Package.Blessing.to_string blessing)
         (Prep.package prep |> Package.digest)
         (Prep.hash prep)
         Fmt.(
           list (fun f { hashes = { compile_hash; _ }; _ } ->
               Fmt.pf f "%a" (Fmt.option string) compile_hash))
-        deps
-        pp_jobty
-        jobty
+        deps pp_jobty jobty
 
     let digest t = key t |> Digest.string |> Digest.to_hex
   end
@@ -293,7 +363,18 @@ module Compile = struct
   let auto_cancel = true
 
   let build { generation; _ } job
-      Key.{ deps; prep; blessing; config; base; odoc_driver_base; odoc; sherlodoc; jobty } =
+      Key.
+        {
+          deps;
+          prep;
+          blessing;
+          config;
+          base;
+          odoc_driver_base;
+          odoc;
+          sherlodoc;
+          jobty;
+        } =
     let open Lwt.Syntax in
     let ( let** ) = Lwt_result.bind in
     let package = Prep.package prep in
@@ -306,7 +387,8 @@ module Compile = struct
       | Success ->
           Lwt.return_ok
             (spec_success ~generation ~ssh:(Config.ssh config) ~config ~base
-              ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~deps ~blessing ~jobty prep)
+               ~odoc_driver_base ~odoc_pin ~sherlodoc_pin ~deps ~blessing ~jobty
+               prep)
       | Failed ->
           Lwt.return_ok
             (spec_failure ~generation ~ssh:(Config.ssh config) ~config ~base
@@ -357,7 +439,8 @@ module Compile = struct
       let compile = Option.map h compile in
       let linked = Option.map h linked in
       let html_raw = Option.map h html_raw in
-      Lwt.return_ok { compile_hash = compile; linked_hash = linked; html_hash=html_raw }
+      Lwt.return_ok
+        { compile_hash = compile; linked_hash = linked; html_hash = html_raw }
     with Invalid_argument _ ->
       Lwt.return_error (`Msg "Compile: failed to parse output")
 end
@@ -367,16 +450,29 @@ module CompileCache = Current_cache.Make (Compile)
 let v ~generation ~config ~name ~blessing ~deps ~jobty prep =
   let open Current.Syntax in
   Current.component "do %s" name
-  |> let> prep and> blessing and> deps 
+  |> let> prep
+     and> blessing
+     and> deps
      and> odoc_driver_base = Misc.default_base_image in
      let package = Prep.package prep in
      let base = Prep.base prep in
-     (Logs.debug (fun m -> m "Prep base: %s" (Spec.to_spec base)));
+     Logs.debug (fun m -> m "Prep base: %s" (Spec.to_spec base));
      let odoc = Config.odoc config in
-     let sherlodoc = Config.sherlodoc config in 
+     let sherlodoc = Config.sherlodoc config in
      let output =
        CompileCache.get { Compile.generation }
-         Compile.Key.{ prep; blessing; deps; config; base; odoc_driver_base; odoc; sherlodoc; jobty }
+         Compile.Key.
+           {
+             prep;
+             blessing;
+             deps;
+             config;
+             base;
+             odoc_driver_base;
+             odoc;
+             sherlodoc;
+             jobty;
+           }
      in
      Current.Primitive.map_result
        (Result.map (fun hashes -> { package; blessing; hashes }))
