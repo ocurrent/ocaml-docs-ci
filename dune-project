@@ -18,7 +18,7 @@
  (synopsis "OCurrent pipeline for building documentation")
  (description "OCurrent pipeline for building HTML documentation for the ocaml.org website.")
  (depends
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 5.1))
   (opam-format (>= 2.1.4))
   (current (>= 0.6.6))
    current_web
@@ -58,7 +58,7 @@
  (name ocaml-docs-ci-client)
  (synopsis "Command-line client for ocaml-docs-ci")
  (depends
-  (ocaml (>= 4.14.1))
+  (ocaml (>= 5.1))
   (logs (>= 0.7.0))
   (fmt (>= 0.8.9))
   (current_rpc (>= 0.6.6))
