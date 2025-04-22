@@ -1,4 +1,4 @@
-FROM ocaml/opam:debian-12-ocaml-4.14@sha256:14f4cc396d19e5eba0c4cd8258eedd1045091f887920ba53431e1e05110311fc AS build
+FROM ocaml/opam:debian-12-ocaml-5.3@sha256:e86a49c28b4aba9fdac4929c6ab8302b80106e5824615d5d7d2601dc4ff983d5 AS build
 RUN sudo ln -f /usr/bin/opam-2.1 /usr/bin/opam && opam init --reinit -ni
 RUN sudo apt-get update
 RUN cd ~/opam-repository && git fetch -q origin master && git reset --hard 56e31a3bc1fd0bfd87e5251972e806b8f78082a5 && opam update
