@@ -22,27 +22,17 @@
 
 services:
   daemon:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # UID/GID of the in-image app user that owns /home/app — and
-        # thus the [day11] named volume, which inherits that ownership
-        # from the image on first creation (default 1000). Drop a [.env]
-        # next to this file with [UID=$(id -u)] / [GID=$(id -g)] to match
-        # your host user.
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
+    # ocurrent-deployer pins this to a name@sha256 digest before deploying.
+    image: ocurrent/ocaml-docs-ci:live
     restart: unless-stopped
     privileged: true
     # The daemon builds (and imports) its base image via the host
     # Docker daemon — [docker build] / [docker create] over the mounted
     # socket below. The socket is group-owned by [docker]; since the
     # daemon runs as the non-root app user, add that group so it can
-    # talk to the socket. Find the host's gid with [getent group docker]
-    # and set DOCKER_GID in [.env] if it isn't 999.
+    # talk to the socket. dill's docker group is pinned to gid 999.
     group_add:
-      - "${DOCKER_GID:-999}"
+      - "999"
     init: false   # dumb-init already in the image
     ports:
       - "8080:8080"
@@ -97,7 +87,8 @@ services:
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # /etc/caddy/Caddyfile is templated on the host by ansible.
+      - /etc/caddy:/etc/caddy:ro
       # Serve rendered HTML straight from the shared day11 volume,
       # mounted read-only at /srv. The per-arch cache root is a subdir
       # of it (/srv/cache/debian-bookworm-x86_64); the Caddyfile prepends
