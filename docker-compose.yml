@@ -30,9 +30,11 @@ services:
     # Docker daemon — [docker build] / [docker create] over the mounted
     # socket below. The socket is group-owned by [docker]; since the
     # daemon runs as the non-root app user, add that group so it can
-    # talk to the socket. dill's docker group is pinned to gid 999.
+    # talk to the socket. This must match the docker group's gid *on the
+    # host*: dill's docker.io install put it at 107 (999 was already taken
+    # by systemd-journal). Update this if the host's docker gid differs.
     group_add:
-      - "999"
+      - "107"
     init: false   # dumb-init already in the image
     ports:
       - "8080:8080"
