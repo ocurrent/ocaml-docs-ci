@@ -184,6 +184,11 @@ let build_opam_build ~sw env ~cache_dir ~arch ?opam_build_repo () =
     in
     let tag = Printf.sprintf "day11-opam-build:%s" tag_suffix in
     let build_log = Fpath.(temp_dir / "docker-build.log") in
+    (* Docker's containerd image store refuses to re-tag an existing image
+       (the legacy builder silently overwrote), so drop any prior tag before
+       this --no-cache rebuild. Harmless no-op when the tag doesn't exist. *)
+    Day11_sys.Run.run ~sw env
+      Bos.Cmd.(v "docker" % "image" % "rm" % "-f" % tag) None |> ignore;
     let build_run =
       Day11_sys.Run.run ~sw env
         Bos.Cmd.(v "docker" % "build" % "--network=host" % "--no-cache"
@@ -281,6 +286,11 @@ let build ~sw env ~cache_dir ~os_distribution ~os_version ~arch
     let tag = Printf.sprintf "day11-%s:%s" os_distribution os_version in
     let build_log = Fpath.(temp_dir / "docker-build.log") in
     Log.info (fun m -> m "Running docker build (tag: %s)" tag);
+    (* Docker's containerd image store refuses to re-tag an existing image
+       (the legacy builder silently overwrote), so drop any prior tag before
+       this --no-cache rebuild. Harmless no-op when the tag doesn't exist. *)
+    Day11_sys.Run.run ~sw env
+      Bos.Cmd.(v "docker" % "image" % "rm" % "-f" % tag) None |> ignore;
     let build_run =
       Day11_sys.Run.run ~sw env
         Bos.Cmd.(v "docker" % "build" % "--network=host" % "--no-cache"
