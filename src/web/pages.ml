@@ -48,6 +48,26 @@ let read_dag_cached snapshot_dir =
   memo_by_mtime dag_cache p
     (fun () -> Day11_lib.Dag_marshal.read ~snapshot_dir)
 
+let dag_index_cache :
+  (Fpath.t, float * (string, string * bool) Hashtbl.t) Hashtbl.t =
+  Hashtbl.create 8
+
+(** [build_hash -> (universe, blessed)] for one snapshot's [dag.json],
+    memoised by mtime. The full-profile dag is ~90k nodes, so the
+    package pages must not re-parse it (and rebuild this index) on every
+    request — without the cache, rendering a single package version took
+    ~36s because it indexed every snapshot's whole dag from scratch. *)
+let dag_index_cached snapshot_dir =
+  let p = Fpath.(snapshot_dir / "dag.json") in
+  memo_by_mtime dag_index_cache p (fun () ->
+    let h = Hashtbl.create 4096 in
+    (match Day11_lib.Dag_marshal.read ~snapshot_dir with
+     | Error _ -> ()
+     | Ok dag ->
+       List.iter (fun (e : Day11_lib.Dag_marshal.entry) ->
+         Hashtbl.replace h e.hash (e.universe, e.blessed)) dag);
+    h)
+
 let layer_status_cache :
   (Fpath.t, float * (string, Day11_layer.Layer_status.entry) Hashtbl.t)
   Hashtbl.t = Hashtbl.create 4
@@ -1627,21 +1647,31 @@ let package_version ~ctx name pkg ver =
          build_hash → universe mapping is persisted). *)
       let entries = List.concat_map (fun snap ->
         let pdir = Fpath.(snap / "packages") in
-        (* dag.json carries the real per-node universe + blessing, keyed
-           by the build_hash of each history entry. *)
-        let dag_info_of =
-          match Day11_lib.Dag_marshal.read ~snapshot_dir:snap with
-          | Error _ -> fun _ -> None
-          | Ok dag ->
-            let h = Hashtbl.create (List.length dag) in
-            List.iter (fun (e : Day11_lib.Dag_marshal.entry) ->
-              Hashtbl.replace h e.hash (e.universe, e.blessed)) dag;
-            fun bh -> Hashtbl.find_opt h bh
-        in
-        List.map (fun (e : Day11_lib.History.entry) ->
-          (e, dag_info_of e.build_hash))
-          (Day11_lib.History.read_latest ~packages_dir:pdir ~pkg_str)
+        (* Read this package's history first; only touch the (large)
+           dag.json for snapshots that actually contain the package.
+           dag.json carries the real per-node universe + blessing, keyed
+           by the build_hash of each history entry — indexed + memoised
+           by [dag_index_cached]. *)
+        match Day11_lib.History.read_latest ~packages_dir:pdir ~pkg_str with
+        | [] -> []
+        | hist ->
+          let idx = dag_index_cached snap in
+          List.map (fun (e : Day11_lib.History.entry) ->
+            (e, Hashtbl.find_opt idx e.build_hash)) hist
       ) snaps in
+      (* One batched SQL query for all build_hashes' job_ids, instead of
+         opening + querying + closing the OCurrent cache db once per
+         history entry (a package like odoc has ~hundreds of entries —
+         that per-entry loop dominated render time and thrashed the db
+         under the live daemon's writes). *)
+      let job_ids =
+        job_ids_for_hashes
+          (List.map (fun ((e : Day11_lib.History.entry), _) -> e.build_hash)
+             entries) in
+      let job_id_of bh =
+        if String.length bh = 0 then None
+        else Hashtbl.find_opt job_ids (String.sub bh 0 (min 12 (String.length bh)))
+      in
       let crumbs = Templates.breadcrumbs [
         Some "/profiles", "Profiles";
         Some ("/profiles/" ^ name), name;
@@ -1656,7 +1686,7 @@ let package_version ~ctx name pkg ver =
            to the raw layer.log file when the cache no longer has the
            job_id (e.g. for entries pre-dating the SQLite cache). *)
         let hash_cell =
-          let target = match job_id_for_hash e.build_hash with
+          let target = match job_id_of e.build_hash with
             | Some job_id -> "/job/" ^ job_id
             | None ->
               Printf.sprintf "/profiles/%s/builds/%s/log"
