@@ -164,7 +164,29 @@ let job_ids_for_hashes hashes =
       result
     with _ -> result
 
-(** List a profile's snapshots, newest first by mtime. *)
+(** The snapshot's own creation time: the ISO-8601 UTC timestamp from
+    [repos.json] (written by [Snapshot.save]). Falls back to the
+    directory mtime, formatted identically, only when repos.json is
+    missing/unreadable. We deliberately do NOT use the directory mtime
+    as the primary signal: it is bumped whenever any file inside is
+    rewritten (e.g. the [pkgs_summary] regeneration on startup), which
+    can float a long-finished snapshot above the live one — the cause of
+    the dashboard featuring a stale "finished" snapshot as latest. *)
+let snapshot_created dir =
+  match Day11_batch.Snapshot.load dir with
+  | Ok s -> s.Day11_batch.Snapshot.created
+  | Error _ ->
+    (try
+       let tm =
+         Unix.gmtime (Unix.stat (Fpath.to_string dir)).Unix.st_mtime in
+       Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ"
+         (tm.Unix.tm_year + 1900) (tm.Unix.tm_mon + 1) tm.Unix.tm_mday
+         tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec
+     with _ -> "")
+
+(** List a profile's snapshots, newest first by creation time. ISO-8601
+    UTC timestamps sort lexicographically in chronological order, so a
+    plain string compare orders them correctly. *)
 let list_snapshots_newest_first ctx name =
   let base = snapshots_base ctx name in
   match Bos.OS.Dir.contents base with
@@ -172,12 +194,8 @@ let list_snapshots_newest_first ctx name =
   | Ok entries ->
     entries
     |> List.filter_map (fun p ->
-      try
-        if Bos.OS.Dir.exists p |> Result.value ~default:false then
-          let stat = Unix.stat (Fpath.to_string p) in
-          Some (p, stat.Unix.st_mtime)
-        else None
-      with _ -> None)
+      if Bos.OS.Dir.exists p |> Result.value ~default:false
+      then Some (p, snapshot_created p) else None)
     |> List.sort (fun (_, a) (_, b) -> compare b a)
     |> List.map fst
 
@@ -337,20 +355,12 @@ let snapshots_list ~ctx name =
         |> List.filteri (fun i _ -> i >= start && i < start + page_size) in
       let row dir =
         let key = Fpath.basename dir in
-        let mtime =
-          try
-            let s = Unix.stat (Fpath.to_string dir) in
-            let tm = Unix.gmtime s.st_mtime in
-            Printf.sprintf "%04d-%02d-%02d %02d:%02d"
-              (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
-              tm.tm_hour tm.tm_min
-          with _ -> "—"
-        in
+        let created = match snapshot_created dir with "" -> "—" | s -> s in
         tr [
           td [ a ~a:[ a_href (Printf.sprintf "/profiles/%s/snapshots/%s"
                                  name key) ]
                  [ Templates.sha_span key ] ];
-          td [ txt mtime ];
+          td [ txt created ];
         ]
       in
       let pager =
