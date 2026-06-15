@@ -15,6 +15,8 @@ type entry = {
   category : string;        (** Failure category (e.g. ["build_failure"]). *)
   blessed : bool;           (** Whether this is the blessed (primary) build. *)
   error : string option;    (** Optional error message. *)
+  universe : string;        (** Output universe of the node (doc nodes only);
+                                ["" ] for build/tool nodes and legacy entries. *)
 }
 
 (** Append an entry to the history file for [pkg_str] under [packages_dir].

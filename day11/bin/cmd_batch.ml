@@ -380,7 +380,7 @@ let run profile_name profile_dir np cores_per_build overcommit
       Day11_batch.Recorder.record_build recorder node ~success
     in
     let on_doc_complete (node : Day11_opam_layer.Build.t)
-        ~cached:_ ~blessed ~success =
+        ~cached:_ ~blessed ~universe:_ ~success =
       let layer_dir = Day11_opam_layer.Build.dir ~os_dir node in
       let log_file =
         let p = Fpath.(layer_dir / "build.log") in

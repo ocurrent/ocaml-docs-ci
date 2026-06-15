@@ -6,6 +6,11 @@ type entry = {
   category : string;
   blessed : bool;
   error : string option;
+  universe : string;
+  (** The node's output universe (doc nodes only; "" for build/tool
+      nodes and for legacy entries written before this field existed).
+      Persisted here at build time — known from the in-memory plan — so
+      the package page can show it without parsing the large dag.json. *)
 }
 
 let entry_to_json (e : entry) : Yojson.Safe.t =
@@ -20,6 +25,10 @@ let entry_to_json (e : entry) : Yojson.Safe.t =
   let fields = match e.error with
     | Some v -> fields @ [("error", `String v)]
     | None -> fields
+  in
+  let fields =
+    if e.universe = "" then fields
+    else fields @ [("universe", `String e.universe)]
   in
   `Assoc fields
 
@@ -54,7 +63,9 @@ let entry_of_json (json : Yojson.Safe.t) : entry option =
      with
      | Some ts, Some run, Some build_hash, Some status, Some category,
        Some blessed, Some error ->
-       Some { ts; run; build_hash; status; category; blessed; error }
+       let universe =
+         match string_of_json "universe" assoc with Some s -> s | None -> "" in
+       Some { ts; run; build_hash; status; category; blessed; error; universe }
      | _ -> None)
   | _ -> None
 

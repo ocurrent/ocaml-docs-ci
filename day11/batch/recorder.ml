@@ -60,7 +60,7 @@ let classify_log log_file =
 (** Append one history entry to disk immediately. Per-pkg history.jsonl
     becomes the live event log; downstream regen of [status.json]
     happens on a schedule, not at the end of the OCurrent tick. *)
-let append_history t ~node ~status ~category ~error ~blessed =
+let append_history t ~node ~status ~category ~error ~blessed ~universe =
   let entry : Day11_lib.History.entry = {
     ts = now_iso8601 ();
     run = Day11_lib.Run_log.get_id t.run_log;
@@ -69,6 +69,7 @@ let append_history t ~node ~status ~category ~error ~blessed =
     category;
     blessed;
     error;
+    universe;
   } in
   Day11_lib.History.append ~packages_dir:t.packages_dir
     ~pkg_str:(OpamPackage.to_string node.pkg) entry
@@ -79,9 +80,10 @@ let record_build t (node : Build.t) ~success =
   let blessed = is_blessed t node in
   let category, error =
     if success then ("success", None) else classify_log log_file in
+  (* Build/tool nodes have no output universe (only doc nodes do). *)
   append_history t ~node
     ~status:(if success then "success" else "failure")
-    ~category ~error ~blessed;
+    ~category ~error ~blessed ~universe:"";
   append_outcome t {
     Summary.pkg = node.pkg;
     build_hash = node.hash;
@@ -118,13 +120,13 @@ let append_doc_outcome t outcome =
   t.doc_outcomes := outcome :: !(t.doc_outcomes);
   Mutex.unlock t.outcomes_lock
 
-let record_doc t (node : Build.t) ~blessed ~success =
+let record_doc t (node : Build.t) ~blessed ~universe ~success =
   ensure_symlink t node;
   let log_file = log_file_for t node in
   append_history t ~node
     ~status:(if success then "success" else "failure")
     ~category:(if success then "doc_success" else "doc_failure")
-    ~error:None ~blessed;
+    ~error:None ~blessed ~universe;
   append_doc_outcome t {
     Summary.pkg = node.pkg;
     success;

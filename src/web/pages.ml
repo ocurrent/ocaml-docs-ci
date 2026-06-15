@@ -48,26 +48,6 @@ let read_dag_cached snapshot_dir =
   memo_by_mtime dag_cache p
     (fun () -> Day11_lib.Dag_marshal.read ~snapshot_dir)
 
-let dag_index_cache :
-  (Fpath.t, float * (string, string * bool) Hashtbl.t) Hashtbl.t =
-  Hashtbl.create 8
-
-(** [build_hash -> (universe, blessed)] for one snapshot's [dag.json],
-    memoised by mtime. The full-profile dag is ~90k nodes, so the
-    package pages must not re-parse it (and rebuild this index) on every
-    request — without the cache, rendering a single package version took
-    ~36s because it indexed every snapshot's whole dag from scratch. *)
-let dag_index_cached snapshot_dir =
-  let p = Fpath.(snapshot_dir / "dag.json") in
-  memo_by_mtime dag_index_cache p (fun () ->
-    let h = Hashtbl.create 4096 in
-    (match Day11_lib.Dag_marshal.read ~snapshot_dir with
-     | Error _ -> ()
-     | Ok dag ->
-       List.iter (fun (e : Day11_lib.Dag_marshal.entry) ->
-         Hashtbl.replace h e.hash (e.universe, e.blessed)) dag);
-    h)
-
 let layer_status_cache :
   (Fpath.t, float * (string, Day11_layer.Layer_status.entry) Hashtbl.t)
   Hashtbl.t = Hashtbl.create 4
@@ -1641,23 +1621,17 @@ let package_version ~ctx name pkg ver =
       (* [read_latest] dedupes by build_hash: one entry per unique
          (build/compile/doc_all/link) layer hash, keeping the most
          recent. Without dedup the table grows linearly with retries
-         and snapshots, mostly repeats. *)
-      (* Pair each history entry with the universe of its build_hash,
-         read from that snapshot's dag.json (the only place the
-         build_hash → universe mapping is persisted). *)
+         and snapshots, mostly repeats.
+
+         Universe + blessing are read straight off the history entry
+         (persisted at build time from the in-memory plan). The page
+         therefore never parses dag.json — which for the full profile is
+         hundreds of MB and dominated by per-node dep lists we don't
+         need here. Legacy entries written before [universe] existed
+         carry "" and render as "—". *)
       let entries = List.concat_map (fun snap ->
         let pdir = Fpath.(snap / "packages") in
-        (* Read this package's history first; only touch the (large)
-           dag.json for snapshots that actually contain the package.
-           dag.json carries the real per-node universe + blessing, keyed
-           by the build_hash of each history entry — indexed + memoised
-           by [dag_index_cached]. *)
-        match Day11_lib.History.read_latest ~packages_dir:pdir ~pkg_str with
-        | [] -> []
-        | hist ->
-          let idx = dag_index_cached snap in
-          List.map (fun (e : Day11_lib.History.entry) ->
-            (e, Hashtbl.find_opt idx e.build_hash)) hist
+        Day11_lib.History.read_latest ~packages_dir:pdir ~pkg_str
       ) snaps in
       (* One batched SQL query for all build_hashes' job_ids, instead of
          opening + querying + closing the OCurrent cache db once per
@@ -1666,7 +1640,7 @@ let package_version ~ctx name pkg ver =
          under the live daemon's writes). *)
       let job_ids =
         job_ids_for_hashes
-          (List.map (fun ((e : Day11_lib.History.entry), _) -> e.build_hash)
+          (List.map (fun (e : Day11_lib.History.entry) -> e.build_hash)
              entries) in
       let job_id_of bh =
         if String.length bh = 0 then None
@@ -1679,8 +1653,7 @@ let package_version ~ctx name pkg ver =
           "package: " ^ pkg;
         None, ver;
       ] in
-      let history_rows = List.map (fun ((e : Day11_lib.History.entry),
-                                        dag_info) ->
+      let history_rows = List.map (fun (e : Day11_lib.History.entry) ->
         (* Prefer linking to the OCurrent job page (gives a Rebuild
            button and structured log) when we can find it; fall back
            to the raw layer.log file when the cache no longer has the
@@ -1708,12 +1681,9 @@ let package_version ~ctx name pkg ver =
            outcome is already in the Status column and any failure
            detail in Error. *)
         let category_cell = txt (if is_doc_entry then "docs" else "build") in
-        let universe, blessed = match dag_info with
-          | Some (u, b) -> u, b
-          | None -> "", false
-        in
-        (* Universe applies to both build and doc nodes — link it to the
-           universe page. From dag.json (the real u/<hash> universe). *)
+        let universe = e.universe and blessed = e.blessed in
+        (* Universe (doc nodes) links to the universe page. Read from the
+           history entry — see the note above. "" => "—". *)
         let universe_cell =
           if universe <> "" then
             a ~a:[ a_href (Printf.sprintf "/profiles/%s/u/%s" name universe) ]

@@ -102,7 +102,7 @@ let test_dag_marshal_universe_default () = with_tmp_dir @@ fun dir ->
 let make_entry ?(status = "success") ?(category = "build") pkg =
   { History.ts = "2024-01-01T00:00:00Z"; run = "run1";
     build_hash = "build-abc"; status; category;
-    blessed = false; error = None }
+    blessed = false; error = None; universe = "" }
   |> fun e -> ignore pkg; e
 
 let test_history_append_read () = with_tmp_dir @@ fun dir ->
@@ -137,7 +137,7 @@ let test_history_concurrent_append () = with_tmp_dir @@ fun dir ->
   let entry_for i =
     { History.ts = "2024-01-01T00:00:00Z"; run = Printf.sprintf "r%d" i;
       build_hash = Printf.sprintf "h%d" i; status = "success";
-      category = "build"; blessed = false; error = None }
+      category = "build"; blessed = false; error = None; universe = "" }
   in
   Eio.Fiber.both
     (fun () ->

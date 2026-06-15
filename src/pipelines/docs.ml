@@ -229,8 +229,8 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     ~blessing_maps ~run_log in
   let on_pkg_complete node ~success =
     Day11_batch.Recorder.record_build recorder node ~success in
-  let on_doc_complete node ~blessed ~success =
-    Day11_batch.Recorder.record_doc recorder node ~blessed ~success in
+  let on_doc_complete node ~blessed ~universe ~success =
+    Day11_batch.Recorder.record_doc recorder node ~blessed ~universe ~success in
   (* [plan_doc_dag] forks 9+ fibers (driver + per-compiler odoc),
      each running a [day11-solver-worker] subprocess. Subprocess
      awaits go through [Sys.Run.run] which yields on socket I/O,

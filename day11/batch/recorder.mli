@@ -40,7 +40,8 @@ val record_cascade :
     [<os_dir>/layer_status.jsonl]. *)
 
 val record_doc :
-  t -> Day11_opam_layer.Build.t -> blessed:bool -> success:bool -> unit
+  t -> Day11_opam_layer.Build.t ->
+  blessed:bool -> universe:string -> success:bool -> unit
 (** Record a finished doc-pipeline node (compile / doc-all / link).
     Appends a {!Day11_lib.History.entry} immediately, buffers a
     {!Summary.doc_outcome}, ensures the symlink, and writes a

@@ -48,7 +48,8 @@ val run :
   ?on_pkg_complete:(Day11_opam_layer.Build.t ->
                     cached:bool -> success:bool -> unit) ->
   ?on_doc_complete:(Day11_opam_layer.Build.t ->
-                    cached:bool -> blessed:bool -> success:bool -> unit) ->
+                    cached:bool -> blessed:bool -> universe:string ->
+                    success:bool -> unit) ->
   ?snapshot_dir:Fpath.t ->
   nodes:Day11_opam_layer.Build.t list ->
   solutions:(OpamPackage.t * Day11_solution.Solve_result.t) list ->
@@ -133,7 +134,7 @@ val plan_doc_dag :
   build_one:(Day11_opam_layer.Build.t -> bool) ->
   ?on_pkg_complete:(Day11_opam_layer.Build.t -> success:bool -> unit) ->
   ?on_doc_complete:(Day11_opam_layer.Build.t ->
-                    blessed:bool -> success:bool -> unit) ->
+                    blessed:bool -> universe:string -> success:bool -> unit) ->
   ?snapshot_dir:Fpath.t ->
   nodes:Day11_opam_layer.Build.t list ->
   solutions:(OpamPackage.t * Day11_solution.Solve_result.t) list ->
@@ -158,7 +159,8 @@ val build_tools_and_run :
   ?on_pkg_complete:(Day11_opam_layer.Build.t ->
                     cached:bool -> success:bool -> unit) ->
   ?on_doc_complete:(Day11_opam_layer.Build.t ->
-                    cached:bool -> blessed:bool -> success:bool -> unit) ->
+                    cached:bool -> blessed:bool -> universe:string ->
+                    success:bool -> unit) ->
   ?snapshot_dir:Fpath.t ->
   run_log:Day11_lib.Run_log.t ->
   nodes:Day11_opam_layer.Build.t list ->
