@@ -52,9 +52,12 @@ let to_yojson ~root (t : t) : Yojson.Safe.t =
           ("inheritable", strings default_linux_caps);
           ("permitted", strings default_linux_caps);
         ]);
+       (* 1024 is too low for doc containers: odoc_driver_voodoo
+          holds open files across a whole universe's worth of .odoc
+          units. *)
        ("rlimits", `List [
           `Assoc [ ("type", `String "RLIMIT_NOFILE");
-                   ("hard", `Int 1024); ("soft", `Int 1024) ] ]);
+                   ("hard", `Int 65536); ("soft", `Int 65536) ] ]);
        ("noNewPrivileges", `Bool false);
      ]);
     ("root", `Assoc [

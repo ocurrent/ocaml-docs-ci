@@ -53,7 +53,7 @@ RUN mkdir /src/artifacts \
 # so files the daemon writes are still owned by that host UID and
 # git stops complaining about "dubious ownership". Defaults to
 # 1000:1000.
-FROM debian:12
+FROM debian:12@sha256:49ba348354a28e39c70beffd6cf43bdb8d55d81ce4b746b0428717d054b8bbc4
 
 ARG UID=1000
 ARG GID=1000
@@ -173,9 +173,15 @@ RUN mkdir -p ${HOME_DIR}/.day11/profiles \
 COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/.day11/profiles/
 
 # Ensure TMPDIR exists and is owned by the runtime user before the
-# daemon starts. It lives under the bind-mounted cache, so it can't be
+# command starts. It lives under the bind-mounted cache, so it can't be
 # created at image-build time (the mount shadows it), and several code
 # paths mkdir subdirs of it non-recursively / bind a socket there,
 # assuming it's present. Creating it here (as the app user, before any
 # sudo path can make it root-owned) keeps it writable.
-ENTRYPOINT ["dumb-init", "sh", "-c", "mkdir -p \"$TMPDIR\" && exec /usr/local/bin/ocaml-docs-ci \"$@\"", "sh"]
+#
+# The entrypoint is deliberately generic — it just preps TMPDIR and
+# execs whatever command it's given, so the same image serves both the
+# daemon (docker-compose's [command: ocaml-docs-ci ...]) and one-off
+# CLI runs ([docker compose run --rm daemon day11 batch ...]).
+ENTRYPOINT ["dumb-init", "sh", "-c", "mkdir -p \"$TMPDIR\" && exec \"$@\"", "sh"]
+CMD ["ocaml-docs-ci", "--help"]

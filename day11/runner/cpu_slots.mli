@@ -1,8 +1,11 @@
 (** NUMA-aware CPU slot pool for bounding container concurrency.
 
     A fixed set of slots is created at startup, each pinned to a
-    specific subset of host CPUs and (when the host has multiple
-    NUMA nodes) to one NUMA memory node. Build dispatch code calls
+    specific subset of one NUMA node's CPUs. Memory is not pinned:
+    first-touch from the pinned CPUs keeps a build's pages mostly
+    node-local anyway, and a hard [cpuset.mems] binding turns one
+    node filling up into a cpuset-constrained OOM kill even when
+    other nodes have memory free. Build dispatch code calls
     {!acquire} before launching a container and {!release} after;
     acquire blocks the current fiber when every slot is in use.
 

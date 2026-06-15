@@ -146,12 +146,43 @@ let rec swap_guard_pairs : OpamTypes.formula -> OpamTypes.formula = function
        OpamFormula.Or (r', l')
      | _ -> OpamFormula.Or (l', r'))
 
+(** Drop dependency atoms that are [odoc] guarded by [{with-doc}] (the
+    near-universal opam convention "odoc is needed to build my docs").
+    odoc is the doc TOOL — docs-ci mounts it from the prebuilt
+    per-compiler tool layer, never from a package's own solution — so it
+    should not be a solved dependency at all. Removing it at the formula
+    level (before filtering) means odoc is never pulled into a package's
+    universe, which in turn means odoc's own [x-extra-doc-deps]
+    (odoc-driver / sherlodoc / odig → eio, js_of_ocaml, tyxml, …) never
+    fire: the whole doc-toolchain closure stops leaking into every
+    package's doc-deps. odoc kept when it's a *real* (unguarded) dep —
+    e.g. odoc-driver genuinely depends on odoc — so only the with-doc
+    convention is stripped. *)
+let drop_odoc_with_doc (f : OpamTypes.filtered_formula) : OpamTypes.filtered_formula =
+  let odoc = OpamPackage.Name.of_string "odoc" in
+  let mentions_with_doc cond =
+    OpamFormula.fold_left (fun acc foc ->
+      acc || (match foc with
+        | OpamTypes.Filter filt ->
+          List.exists (fun v ->
+            OpamVariable.Full.to_string v = "with-doc")
+            (OpamFilter.variables filt)
+        | OpamTypes.Constraint _ -> false))
+      false cond
+  in
+  OpamFormula.map (fun (name, cond) ->
+    if OpamPackage.Name.equal name odoc && mentions_with_doc cond
+    then OpamFormula.Empty
+    else OpamFormula.Atom (name, cond))
+    f
+
 let filter_deps t pkg f =
   let dev =
     OpamPackage.Version.compare (OpamPackage.version pkg) dev = 0 in
   let test =
     OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
   augment_with_extra_doc_deps t pkg f
+  |> drop_odoc_with_doc
   |> OpamFilter.partial_filter_formula (env t pkg)
   |> OpamFilter.filter_deps ~build:true ~post:t.post ~test
        ~doc:t.doc ~dev ~dev_setup:false ~default:false

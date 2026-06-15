@@ -21,6 +21,7 @@ val opam_build_cleanup :
 val opam_build_spec :
   ?cpuset:string ->
   ?numa_mems:string ->
+  ?jobs:int ->
   cmd:string ->
   mounts:Day11_container.Mount.t list ->
   uid:int -> gid:int ->
@@ -33,7 +34,11 @@ val opam_build_spec :
       cpuset.cpus). Normally supplied from
       {!Day11_runner.Cpu_slots.acquire}.
     @param numa_mems Restrict the container's memory to these NUMA
-      nodes (cgroup cpuset.mems). Pairs with [?cpuset]. *)
+      nodes (cgroup cpuset.mems). Pairs with [?cpuset].
+    @param jobs Export [OPAMJOBS=jobs] so opam's [%{jobs}%] matches
+      the cpuset size. opam's default comes from the online CPU
+      count, which ignores cpuset affinity — without this a pinned
+      build still spawns host-cpu-count compiler processes. *)
 
 val opam_build_prep_upper :
   sw:Eio.Switch.t -> Eio_unix.Stdenv.base -> uid:int -> gid:int ->

@@ -843,12 +843,18 @@ let run ~sw env benv ~np ~os_dir ~html_dir ~cache ~base_hash
   let html_root = html_dir in
   let total_html =
     if Bos.OS.Dir.exists html_root |> Result.get_ok then
+      (* Count in the child: piping the full listing back through the
+         fork-helper protocol blows its per-field buffer cap on the
+         full profile (millions of paths > 256MB) — and we only want
+         the number. *)
       let find_result = Day11_sys.Run.run ~sw env
-        Bos.Cmd.(v "find" % Fpath.to_string html_root
-                 % "-name" % "*.html" % "-type" % "f") None in
-      List.length (String.split_on_char '\n'
-        (String.trim find_result.output)
-        |> List.filter (fun s -> s <> ""))
+        Bos.Cmd.(v "sh" % "-c"
+                 % Printf.sprintf
+                     "find %s -name '*.html' -type f | wc -l"
+                     (Filename.quote (Fpath.to_string html_root)))
+        None in
+      (try int_of_string (String.trim find_result.output)
+       with _ -> 0)
     else 0
   in
   (!total_doc_count, total_html)

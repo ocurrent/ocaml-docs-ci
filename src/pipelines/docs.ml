@@ -311,7 +311,13 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     | Some existing -> existing
     | None ->
       let dep_currents = List.map make_node dag_node.deps in
-      let deps = Current.list_seq dep_currents in
+      (* Gate this node on its deps for ordering + error cascade only;
+         the dep *values* are no longer read (dispatch derives the
+         overlay-stack dirs from the static DAG node), so collapse the
+         edge to unit. [Current.all] is the tree-folded combinator, so
+         the aggregation is O(log n) and eq-cuttable rather than a
+         right-fold chain that re-allocates on every propagation. *)
+      let deps = Current.all (List.map Current.ignore_value dep_currents) in
       let kind = node_kind dag_node in
       let label = match kind with
         | Day11_doc.Generate.Build -> "build"

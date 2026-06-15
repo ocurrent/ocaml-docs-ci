@@ -20,6 +20,7 @@ val opam_build_cleanup :
 val opam_build_spec :
   ?cpuset:string ->
   ?numa_mems:string ->
+  ?jobs:int ->
   cmd:string ->
   mounts:Day11_container.Mount.t list ->
   uid:int ->

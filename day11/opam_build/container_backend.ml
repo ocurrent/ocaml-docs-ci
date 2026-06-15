@@ -45,7 +45,16 @@ let opam_build_strategy ?patches pkg =
   { Types.cmd = Printf.sprintf "opam-build -v %s%s" pkg_str patch_args;
     cleanup = opam_build_cleanup }
 
-(** Default container env for opam-build containers. *)
+(** Default container env for opam-build containers.
+
+    NB on Eio programs run in these containers (odoc_driver_voodoo in
+    the doc stages): at very high container concurrency (~480) the
+    default io_uring backend can fail at startup with ENOMEM from
+    io_uring_queue_init — a fast, retryable failure. Forcing
+    EIO_BACKEND=posix avoids that but trades it for a rare missed-
+    SIGCHLD hang in eio_posix's child reaping that wedges executor
+    slots permanently — strictly worse. So: stay on io_uring and keep
+    container concurrency moderate. *)
 let opam_container_env = [
   ("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
   ("HOME", "/home/opam");
@@ -54,13 +63,24 @@ let opam_container_env = [
 (** Build an OCI spec template for an opam-build container running
     [cmd] via [bash -c]. [?cpuset] and [?numa_mems] pin the container
     to a subset of host CPUs / NUMA memory nodes via cgroups, used by
-    {!Day11_runner.Cpu_slots} to cap nested build parallelism. *)
-let opam_build_spec ?cpuset ?numa_mems ~cmd ~mounts ~uid ~gid
+    {!Day11_runner.Cpu_slots} to cap nested build parallelism.
+
+    [?jobs] additionally exports [OPAMJOBS], capping opam's [%{jobs}%]
+    variable. The cpuset alone is not enough: opam derives its default
+    jobs from the *online* CPU count (sysconf), which ignores cpuset
+    affinity — so a build pinned to 4 cpus would still run e.g.
+    [dune -j 767] on a 768-core host, multiplying its memory
+    footprint by the spawned-compiler count. *)
+let opam_build_spec ?cpuset ?numa_mems ?jobs ~cmd ~mounts ~uid ~gid
     () : Day11_container.Oci_spec.t =
+  let env = match jobs with
+    | None -> opam_container_env
+    | Some n -> ("OPAMJOBS", string_of_int n) :: opam_container_env
+  in
   Day11_container.Oci_spec.make
     ~cwd:"/home/opam"
     ~hostname:"builder"
-    ~env:opam_container_env
+    ~env
     ~mounts
     ~network:true
     ?cpuset ?numa_mems
@@ -221,13 +241,15 @@ let build ~sw env (benv : Types.build_env)
      is free. Within the slot's lifetime, nproc inside the container
      reports the slot size, so nested [make -j$(nproc)] self-limits. *)
   let run_in_slot f = match benv.Types.cpu_slots with
-    | None -> f ~cpuset:None ~numa_mems:None
+    | None -> f ~cpuset:None ~numa_mems:None ~jobs:None
     | Some pool ->
+      let jobs = Day11_runner.Cpu_slots.cores_per_build pool in
       Day11_runner.Cpu_slots.with_slot pool (fun slot ->
-        f ~cpuset:(Some slot.cpuset) ~numa_mems:slot.numa_mems)
+        f ~cpuset:(Some slot.cpuset) ~numa_mems:slot.numa_mems
+          ~jobs:(Some jobs))
   in
-  run_in_slot @@ fun ~cpuset ~numa_mems ->
-  let spec = opam_build_spec ?cpuset ?numa_mems
+  run_in_slot @@ fun ~cpuset ~numa_mems ~jobs ->
+  let spec = opam_build_spec ?cpuset ?numa_mems ?jobs
     ~cmd:strategy.Types.cmd
     ~mounts:all_mounts ~uid:benv.uid ~gid:benv.gid ()
   in

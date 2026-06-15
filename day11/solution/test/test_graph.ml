@@ -32,6 +32,37 @@ let test_transitive_deps () =
   Alcotest.(check bool) "c empty"
     true (OpamPackage.Set.is_empty c_deps)
 
+(* Cyclic graph: a -> b -> c -> a, and c -> x (x a leaf). Every cycle
+   member can reach the whole cycle plus x. The old order-dependent
+   closure truncated at the back-edge: starting the DFS at [a], [c] came
+   out as {a, x} — missing [b], which c reaches via c -> a -> b. The SCC
+   closure must give every member the complete, identical set. *)
+let test_transitive_deps_cycle () =
+  let a = pkg "a.1" and b = pkg "b.1" and c = pkg "c.1" and x = pkg "x.1" in
+  let g =
+    OpamPackage.Map.empty
+    |> OpamPackage.Map.add a (OpamPackage.Set.singleton b)
+    |> OpamPackage.Map.add b (OpamPackage.Set.singleton c)
+    |> OpamPackage.Map.add c (OpamPackage.Set.of_list [ a; x ])
+    |> OpamPackage.Map.add x OpamPackage.Set.empty
+  in
+  let t = Deps.transitive_deps g in
+  let clo p = OpamPackage.Map.find p t in
+  let mem who p = OpamPackage.Set.mem p (clo who) in
+  (* completeness — the case the old code got wrong *)
+  Alcotest.(check bool) "c reaches b (regression)" true (mem c b);
+  Alcotest.(check bool) "c reaches x" true (mem c x);
+  Alcotest.(check bool) "a reaches x" true (mem a x);
+  (* cycle members are mutually reachable -> identical closures *)
+  Alcotest.(check bool) "a = b = c closure" true
+    (OpamPackage.Set.equal (clo a) (clo b)
+     && OpamPackage.Set.equal (clo b) (clo c));
+  Alcotest.(check bool) "cycle closure = {a,b,c,x}" true
+    (OpamPackage.Set.equal (clo a)
+       (OpamPackage.Set.of_list [ a; b; c; x ]));
+  (* leaf x reaches nothing *)
+  Alcotest.(check bool) "x empty" true (OpamPackage.Set.is_empty (clo x))
+
 let test_extract_ocaml_version () =
   let s =
     OpamPackage.Map.empty
@@ -143,6 +174,7 @@ let () =
       ( "Deps",
         [
           Alcotest.test_case "transitive_deps" `Quick test_transitive_deps;
+          Alcotest.test_case "transitive_deps cycle" `Quick test_transitive_deps_cycle;
 Alcotest.test_case "extract_ocaml_version" `Quick
             test_extract_ocaml_version;
           Alcotest.test_case "extract_ocaml_version none" `Quick

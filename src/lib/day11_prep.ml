@@ -10,15 +10,24 @@ type t = {
   pkg : OpamPackage.t;
   build_hash : string;
   layer_dir : Fpath.t;
-  all_layer_dirs : Fpath.t list;
-  (** This layer's dir plus all transitive dep layer dirs.
-      Used by parent builds to stack the full dep tree via overlayfs. *)
 }
+(* The value threaded between nodes is deliberately small and stable.
+   [build_hash] is a deterministic function of the node's inputs, so a
+   node's value never changes once computed; combined with the [~eq]
+   cutoff in [run_node] this stops a completed node from re-triggering
+   its whole downstream cone on every propagation.
+
+   It used to also carry [all_layer_dirs] — this node's dir plus the
+   full transitive closure of its deps' dirs — rebuilt (hashtable dedup
+   + fresh list) at every node on every evaluation. That was both the
+   per-event O(cone) cost and the bulk of the heap, and it was dead:
+   nothing outside this module read it, and dispatch recomputes the
+   overlay-stack dirs from the static DAG node itself
+   ([Container_backend.collect_transitive_dep_dirs]). *)
 
 let pkg t = t.pkg
 let build_hash t = t.build_hash
 let layer_dir t = t.layer_dir
-let all_layer_dirs t = t.all_layer_dirs
 
 let has_documentable_libs t =
   Day11_doc.Doc_build.has_documentable_libs t.layer_dir
@@ -180,21 +189,16 @@ module Cache_link    = Current_cache.Make (Op_link)
 let run_node ~env ~os_dir ~pool ~dispatch ~label ~profile_name
     ~(dag_node : Day11_opam_layer.Build.t) ~deps () : t Current.t =
   let open Current.Syntax in
-  Current.component "[%s] %s %s" profile_name label
-    (OpamPackage.to_string dag_node.pkg)
+  let node =
+    (* [deps] is now a pure ordering/cascade gate (unit), not a value to
+       read. A dep in [Error] still short-circuits the [let>] body so
+       dispatch is never invoked and this node cascades to [Error]; an
+       [Error -> Ok] transition when a dep recovers still re-fires this
+       node, so rerunning a failed layer rebuilds everything below it. *)
+    (Current.component "[%s] %s %s" profile_name label
+      (OpamPackage.to_string dag_node.pkg)
   |>
-  let> deps in
-  let all_dep_dirs =
-    let seen = Hashtbl.create 16 in
-    List.iter (fun (d : t) ->
-      List.iter (fun dir ->
-        let s = Fpath.to_string dir in
-        if not (Hashtbl.mem seen s) then
-          Hashtbl.replace seen s dir
-      ) d.all_layer_dirs
-    ) deps;
-    Hashtbl.fold (fun _ v acc -> v :: acc) seen []
-  in
+  let> () = deps in
   let result =
     match label with
     | "build" ->
@@ -234,5 +238,11 @@ let run_node ~env ~os_dir ~pool ~dispatch ~label ~profile_name
        (Result.map (fun (hash, own_dir) ->
          { pkg = dag_node.pkg;
            build_hash = hash;
-           layer_dir = own_dir;
-           all_layer_dirs = own_dir :: all_dep_dirs }))
+           layer_dir = own_dir })))
+  in
+  (* Cut off propagation when this node's value is unchanged: a node
+     re-emitting the same [build_hash] (the common case under churn)
+     does not re-trigger its dependents. [Dyn.equal] treats Error/Ok
+     transitions as unequal regardless of this [eq], so failures and
+     recoveries always propagate. *)
+  Current.cutoff ~eq:(fun a b -> String.equal a.build_hash b.build_hash) node

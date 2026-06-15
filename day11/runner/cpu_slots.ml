@@ -162,12 +162,18 @@ let auto ?(overcommit = 1.0) ~cores_per_build () =
   let base_slots, layout_desc =
     match detect_numa () with
     | Some pairs when List.length pairs >= 2 ->
-      (* NUMA-aware path: pin each slot to one node's CPUs + mems. *)
+      (* NUMA-aware path: pin each slot to one node's CPUs. Memory is
+         deliberately NOT pinned (no cpuset.mems): first-touch from the
+         pinned CPUs already lands a build's pages on the local node,
+         while a hard mems binding turns one node filling up into a
+         cpuset-constrained OOM kill — observed taking out the whole
+         batch driver while the host had terabytes free on other
+         nodes. *)
       let slots = List.concat_map (fun (node, cpus) ->
         chunk_into cores_per_build cpus
         |> List.map (fun chunk ->
           { cpuset = format_cpuset chunk;
-            numa_mems = Some (string_of_int node);
+            numa_mems = None;
             node })
       ) pairs in
       let desc = pairs

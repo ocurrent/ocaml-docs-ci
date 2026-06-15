@@ -35,10 +35,23 @@ services:
     # by systemd-journal). Update this if the host's docker gid differs.
     group_add:
       - "107"
+    # The default soft nofile limit (1024) is far too low for hundreds
+    # of concurrent builds — each holds open logs, overlay dirs, and
+    # pipes to sudo/runc, and exhaustion (EMFILE) cascades into mass
+    # build failures.
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
     init: false   # dumb-init already in the image
     ports:
       - "8080:8080"
     command:
+      # The image entrypoint is generic (it only preps TMPDIR), so the
+      # command names the binary. Run one-off CLI tools in the same
+      # environment with e.g.:
+      #   docker compose run --rm daemon day11 batch --profile=full ...
+      - ocaml-docs-ci
       # Only the lightweight 'quick' profile runs (Jane Street packages,
       # latest version only). The heavier ocaml-odoc-master and oxcaml
       # profiles are still baked into the image (docker/profiles/) but

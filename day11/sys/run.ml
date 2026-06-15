@@ -36,7 +36,17 @@ let run ~sw env cmd output_file =
   let clock = Eio.Stdenv.clock env in
   let rec run_with_retry retries =
     try run_via_helper ~sw env cmd env_arr output_file
-    with exn ->
+    with
+    | Eio.Buf_read.Buffer_limit_exceeded as exn ->
+      (* The subprocess output exceeded the protocol's per-field cap.
+         Retrying re-runs the (possibly expensive) process and gets
+         the same oversized response — fail immediately instead. The
+         caller should redirect bulk output via [output_file]. *)
+      Log.err (fun m -> m "Subprocess output exceeded the fork \
+        protocol buffer cap (cmd: %s) — not retrying; use an \
+        output_file for bulk output" (String.concat " " cmd));
+      raise exn
+    | exn ->
       if retries > 0 then begin
         Log.warn (fun m -> m "Fork helper failed (%s), retrying (%d left)"
           (Printexc.to_string exn) retries);
