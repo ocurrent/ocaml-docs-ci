@@ -1354,6 +1354,80 @@ let pending_pkg_names pkgs =
   List.fold_left (fun acc ((n, _), (st, _)) ->
     if st = "pending" then n :: acc else acc) [] pkgs
 
+(* [(repo_path, commit)] recorded in a snapshot's repos.json. *)
+let snapshot_repo_commits dir =
+  match Day11_batch.Snapshot.load dir with
+  | Ok s -> s.Day11_batch.Snapshot.repos
+  | Error _ -> []
+
+(* [git log old..new] for one repo, as (short_hash, date, author, subject)
+   rows. Read-only, bounded; returns [] when the range is empty or can't
+   be read (missing repo, equal commits, force-push / unrelated history).
+   Fields are split on US (0x1f), which never appears in commit metadata. *)
+let git_log_range ~repo ~old_commit ~new_commit =
+  if old_commit = new_commit || old_commit = "" || new_commit = "" then []
+  else
+    let cmd =
+      Printf.sprintf
+        "git -C %s log -n 500 --no-decorate \
+         --pretty=format:%%h%%x1f%%ad%%x1f%%an%%x1f%%s --date=short %s 2>/dev/null"
+        (Filename.quote repo)
+        (Filename.quote (old_commit ^ ".." ^ new_commit))
+    in
+    let ic = Unix.open_process_in cmd in
+    let rec loop acc =
+      match input_line ic with
+      | line -> loop (line :: acc)
+      | exception End_of_file -> List.rev acc
+    in
+    let lines = loop [] in
+    ignore (Unix.close_process_in ic);
+    List.filter_map (fun l ->
+      match String.split_on_char '\x1f' l with
+      | [ h; d; a; s ] -> Some (h, d, a, s)
+      | _ -> None) lines
+
+(* Per-repo git-log section for the diff page: the opam-repository commits
+   between the two snapshots' recorded HEADs. *)
+let repo_changes_section ~dir_old ~dir_new =
+  (* Read the log oldest -> newest regardless of which snapshot is the
+     page's base vs target (created is ISO-8601, so string compare is
+     chronological). *)
+  let dir_old, dir_new =
+    if snapshot_created dir_old <= snapshot_created dir_new
+    then dir_old, dir_new else dir_new, dir_old in
+  let old_commits = snapshot_repo_commits dir_old in
+  List.concat_map (fun (path, new_commit) ->
+    match List.assoc_opt path old_commits with
+    | None -> []
+    | Some old_commit ->
+      let repo_name = Filename.basename path in
+      let rows = git_log_range ~repo:path ~old_commit ~new_commit in
+      let header =
+        h3 [ txt (Printf.sprintf "%s  %s..%s" repo_name
+                    (Templates.short_sha old_commit)
+                    (Templates.short_sha new_commit)) ] in
+      let body =
+        match rows with
+        | [] ->
+          [ p [ em [ txt "No commits in this range (the newer snapshot's \
+                          HEAD is not a descendant of the older one, or the \
+                          repo is unavailable)." ] ] ]
+        | _ ->
+          let truncated =
+            if List.length rows >= 500 then
+              [ p [ em [ txt "(showing first 500 commits)" ] ] ] else [] in
+          truncated @
+          [ table ~a:[ a_class [ "data" ] ]
+              ~thead:(thead [ tr [ th [ txt "Commit" ]; th [ txt "Date" ];
+                                   th [ txt "Author" ]; th [ txt "Subject" ] ] ])
+              (List.map (fun (h, d, a, s) ->
+                 tr [ td [ Templates.sha_span h ]; td [ txt d ];
+                      td [ txt a ]; td [ txt s ] ]) rows) ]
+      in
+      header :: body
+  ) (snapshot_repo_commits dir_new)
+
 let snapshot_diff ~ctx name key_old key_new =
   object
     inherit Resource.t
@@ -1409,12 +1483,19 @@ let snapshot_diff ~ctx name key_old key_new =
                  ~thead:diff_table_thead
                  (List.map (render_change_row ~profile_name:name ~html_dir) changes) ]
       in
+      (* opam-repository commits between the two snapshots' recorded HEADs. *)
+      let repo_section =
+        h2 [ txt "Repository commits" ]
+        :: repo_changes_section ~dir_old ~dir_new
+      in
       Context.respond_ok web_ctx ([
         Templates.style_block; crumbs;
         h2 [ txt (Printf.sprintf "%s — diff" name) ];
         p [ txt "From "; Templates.sha_span key_old;
             txt " to "; Templates.sha_span key_new ];
-      ] @ incomplete_notice @ body)
+      ] @ incomplete_notice
+        @ (h2 [ txt "Package changes" ] :: body)
+        @ repo_section)
   end
 
 (* ── /profiles/<name>/recent[?n=K&page=N&status=fail|change] ──── *)
