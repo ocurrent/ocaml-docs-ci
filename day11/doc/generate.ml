@@ -893,30 +893,13 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
     | None -> ([], OpamPackage.Name.Map.empty)
   in
   (* The driver is just a binary — it doesn't need to match the
-     packages being documented. When unpinned, pick the latest
-     non-avoid-version [ocaml-base-compiler] available in the profile's
-     repos — that way running against an older opam-repository commit
-     still finds a solvable driver compiler. *)
-  let pick_latest_driver_compiler () =
-    let n = OpamPackage.Name.of_string "ocaml-base-compiler" in
-    let versions = Day11_opam.Git_packages.get_versions packages n in
-    let non_avoided = OpamPackage.Version.Map.filter
-      (fun _v opam -> not (OpamFile.OPAM.has_flag Pkgflag_AvoidVersion opam))
-      versions in
-    let candidates = if OpamPackage.Version.Map.is_empty non_avoided
-      then versions else non_avoided in
-    OpamPackage.Version.Map.max_binding_opt candidates
-    |> Option.map (fun (v, _) -> OpamPackage.create n v)
-  in
-  let driver_compiler = match driver_compiler with
-    | Some c -> c
-    | None ->
-      match pick_latest_driver_compiler () with
-      | Some pkg -> pkg
-      | None ->
-        failwith "resolve_tools: no [ocaml-base-compiler] package \
-                  found in the profile's opam_repositories"
-  in
+     packages being documented, so we deliberately do NOT pin its
+     compiler when the profile leaves [driver_compiler] on auto.
+     Leaving [ocaml_version] unset lets the solver pick any compatible
+     [ocaml-base-compiler] (>= 4.08), so a freshly released compiler
+     that [odoc-driver] can't yet build against doesn't sink the whole
+     doc run — the solver just settles on an older one that works. A
+     profile may still pin [driver_compiler] explicitly to override. *)
   (* Pick the latest available [odoc-driver]. Same shape as
      {!pick_latest_odoc} below — picks across the profile's repos so
      a master overlay's [odoc-driver.3.2.0+master.<sha>] supersedes
@@ -985,7 +968,7 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
       | `Driver ->
         let r = Day11_opam_build.Tools.plan_tool ~sw env benv
           ~packages ~repos ~doc:false ~cache
-          ~ocaml_version:driver_compiler driver_pkg in
+          ?ocaml_version:driver_compiler driver_pkg in
         (`Driver, r)
       | `Odoc compiler_v ->
         let r = Day11_opam_build.Tools.plan_tool ~sw env benv
