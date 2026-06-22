@@ -90,6 +90,10 @@ let record_input env ~layer ~node ~benv ?patches ?strategy
             })
           node.Build.deps;
       stack = Container_backend.collect_transitive_dep_hashes node;
+      build_deps =
+        List.sort String.compare
+          (List.map OpamPackage.to_string
+             (Container_backend.collect_transitive_dep_pkgs node));
       installed_libs = [];
       installed_docs = [];
       patches =
@@ -209,6 +213,10 @@ let record_attempt env ~layer ~node ~benv ~timing ?patches
                    })
                  node.Build.deps;
              stack = Container_backend.collect_transitive_dep_hashes node;
+             build_deps =
+               List.sort String.compare
+                 (List.map OpamPackage.to_string
+                    (Container_backend.collect_transitive_dep_pkgs node));
              installed_libs = [];
              installed_docs = [];
              patches =

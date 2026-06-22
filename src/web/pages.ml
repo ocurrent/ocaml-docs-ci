@@ -1692,6 +1692,46 @@ let package_index ~ctx name pkg =
 
 (* ── /profiles/<name>/p/<pkg>/<ver> ───────────────────────────── *)
 
+(** Percent-encode a string for use in a URL query (GitHub issue
+    title/body/search). Conservative: only unreserved chars pass
+    through, everything else (incl. newlines and spaces) is %XX. *)
+let urlencode s =
+  let buf = Buffer.create (String.length s * 3) in
+  String.iter (fun c ->
+    match c with
+    | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '-' | '_' | '.' | '~' ->
+      Buffer.add_char buf c
+    | c -> Buffer.add_string buf (Printf.sprintf "%%%02X" (Char.code c)))
+    s;
+  Buffer.contents buf
+
+(** Substring test without allocation (used to pre-filter big
+    [build.jsonl] lines before JSON-parsing). *)
+let str_contains s sub =
+  let n = String.length s and m = String.length sub in
+  if m = 0 then true
+  else
+    let rec at i j =
+      if j = m then true
+      else if i + j >= n then false
+      else if s.[i + j] = sub.[j] then at i (j + 1)
+      else false
+    in
+    let rec loop i = if i + m > n then false else if at i 0 then true else loop (i + 1) in
+    loop 0
+
+(** Minimal HTML escape for text interpolated into raw-HTML
+    [Unsafe.data] fragments (dep names, hashes). *)
+let esc_html s =
+  let b = Buffer.create (String.length s) in
+  String.iter (fun c -> match c with
+    | '&' -> Buffer.add_string b "&amp;"
+    | '<' -> Buffer.add_string b "&lt;"
+    | '>' -> Buffer.add_string b "&gt;"
+    | '"' -> Buffer.add_string b "&quot;"
+    | c -> Buffer.add_char b c) s;
+  Buffer.contents b
+
 let package_version ~ctx name pkg ver =
   object
     inherit Resource.t
@@ -1734,6 +1774,31 @@ let package_version ~ctx name pkg ver =
           "package: " ^ pkg;
         None, ver;
       ] in
+      (* Map build_hash -> transitive build-deps for this version. The
+         closure is recorded in each build layer's [build.json]
+         ([Build_meta.t.build_deps]); layers are content-addressed and
+         shared across snapshots, so one [Build_meta.load] per distinct
+         build_hash (keyed off [os_dir]) suffices — no snapshot sweep.
+         Doc nodes and pre-[build_deps] layers yield [], so their hashes
+         are simply absent from the table. Drives the inline "Deps"
+         column and the compare control. *)
+      let build_deps_map =
+        let tbl : (string, string list) Hashtbl.t = Hashtbl.create 64 in
+        (match os_dir_for ~ctx name with
+         | None -> ()
+         | Some os_dir ->
+           List.iter (fun (e : Day11_lib.History.entry) ->
+             if String.length e.build_hash > 0
+                && not (Hashtbl.mem tbl e.build_hash) then
+               let layer_dir =
+                 Day11_layer.Layer.(dir (of_hash ~os_dir e.build_hash)) in
+               match Day11_opam_layer.Build_meta.load layer_dir with
+               | Ok bm when bm.build_deps <> [] ->
+                 Hashtbl.replace tbl e.build_hash bm.build_deps
+               | _ -> ())
+             entries);
+        tbl
+      in
       let history_rows = List.map (fun (e : Day11_lib.History.entry) ->
         (* Prefer linking to the OCurrent job page (gives a Rebuild
            button and structured log) when we can find it; fall back
@@ -1778,6 +1843,24 @@ let package_version ~ctx name pkg ver =
             else txt "—"
           else em [ txt "—" ]
         in
+        (* Inline build-deps: a folded [<details>] of the transitive
+           build-deps, plus a checkbox to pick this build for the
+           compare tool above the table. Build rows only. *)
+        let deps_cell =
+          if is_doc_entry then td [ em [ txt "—" ] ]
+          else
+            match Hashtbl.find_opt build_deps_map e.build_hash with
+            | None -> td [ em [ txt "—" ] ]
+            | Some deps ->
+              let deps_li =
+                String.concat ""
+                  (List.map (fun d -> "<li>" ^ esc_html d ^ "</li>") deps) in
+              td [ Unsafe.data (Printf.sprintf
+                "<label title=\"select to compare\">\
+                 <input type=\"checkbox\" class=\"bd-sel\" value=\"%s\"> </label>\
+                 <details><summary>%d deps</summary><ul>%s</ul></details>"
+                (esc_html e.build_hash) (List.length deps) deps_li) ]
+        in
         tr [ td [ txt e.ts ];
              td [ txt e.run ];
              td [ Templates.status_span e.status ];
@@ -1785,6 +1868,7 @@ let package_version ~ctx name pkg ver =
              td [ universe_cell ];
              td [ blessed_cell ];
              td [ hash_cell ];
+             deps_cell;
              td error_cell ]
       ) entries in
       let history_block = match history_rows with
@@ -1798,29 +1882,278 @@ let package_version ~ctx name pkg ver =
                                    th [ txt "Universe" ];
                                    th [ txt "Blessed" ];
                                    th [ txt "Hash" ];
+                                   th [ txt "Deps" ];
                                    th [ txt "Error" ] ] ])
               history_rows ]
       in
-      let docs_para =
-        let docs_present =
-          match html_dir_for ~ctx name with
-          | Some h -> docs_exist ~html_dir:h pkg ver
-          | None -> false
+      (* Diagnostic blurb: when docs aren't available, explain why —
+         build failure vs doc-generation failure — and link the
+         relevant *blessed* job plus a "report this" affordance. Driven
+         entirely off the history entries (no dag.json). *)
+      let is_doc_cat (e : Day11_lib.History.entry) =
+        String.length e.category >= 3 && String.sub e.category 0 3 = "doc"
+      in
+      let latest_where pred =
+        List.filter pred entries
+        |> List.sort (fun (a : Day11_lib.History.entry) b ->
+             compare b.ts a.ts)
+        |> function [] -> None | x :: _ -> Some x
+      in
+      let blessed_build =
+        latest_where (fun (e : Day11_lib.History.entry) ->
+          (not (is_doc_cat e)) && e.blessed) in
+      let blessed_doc =
+        latest_where (fun (e : Day11_lib.History.entry) ->
+          is_doc_cat e && e.blessed) in
+      let job_link bh label =
+        let target = match job_id_of bh with
+          | Some job_id -> "/job/" ^ job_id
+          | None -> Printf.sprintf "/profiles/%s/builds/%s/log" name bh
         in
+        a ~a:[ a_href target ] [ txt label ]
+      in
+      let os_label =
+        match Profile.load ~dir:ctx.profile_dir ~name with
+        | Ok (p : Profile.t) ->
+          Printf.sprintf "%s %s"
+            (String.capitalize_ascii p.os_distribution) p.os_version
+        | Error _ -> "this platform"
+      in
+      let report_affordance ~repo ~title ~body ~lead =
+        let new_url = Printf.sprintf
+          "https://github.com/%s/issues/new?title=%s&body=%s"
+          repo (urlencode title) (urlencode body) in
+        let search_url = Printf.sprintf
+          "https://github.com/%s/issues?q=%s"
+          repo (urlencode ("is:issue " ^ pkg)) in
+        p [ txt lead; txt " ";
+            a ~a:[ a_href search_url ] [ txt "find issue" ];
+            txt " · ";
+            a ~a:[ a_href new_url ] [ txt "report issue" ] ]
+      in
+      (* Absolute URL of this page, so a filed issue links back. Host
+         comes from the request; behind Caddy the public scheme is in
+         [x-forwarded-proto] (default https). *)
+      let page_url =
+        let headers = Cohttp.Request.headers (Context.request web_ctx) in
+        let path = Printf.sprintf "/profiles/%s/p/%s/%s" name pkg ver in
+        match Cohttp.Header.get headers "host" with
+        | None | Some "" -> path
+        | Some host ->
+          let proto = match Cohttp.Header.get headers "x-forwarded-proto" with
+            | Some p when p <> "" -> p | _ -> "https" in
+          Printf.sprintf "%s://%s%s" proto host path
+      in
+      let build_fail_phrase = function
+        | "depext_unavailable" -> "a missing system dependency"
+        | "transient_failure" -> "a transient infrastructure error"
+        | _ -> "a build error" in
+      (* Cascade attribution. A skipped (cascaded) build leaves no
+         history.jsonl entry — only a [build.jsonl] line in the run log:
+         {"pkg":..,"status":"cascade","failed_dep":".."}. Find the most
+         recent such line for this version, scanning snapshots
+         newest-first and (within each) the newest run. Only called on
+         the no-history path, so it costs nothing on the happy path. *)
+      let latest_cascade_dep () =
+        let pkg_needle = Printf.sprintf "\"pkg\":\"%s\"" pkg_str in
+        let scan path =
+          if not (Sys.file_exists path) then None
+          else begin
+            let ic = open_in path in
+            Fun.protect ~finally:(fun () -> close_in ic) (fun () ->
+              let found = ref None in
+              (try while true do
+                 let line = input_line ic in
+                 (* Only the [kind:"build"] cascade names the real root
+                    dependency. Doc-node cascades (compile/doc-all/link)
+                    depend on this package's own build, so their
+                    [failed_dep] is the package itself — skip those. *)
+                 if str_contains line pkg_needle
+                    && str_contains line "\"status\":\"cascade\""
+                    && str_contains line "\"kind\":\"build\"" then
+                   (match Yojson.Safe.from_string line with
+                    | `Assoc a ->
+                      let get k = match List.assoc_opt k a with
+                        | Some (`String s) -> Some s | _ -> None in
+                      if get "pkg" = Some pkg_str
+                         && get "status" = Some "cascade"
+                         && get "kind" = Some "build" then
+                        (match get "failed_dep" with
+                         | Some d when d <> pkg_str -> found := Some d
+                         | _ -> ())
+                    | _ -> () | exception _ -> ())
+               done with End_of_file -> ());
+              !found)  (* last match in the file = most recent *)
+          end
+        in
+        let snap_dep snap =
+          match Bos.OS.Dir.contents Fpath.(snap / "runs") with
+          | Error _ -> None
+          | Ok entries ->
+            (* Scan runs newest-first: a snapshot's *newest* run may not
+               have touched this package (doc-only re-run, partial run),
+               while an older one recorded the cascade. *)
+            List.map Fpath.to_string entries
+            |> List.sort (fun a b -> compare b a)
+            |> List.find_map (fun rd ->
+                 scan (Filename.concat rd "build.jsonl"))
+        in
+        List.find_map snap_dep snaps
+      in
+      let cascade_blurb dep =
+        let dep_link =
+          match String.index_opt dep '.' with
+          | None ->
+            a ~a:[ a_href (Printf.sprintf "/profiles/%s/p/%s" name dep) ]
+              [ txt dep ]
+          | Some i ->
+            let n = String.sub dep 0 i in
+            let v = String.sub dep (i + 1) (String.length dep - i - 1) in
+            a ~a:[ a_href (Printf.sprintf "/profiles/%s/p/%s/%s" name n v) ]
+              [ txt dep ]
+        in
+        [ div ~a:[ a_class [ "warn" ] ]
+            [ p [ span ~a:[ a_class [ "cascade" ] ] [ txt "⚠ Not built" ];
+                  txt (Printf.sprintf
+                    " — a dependency of %s failed to build, so it was \
+                     skipped (cascade)." pkg_str) ];
+              p [ txt "Failing dependency: "; dep_link ];
+              p [ txt "This is usually not a problem with "; txt pkg;
+                  txt " itself — it should build once the dependency does. \
+                       Follow the dependency above to see why it failed." ] ] ]
+      in
+      let docs_present =
+        match html_dir_for ~ctx name with
+        | Some h -> docs_exist ~html_dir:h pkg ver
+        | None -> false
+      in
+      let status_block =
         if docs_present then
-          p [ a ~a:[ a_href (Printf.sprintf
-                               "/profiles/%s/docs/p/%s/%s/doc/index.html"
-                               name pkg ver) ]
-                [ txt "Open rendered docs" ] ]
+          [ p [ a ~a:[ a_href (Printf.sprintf
+                                 "/profiles/%s/docs/p/%s/%s/doc/index.html"
+                                 name pkg ver) ]
+                  [ txt "Open rendered docs" ] ] ]
         else
-          p [ em [ txt "No rendered docs for this version." ] ]
+          match blessed_build, blessed_doc with
+          | Some bb, _ when bb.status <> "success" ->
+            let body = Printf.sprintf
+              "Package %s failed to build on %s, so no documentation could \
+               be produced.\n\nBuild hash: %s\nCategory: %s\n%sProfile: %s\n\
+               Page: %s\n"
+              pkg_str os_label bb.build_hash bb.category
+              (match bb.error with
+               | Some e -> "Error: " ^ e ^ "\n" | None -> "")
+              name page_url in
+            [ div ~a:[ a_class [ "error-box" ] ]
+                ([ p [ span ~a:[ a_class [ "fail" ] ] [ txt "✗ Build failed" ];
+                       txt (Printf.sprintf " — %s." (build_fail_phrase bb.category)) ];
+                   p [ txt "Blessed build job: ";
+                       job_link bb.build_hash "view build log" ] ]
+                 @ (match bb.error with
+                    | Some e -> [ p [ code [ txt e ] ] ] | None -> [])
+                 @ [ report_affordance ~repo:"ocurrent/ocaml-docs-ci"
+                       ~title:(Printf.sprintf "Build failure: %s" pkg_str)
+                       ~body
+                       ~lead:(Printf.sprintf
+                         "If you believe %s should compile correctly on %s, \
+                          please comment on the ocurrent/ocaml-docs-ci issues:"
+                         pkg_str os_label) ]) ]
+          | _, Some bd when bd.status <> "success" ->
+            let univ = if bd.universe = "" then "(unknown)" else bd.universe in
+            let body = Printf.sprintf
+              "Documentation generation failed for %s, although the package \
+               built successfully.\n\nUniverse: %s\nDoc job hash: %s\n\
+               Profile: %s\nPage: %s\n"
+              pkg_str univ bd.build_hash name page_url in
+            [ div ~a:[ a_class [ "warn" ] ]
+                [ p [ span ~a:[ a_class [ "fail" ] ] [ txt "⚠ Docs failed" ];
+                      txt " — the package built, but odoc failed to \
+                           generate documentation." ];
+                  p ([ txt "Blessed docs job: ";
+                       job_link bd.build_hash "view docs log" ]
+                     @ (if bd.universe <> "" then
+                          [ txt " · universe: ";
+                            a ~a:[ a_href (Printf.sprintf
+                                             "/profiles/%s/u/%s" name bd.universe) ]
+                              [ Templates.sha_span bd.universe ] ]
+                        else []));
+                  report_affordance ~repo:"ocaml/odoc"
+                    ~title:(Printf.sprintf "Doc generation failure: %s" pkg_str)
+                    ~body
+                    ~lead:(Printf.sprintf
+                      "If you believe %s's documentation should build, please \
+                       comment on the ocaml/odoc issues:" pkg_str) ] ]
+          | Some _, _ ->
+            [ p [ em [ txt "No rendered docs found on disk, though the latest \
+                            blessed build and docs succeeded — the output may \
+                            still be syncing." ] ] ]
+          | None, _ ->
+            (match latest_cascade_dep () with
+             | Some dep -> cascade_blurb dep
+             | None ->
+               [ p [ em [ txt "Not built in the latest run: a build dependency \
+                               may have failed, or this version isn't the \
+                               blessed one. See the history below." ] ] ])
+      in
+      (* Build-deps explorer: per-build folded dep lists plus a
+         client-side "compare selected" diff (version changes /
+         present-in-only-some). Data is the build_deps.jsonl side-log;
+         doc nodes have none, and older data has none until a run with
+         the side-log writer lands — in which case this renders nothing. *)
+      (* Compare control, shown above the History table. The per-build
+         dep lists + checkboxes live inline in the table's "Deps" column;
+         this just wires the selected builds into a version diff. Only
+         worth showing when ≥2 builds have recorded deps. *)
+      let compare_control =
+        if Hashtbl.length build_deps_map < 2 then []
+        else begin
+          let data_json =
+            Yojson.Safe.to_string
+              (`Assoc (Hashtbl.fold (fun k v acc ->
+                 (k, `List (List.map (fun d -> `String d) v)) :: acc)
+                 build_deps_map [])) in
+          let js_logic = {script|
+(function(){
+  function split(s){var i=s.lastIndexOf('.');return i<0?[s,'']:[s.slice(0,i),s.slice(i+1)];}
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function run(){
+    var sel=[].slice.call(document.querySelectorAll('.bd-sel:checked')).map(function(c){return c.value;});
+    var out=document.getElementById('bd-cmp-result');
+    if(sel.length<2){out.innerHTML='<em>Tick at least two build rows below, then Compare.</em>';return;}
+    var maps=sel.map(function(h){var m={};(BD_DEPS[h]||[]).forEach(function(d){var p=split(d);m[p[0]]=p[1];});return m;});
+    var names={};maps.forEach(function(m){for(var k in m)names[k]=1;});
+    var rows='';
+    Object.keys(names).sort().forEach(function(n){
+      var vs=maps.map(function(m){return m.hasOwnProperty(n)?m[n]:null;});
+      if(vs.every(function(v){return v===vs[0];}))return;
+      var cells=vs.map(function(v){return '<td>'+(v===null?'<span style="color:#999">absent</span>':esc(v))+'</td>';}).join('');
+      rows+='<tr><td>'+esc(n)+'</td>'+cells+'</tr>';
+    });
+    var hdr=sel.map(function(h){return '<th>'+esc(h.slice(0,12))+'</th>';}).join('');
+    out.innerHTML = rows
+      ? '<table class="data"><thead><tr><th>Dependency</th>'+hdr+'</tr></thead><tbody>'+rows+'</tbody></table>'
+      : '<em>No dependency differences among the selected builds.</em>';
+  }
+  var btn=document.getElementById('bd-compare-btn');
+  if(btn)btn.addEventListener('click',run);
+})();
+|script} in
+          [ Unsafe.data (Printf.sprintf
+              "<p class=\"crumbs\">Tick two or more build rows' checkboxes \
+               (Deps column), then <button type=\"button\" \
+               id=\"bd-compare-btn\">compare deps</button> for version \
+               differences.</p><div id=\"bd-cmp-result\"></div>\
+               <script>var BD_DEPS=%s;\n%s</script>"
+              data_json js_logic) ]
+        end
       in
       Context.respond_ok web_ctx ([
         Templates.style_block; crumbs;
-        h2 [ txt pkg_str ];
-        docs_para;
-        h3 [ txt "History" ];
-      ] @ history_block)
+        h2 [ txt pkg_str ] ]
+        @ status_block
+        @ [ h3 [ txt "History" ] ]
+        @ compare_control
+        @ history_block)
   end
 
 (* ── /profiles/<name>/u/<hash> ────────────────────────────────── *)

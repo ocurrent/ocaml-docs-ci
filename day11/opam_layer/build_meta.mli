@@ -33,6 +33,12 @@ type t = {
       reconstruct the rootfs without walking and re-ordering the
       dependency DAG itself. Empty in older [build.json] files (fall
       back to deriving it from the DAG). *)
+  build_deps : string list;
+  (** Transitive build-dependency closure as sorted ["name.version"]
+      strings (excludes this package). The human/diff-friendly
+      projection of {!stack} — materialised here so a reader can show
+      a build's full dep set from one file without walking the layer
+      tree. Empty in older [build.json] files. *)
   installed_libs : string list;
   (** Files under [/home/opam/.opam/default/lib/] that this build
       installed. Discovered by {!Installed_files.scan_libs} after

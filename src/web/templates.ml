@@ -28,9 +28,16 @@ let style = {|
   .pending { color: #7f8c8d; font-style: italic; }
   .warn { background: #fef9e7; border-left: 3px solid #f1c40f;
           padding: 0.4em 0.7em; margin: 0.5em 0; }
+  .error-box { background: #fdedec; border-left: 3px solid #c0392b;
+               padding: 0.4em 0.7em; margin: 0.5em 0; }
   .sha { font-family: ui-monospace, "SF Mono", Menlo, monospace;
          font-size: 0.9em; color: #7f8c8d; }
   .pager { margin-top: 1em; font-size: 0.9em; }
+  table.data details summary { cursor: pointer; color: #2c3e50; }
+  table.data details ul { margin: 0.3em 0; padding-left: 1.2em;
+                          columns: 2; font-size: 0.9em; }
+  table.data details[open] { min-width: 22em; }
+  #bd-cmp-result { margin: 0.5em 0; }
 |}
 
 let style_block = Tyxml.Html.style [ Unsafe.data style ]

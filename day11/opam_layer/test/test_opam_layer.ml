@@ -17,6 +17,7 @@ let test_build_meta_roundtrip () = with_tmp_dir @@ fun layer_dir ->
       { Build_meta.pkg = "cppo.1.6"; hash = "def456" };
     ];
     stack = [ "abc123"; "def456"; "ocaml111" ];
+    build_deps = [ "cppo.1.6"; "dune.3.0"; "ocaml.5.2.0" ];
     installed_libs = [ "yojson/yojson.cmi"; "yojson/META" ];
     installed_docs = [];
     patches = [];
@@ -36,6 +37,8 @@ let test_build_meta_roundtrip () = with_tmp_dir @@ fun layer_dir ->
     (List.map (fun (d : Build_meta.dep) -> d.hash) loaded.deps);
   Alcotest.(check (list string)) "stack"
     [ "abc123"; "def456"; "ocaml111" ] loaded.stack;
+  Alcotest.(check (list string)) "build_deps"
+    [ "cppo.1.6"; "dune.3.0"; "ocaml.5.2.0" ] loaded.build_deps;
   Alcotest.(check string) "base_image" "debian-12-ocaml-5.2" loaded.base_image;
   Alcotest.(check string) "cmd" "opam-build -v yojson.2.2.2" loaded.cmd;
   Alcotest.(check string) "universe" "u-deadbeef" loaded.universe;

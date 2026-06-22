@@ -37,6 +37,7 @@ type t = {
     [@to_yojson dep_list_to_yojson]
     [@of_yojson dep_list_of_yojson];
   stack : string list; [@default []]
+  build_deps : string list; [@default []]
   installed_libs : string list; [@default []]
   installed_docs : string list; [@default []]
   patches : string list; [@default []]

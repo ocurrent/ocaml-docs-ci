@@ -67,5 +67,11 @@ val collect_transitive_dep_dirs :
     overlay-stack order. Used as the default [?build_dirs] when none
     is supplied. *)
 
+val collect_transitive_dep_pkgs :
+  Day11_opam_layer.Build.t -> OpamPackage.t list
+(** Transitive dependency packages of a build node (the full closure,
+    deduped, in overlay-stack order). The package-level view of
+    {!collect_transitive_dep_hashes}. *)
+
 include Backend.S
 (** {1 Backend interface} *)
