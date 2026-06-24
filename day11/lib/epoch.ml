@@ -9,18 +9,23 @@ type t = {
 let version = "v2"  (* v2: per-universe doc nodes (compile/link per (bh,U)) *)
 
 (* The epoch hash identifies a set of docs all produced by the same doc
-   toolchain. It folds in [version] plus the build hashes of the doc
-   tools (the odoc-driver/voodoo and the per-compiler odoc builds). Those
-   are content-addressed build hashes, so they transitively capture the
-   tools' source (e.g. an odoc-master overlay moving), their deps
-   (sherlodoc / odig / odoc-md / …, which the driver pulls in), and the
-   compiler / base image. Per-package inputs (package versions,
-   individual builds) are deliberately NOT included — those update
-   incrementally within an epoch; folding them in would mint a new epoch
-   on every package bump and force a full rebuild each time.
-   [tool_hashes] is sorted+deduped so ordering doesn't affect the hash. *)
-let compute ~tool_hashes =
-  let key = String.concat ":" (List.sort_uniq String.compare tool_hashes) in
+   toolchain. It folds in [version] plus the resolved *versions* of the
+   doc-format-determining tool packages: odoc, odoc-driver (voodoo lives
+   inside it), odoc-md, sherlodoc and odig. We key on package versions
+   ([name.version]) rather than the tools' content-addressed build
+   hashes deliberately: a build hash sits at the top of the tool's full
+   dependency closure, so it moved whenever *any* transitive dep bumped
+   in opam-repository — minting a new epoch (and forcing a full re-link
+   of the world) every day or two for changes that don't affect odoc's
+   output at all. Versions move only when a tool that actually shapes the
+   HTML changes. Master/overlay builds are still captured, because those
+   encode the git SHA in the version string (e.g. [odoc.3.2.0+master.<sha>]).
+   Per-package inputs (the documented packages' versions, individual
+   builds) are deliberately NOT included — those update incrementally
+   within an epoch; folding them in would mint a new epoch on every
+   package bump. [inputs] is sorted+deduped so ordering doesn't matter. *)
+let compute ~inputs =
+  let key = String.concat ":" (List.sort_uniq String.compare inputs) in
   Printf.sprintf "%s:%s" version key
   |> Digest.string |> Digest.to_hex
 
@@ -58,7 +63,12 @@ let current ~base_dir =
     else None
   with Unix.Unix_error _ -> None
 
-let gc ~base_dir ~keep =
+(* [to_gc ~base_dir ~keep] is the *selection* half of gc: the epoch dirs
+   that should be reclaimed, keeping the [keep] most-recent plus the
+   currently-live one. Pure and fast (readdir + stat) — the caller is
+   responsible for the actual (potentially very slow, multi-million-file)
+   deletion, which must not run on a latency-sensitive event loop. *)
+let to_gc ~base_dir ~keep =
   let base_s = Fpath.to_string base_dir in
   let entries =
     try Sys.readdir base_s |> Array.to_list
@@ -86,7 +96,11 @@ let gc ~base_dir ~keep =
       List.filter (fun (_, dir, _) -> not (Fpath.equal dir live.dir)) to_delete
     | None -> to_delete
   in
-  List.iter (fun (_, dir, _) ->
+  List.map (fun (_, dir, _) -> dir) to_delete
+
+let gc ~base_dir ~keep =
+  let dirs = to_gc ~base_dir ~keep in
+  List.iter (fun dir ->
     Bos.OS.Dir.delete ~recurse:true dir |> ignore
-  ) to_delete;
-  List.length to_delete
+  ) dirs;
+  List.length dirs

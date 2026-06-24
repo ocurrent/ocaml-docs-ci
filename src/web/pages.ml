@@ -1836,11 +1836,11 @@ let package_version ~ctx name pkg ver =
               [ Templates.sha_span universe ]
           else em [ txt "—" ]
         in
-        (* "Blessed" is a per-universe doc concept; show it on doc rows. *)
+        (* The blessed flag is recorded on both build and doc nodes (the
+           node's universe is the blessed one for this package), so show
+           it on every row that carries it — not just doc rows. *)
         let blessed_cell =
-          if is_doc_entry then
-            if blessed then span ~a:[ a_class [ "ok" ] ] [ txt "blessed" ]
-            else txt "—"
+          if blessed then span ~a:[ a_class [ "ok" ] ] [ txt "blessed" ]
           else em [ txt "—" ]
         in
         (* Inline build-deps: a folded [<details>] of the transitive

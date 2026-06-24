@@ -372,15 +372,20 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,
      once confirmed in the web UI, swaps [html-live] to the freshly-built
-     epoch (and gc's old epochs, keeping 3). Independent of [builds] so a
-     promote can be triggered whenever, while the previous epoch keeps
-     serving until then. Only when this profile actually emits docs. *)
+     epoch. A sibling [Epoch_gc] node reclaims old epoch dirs as a
+     separate, independently-confirmed action (deleting a multi-million-
+     file epoch tree is too slow to bundle into the promote click).
+     Independent of [builds] so a promote can be triggered whenever, while
+     the previous epoch keeps serving until then. Only when this profile
+     actually emits docs. *)
   match doc_plan with
   | None -> builds
   | Some plan ->
     Current.all
       [ builds;
         Epoch_promote.promote ~base_dir:plan.epoch_base
+          ~epoch_hash:plan.epoch_hash;
+        Epoch_gc.gc ~base_dir:plan.epoch_base
           ~epoch_hash:plan.epoch_hash ]
 
 (* Fan out across profiles: each profile gets its own sub-pipeline

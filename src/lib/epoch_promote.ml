@@ -47,13 +47,13 @@ module Op = struct
     in
     Lwt.return
       (try
+         (* Only the symlink swap — instant. Reclaiming old epoch dirs is
+            a separate, decoupled action (see {!Epoch_gc}): each epoch dir
+            can hold millions of files, and deleting one here would block
+            the engine for the whole (multi-minute) delete. *)
          Day11_lib.Epoch.promote ~base_dir epoch;
-         (* Keep the 3 most-recent epochs (plus the live one — gc never
-            deletes the current target). *)
-         let deleted = Day11_lib.Epoch.gc ~base_dir ~keep:3 in
-         Current.Job.log job "Promoted epoch %s -> %a/html-live (gc'd %d old epoch%s)"
-           key.epoch_hash Fpath.pp base_dir deleted
-           (if deleted = 1 then "" else "s");
+         Current.Job.log job "Promoted epoch %s -> %a/html-live"
+           key.epoch_hash Fpath.pp base_dir;
          Ok ()
        with exn ->
          Error (`Msg (Printf.sprintf "epoch promote failed: %s"

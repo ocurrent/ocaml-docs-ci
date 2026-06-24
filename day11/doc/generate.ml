@@ -1001,6 +1001,31 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
     Printf.printf "Driver: %d nodes\n%!" (List.length driver_tool.builds);
     Some (driver_tool, odoc_tools, all_source_dirs)
 
+(* The doc-format-determining tool packages: a change to any of these
+   versions can change odoc's HTML output, so it mints a new epoch.
+   Everything else in the tools' dependency closures is deliberately
+   ignored (see Epoch.compute) to stop deep transitive dep bumps from
+   churning the epoch. *)
+let epoch_tool_names =
+  List.map OpamPackage.Name.of_string
+    [ "odoc"; "odoc-driver"; "odoc-md"; "sherlodoc"; "odig" ]
+
+(* The resolved [name.version] of each {!epoch_tool_names} package found
+   in the doc tools' build closures — the input to [Epoch.compute].
+   Scans both the driver closure (odoc-driver + voodoo + sherlodoc/odig/
+   odoc-md) and the per-compiler odoc closures (odoc itself); sort_uniq
+   collapses the odoc version that recurs across compilers. *)
+let doc_format_versions ~(driver_tool : Tool.t) ~odoc_tools =
+  let all_builds =
+    driver_tool.builds
+    @ List.concat_map (fun (_, (t : Tool.t)) -> t.builds) odoc_tools in
+  List.filter_map (fun (b : build) ->
+    if List.exists (OpamPackage.Name.equal (OpamPackage.name b.pkg))
+         epoch_tool_names
+    then Some (OpamPackage.to_string b.pkg) else None)
+    all_builds
+  |> List.sort_uniq String.compare
+
 let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
     ~mounts ~build_one
     ?(on_pkg_complete = fun _ ~success:_ -> ())
@@ -1024,9 +1049,8 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
   | None -> None
   | Some (driver_tool, odoc_tools, all_source_dirs) ->
   let epoch_hash =
-    Day11_lib.Epoch.compute ~tool_hashes:
-      ((driver_tool : Tool.t).hash
-       :: List.map (fun (_, (t : Tool.t)) -> t.hash) odoc_tools)
+    Day11_lib.Epoch.compute
+      ~inputs:(doc_format_versions ~driver_tool ~odoc_tools)
   in
   let epoch = Day11_lib.Epoch.create ~base_dir:epoch_base epoch_hash in
   let html_dir = Fpath.(epoch.Day11_lib.Epoch.dir / "html") in
