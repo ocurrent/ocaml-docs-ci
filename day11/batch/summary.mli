@@ -30,11 +30,11 @@ val generate_status :
   snapshot_dir:Fpath.t ->
   packages_dir:Fpath.t ->
   run_id:string ->
-  unit
+  Day11_lib.Status_index.t
 (** Regenerate [status.json] from current on-disk history, detecting
-    changes from the previous snapshot. Safe to call from anywhere
-    (e.g. a periodic timer) — it just reads [packages/*/history.jsonl]
-    and writes [snapshot_dir/status.json]. *)
+    changes from the previous snapshot, and return the snapshot. Safe to
+    call from anywhere (e.g. a periodic timer) — it just reads
+    [packages/*/history.jsonl] and writes [snapshot_dir/status.json]. *)
 
 val finish :
   snapshot_dir:Fpath.t ->

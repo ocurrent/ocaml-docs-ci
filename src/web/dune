@@ -11,6 +11,8 @@
   day11.lib
   fpath
   lwt
+  prometheus
+  prometheus-app
   routes
   sqlite3
   tyxml

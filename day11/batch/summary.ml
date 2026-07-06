@@ -39,12 +39,13 @@ let generate_status ~snapshot_dir ~packages_dir ~run_id =
   let status =
     Day11_lib.Status_index.generate ~packages_dir ~run_id ~previous
   in
-  Day11_lib.Status_index.write ~dir:snapshot_dir status
+  Day11_lib.Status_index.write ~dir:snapshot_dir status;
+  status
 
 let finish ~snapshot_dir ~packages_dir ~run_info results =
   let run_id = Day11_lib.Run_log.get_id run_info in
   (* History is written incrementally by [Recorder] now. *)
-  generate_status ~snapshot_dir ~packages_dir ~run_id;
+  ignore (generate_status ~snapshot_dir ~packages_dir ~run_id : Day11_lib.Status_index.t);
   let builds_ok =
     List.length (List.filter (fun (b : build_outcome) -> b.success) results.builds)
   in

@@ -13,6 +13,7 @@ type change = {
 type t = {
   generated : string;
   run_id : string;
+  scanned : int;
   blessed_totals : (string * int) list;
   non_blessed_totals : (string * int) list;
   changes : change list;
@@ -64,6 +65,7 @@ let to_json (t : t) : Yojson.Safe.t =
   `Assoc [
     ("generated", `String t.generated);
     ("run_id", `String t.run_id);
+    ("scanned", `Int t.scanned);
     ("blessed_totals", totals_to_json t.blessed_totals);
     ("non_blessed_totals", totals_to_json t.non_blessed_totals);
     ("changes_since_last", `List (List.map change_to_json t.changes));
@@ -93,9 +95,14 @@ let of_json (json : Yojson.Safe.t) : t option =
            ) l
          | _ -> []
        in
+       let scanned =
+         match List.assoc_opt "scanned" assoc with
+         | Some (`Int n) -> n | _ -> 0
+       in
        Some {
          generated;
          run_id;
+         scanned;
          blessed_totals = totals_of_json
            (match List.assoc_opt "blessed_totals" assoc with
             | Some j -> j | None -> `Assoc []);
@@ -211,6 +218,7 @@ let generate ~packages_dir ~run_id ~previous:_ =
   {
     generated = iso8601_now ();
     run_id;
+    scanned = List.length pkg_dirs;
     blessed_totals = !blessed_totals;
     non_blessed_totals = !non_blessed_totals;
     changes = List.rev !changes;

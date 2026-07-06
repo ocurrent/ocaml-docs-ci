@@ -228,8 +228,10 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     ~env ~os_dir:ctx.os_dir ~packages_dir
     ~blessing_maps ~run_log in
   let on_pkg_complete node ~success =
+    Metrics.record_build ~success;
     Day11_batch.Recorder.record_build recorder node ~success in
   let on_doc_complete node ~blessed ~universe ~success =
+    Metrics.record_doc ~success ~blessed;
     Day11_batch.Recorder.record_doc recorder node ~blessed ~universe ~success in
   (* [plan_doc_dag] forks 9+ fibers (driver + per-compiler odoc),
      each running a [day11-solver-worker] subprocess. Subprocess
@@ -365,9 +367,18 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     (* Status regen: history.jsonl is already up to date (incremental),
        this just re-derives [status.json] from it. Triggered each time
        [list_seq] re-evaluates. *)
-    Day11_batch.Summary.generate_status
-      ~snapshot_dir ~packages_dir
-      ~run_id:(Day11_lib.Run_log.get_id run_log);
+    let status =
+      Day11_batch.Summary.generate_status
+        ~snapshot_dir ~packages_dir
+        ~run_id:(Day11_lib.Run_log.get_id run_log)
+    in
+    let sum = List.fold_left (fun acc (_, n) -> acc + n) 0 in
+    Metrics.set_status
+      ~blessed:(sum status.Day11_lib.Status_index.blessed_totals)
+      ~non_blessed:(sum status.non_blessed_totals)
+      ~scanned:status.scanned
+      ~changes:(List.length status.changes)
+      ~new_packages:(List.length status.new_packages);
     ()
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,

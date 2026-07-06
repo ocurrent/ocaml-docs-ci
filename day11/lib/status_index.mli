@@ -18,6 +18,7 @@ type change = {
 type t = {
   generated : string;                   (** ISO-8601 generation timestamp. *)
   run_id : string;                      (** Unique run identifier. *)
+  scanned : int;                        (** Package directories scanned. *)
   blessed_totals : (string * int) list;     (** Category counts for blessed builds. *)
   non_blessed_totals : (string * int) list; (** Category counts for non-blessed builds. *)
   changes : change list;                (** Status changes since the previous run. *)

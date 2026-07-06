@@ -195,6 +195,10 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
         (nil @--> (Docs_ci_web.Index_page.r ~engine :> Current_web.Resource.t));
         (s "index.html" /? nil
          @--> (Docs_ci_web.Index_page.r ~engine :> Current_web.Resource.t));
+        (* Prometheus scrape target (text exposition format). Served on
+           the dashboard port; unauthenticated, like a normal target. *)
+        (s "metrics" /? nil
+         @--> (Docs_ci_web.Metrics_page.r :> Current_web.Resource.t));
       ]
       @ dashboard_routes
       @ Current_web.routes engine
