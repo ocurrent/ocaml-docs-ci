@@ -23,11 +23,16 @@ let from_docker ~sw env ~image ~layer_dir =
   | _ ->
   let container_id = String.trim create_run.output in
   Log.info (fun m -> m "Exporting container %s" container_id);
-  (* Export and extract with sudo to preserve ownership *)
+  (* Export and extract with sudo to preserve ownership. [-p]
+     (--same-permissions) is essential: without it, tar applies the
+     process umask to extracted directories, so dirs touched during the
+     image build come out 0700 instead of 0755 — making /usr/bin (etc.)
+     non-traversable by the non-root build user, which fails every build
+     with "exec /usr/bin/env: permission denied". *)
   let export_run =
     Day11_sys.Run.run ~sw env
       Bos.Cmd.(v "sh" % "-c"
-               % Printf.sprintf "docker export %s | sudo tar x -C %s"
+               % Printf.sprintf "docker export %s | sudo tar -xp -C %s"
                    container_id fs_s)
       None
   in
