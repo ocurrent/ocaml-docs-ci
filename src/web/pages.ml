@@ -1754,6 +1754,75 @@ let package_version ~ctx name pkg ver =
         let pdir = Fpath.(snap / "packages") in
         Day11_lib.History.read_latest ~packages_dir:pdir ~pkg_str
       ) snaps in
+      (* Fallback for a package this profile *planned* but never
+         dispatched under its own name — a shared dep another profile
+         built, or a build that failed: per-profile [history.jsonl] has
+         nothing, yet the plan-time [packages/<pkg>.<ver>/plan.json]
+         records the node hashes. Synthesise entries from the plan and
+         resolve each hash's outcome from the shared [layer_status.jsonl]
+         so the page shows real status + a job link instead of "No
+         history entries". See doc/package-status-plan-records.md. *)
+      let entries =
+        if entries <> [] then entries
+        else begin
+          let ls = match os_dir_for ~ctx name with
+            | Some od -> load_layer_status_cached od
+            | None -> Hashtbl.create 1 in
+          let short h = String.sub h 0 (min 12 (String.length h)) in
+          let seen : (string, unit) Hashtbl.t = Hashtbl.create 16 in
+          List.concat_map (fun snap ->
+            let pf = Fpath.(snap / "packages" / pkg_str / "plan.json") in
+            match Bos.OS.File.read pf with
+            | Error _ -> []
+            | Ok data ->
+              match (try Some (Yojson.Safe.from_string data) with _ -> None) with
+              | Some (`List nodes) ->
+                let open Yojson.Safe.Util in
+                let parsed = List.filter_map (fun j ->
+                  match j |> member "hash" |> to_string_option with
+                  | None -> None
+                  | Some hash ->
+                    let kind = j |> member "kind" |> to_string_option
+                               |> Option.value ~default:"build" in
+                    let universe = j |> member "universe" |> to_string_option
+                                   |> Option.value ~default:"" in
+                    let blessed = j |> member "blessed" |> to_bool_option
+                                  |> Option.value ~default:false in
+                    Some (hash, kind, universe, blessed)) nodes in
+                (* Build nodes carry per-universe [blessed=false] in the plan;
+                   the recorder instead marks a build entry blessed when it's
+                   the blessed *version* of the package. Mirror that so the
+                   diagnostic banner attributes a build failure to the build,
+                   not the (pending) docs. *)
+                let pkg_blessed = List.exists (fun (_,_,_,b) -> b) parsed in
+                List.filter_map (fun (hash, kind, universe, blessed) ->
+                  if Hashtbl.mem seen hash then None
+                  else begin
+                    Hashtbl.replace seen hash ();
+                    let is_doc =
+                      kind = "doc_all" || kind = "link" || kind = "compile" in
+                    let exit_opt =
+                      match Hashtbl.find_opt ls (short hash) with
+                      | Some (e : Day11_layer.Layer_status.entry) ->
+                        Some e.exit_status
+                      | None -> None in
+                    let status, category = match exit_opt with
+                      | Some 0 ->
+                        "success", (if is_doc then "doc_success" else "success")
+                      | Some _ ->
+                        "failure",
+                        (if is_doc then "doc_failure" else "build_failure")
+                      | None ->
+                        "pending", (if is_doc then "doc" else "build") in
+                    let blessed = if is_doc then blessed else pkg_blessed in
+                    Some { Day11_lib.History.ts = ""; run = "(plan)";
+                           build_hash = hash; status; category; blessed;
+                           error = None; universe }
+                  end) parsed
+              | _ -> []
+          ) snaps
+        end
+      in
       (* One batched SQL query for all build_hashes' job_ids, instead of
          opening + querying + closing the OCurrent cache db once per
          history entry (a package like odoc has ~hundreds of entries —

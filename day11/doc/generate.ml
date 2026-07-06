@@ -707,6 +707,49 @@ let write_dag_if_requested ~snapshot_dir plan =
     | Error (`Msg m) ->
       Printf.eprintf "  warning: failed to write dag.json: %s\n%!" m
 
+let dag_kind_to_string : Day11_lib.Dag_marshal.kind -> string = function
+  | Build -> "build" | Tool -> "tool" | Compile -> "compile"
+  | Doc_all -> "doc_all" | Link -> "link"
+
+(* Plan-time, per-package plan records. For EVERY package.version in the
+   plan — not just the ones this profile dispatches — write a small
+   [packages/<pkg>.<ver>/plan.json] listing each of its nodes'
+   [(hash, kind, universe, blessed)]. This is the structural half of the
+   package-status story (see doc/package-status-plan-records.md): the
+   web per-version page joins these hashes against the shared, per-os_dir
+   [layer_status.jsonl] for outcomes, so a package that failed to build
+   or was built under another profile still shows a status instead of
+   "No history entries". Written alongside [dag.json]; per-snapshot, so
+   it accumulates across snapshots like [history.jsonl] but is cheap to
+   read (tiny per-package files, no 9 MB dag parse). *)
+let write_package_plans_if_requested ~snapshot_dir plan =
+  match snapshot_dir with
+  | None -> ()
+  | Some dir ->
+    let by_pkg : (string, Yojson.Safe.t list) Hashtbl.t =
+      Hashtbl.create 4096 in
+    List.iter (fun (e : Day11_lib.Dag_marshal.entry) ->
+      let pkg = OpamPackage.to_string e.pkg in
+      let node = `Assoc [
+        "hash", `String e.hash;
+        "kind", `String (dag_kind_to_string e.kind);
+        "universe", `String e.universe;
+        "blessed", `Bool e.blessed ] in
+      let prev = try Hashtbl.find by_pkg pkg with Not_found -> [] in
+      Hashtbl.replace by_pkg pkg (node :: prev)
+    ) (dag_entries_of_plan plan);
+    Hashtbl.iter (fun pkg nodes ->
+      let pdir = Fpath.(dir / "packages" / pkg) in
+      ignore (Bos.OS.Dir.create ~path:true pdir);
+      let path = Fpath.(pdir / "plan.json") in
+      match Bos.OS.File.write path
+              (Yojson.Safe.to_string (`List (List.rev nodes))) with
+      | Ok () -> ()
+      | Error (`Msg m) ->
+        Printf.eprintf "  warning: failed to write %s: %s\n%!"
+          (Fpath.to_string path) m
+    ) by_pkg
+
 (* Map each real output universe ([u/<hash>]) to the package versions it
    contains — the doc-dep closure of the build it documents. Derived from
    the doc_node graph: the package set is the transitive closure over
@@ -1076,6 +1119,7 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
     success
   in
   write_dag_if_requested ~snapshot_dir plan;
+  write_package_plans_if_requested ~snapshot_dir plan;
   write_universes_if_requested ~snapshot_dir plan;
   Some { all_nodes = plan.all_nodes;
          node_kind = kind_of;
