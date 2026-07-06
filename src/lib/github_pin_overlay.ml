@@ -11,8 +11,10 @@ module Op = struct
   type t = unit
 
   module Key = struct
-    type t = { url : string; path : Fpath.t }
-    let digest t = t.url ^ "|" ^ Fpath.to_string t.path
+    type t = { url : string; branch : string option; path : Fpath.t }
+    let digest t =
+      t.url ^ "|" ^ (Option.value ~default:"" t.branch)
+      ^ "|" ^ Fpath.to_string t.path
   end
 
   module Value = struct
@@ -57,7 +59,7 @@ module Op = struct
   let upstream_dir path = Fpath.(path / "upstream")
   let overlay_dir  path = Fpath.(path / "repo")
 
-  let ensure_upstream_clone job ~url ~upstream =
+  let ensure_upstream_clone job ~url ~branch ~upstream =
     let p = Fpath.to_string upstream in
     let git_dir = Filename.concat p ".git" in
     let ( let** ) = Lwt_result.bind in
@@ -65,7 +67,9 @@ module Op = struct
       let** _ = sh_log job "git -C %s fetch --prune --tags origin" p in
       (* Same dance as Remote_opam_repo: explicit detached-HEAD guard
          around [merge --ff-only @{u}], built via Printf because Fmt
-         eats [@{u}] as a semantic-tag. *)
+         eats [@{u}] as a semantic-tag. The clone below already put us
+         on the tracked [branch] (when set), so [@{u}] resolves to
+         [origin/<branch>] and the fetch+merge advances it. *)
       let cmd = Printf.sprintf
         "git -C %s symbolic-ref -q HEAD >/dev/null && \
          git -C %s merge --ff-only '@{u}' || { \
@@ -76,8 +80,13 @@ module Op = struct
       let** _ = sh_log job "%s" cmd in
       Lwt.return (Ok ())
     end else
-      run_sh job "git clone %s %s"
-        (Filename.quote url) (Filename.quote p)
+      match branch with
+      | Some b ->
+        run_sh job "git clone -b %s %s %s"
+          (Filename.quote b) (Filename.quote url) (Filename.quote p)
+      | None ->
+        run_sh job "git clone %s %s"
+          (Filename.quote url) (Filename.quote p)
 
   let read_head_sha job ~upstream =
     sh_log job "git -C %s rev-parse HEAD" (Fpath.to_string upstream)
@@ -190,7 +199,8 @@ module Op = struct
     Bos.OS.Dir.create ~path:true overlay |> ignore;
     let ( let** ) = Lwt_result.bind in
     let result =
-      let** () = ensure_upstream_clone job ~url:key.url ~upstream in
+      let** () =
+        ensure_upstream_clone job ~url:key.url ~branch:key.branch ~upstream in
       let** sha_raw = read_head_sha job ~upstream in
       let sha = String.trim sha_raw in
       let** tag_raw = read_latest_tag job ~upstream in
@@ -199,8 +209,20 @@ module Op = struct
       let epoch = String.trim epoch_raw in
       let sha7 =
         if String.length sha >= 7 then String.sub sha 0 7 else sha in
+      (* Version label after the [+]: the tracked branch (default
+         branch ⇒ "master"). Sanitised — opam versions allow only
+         [A-Za-z0-9-._+~], so a branch like [feature/x] becomes
+         [feature-x]. *)
+      let label = match key.branch with
+        | None -> "master"
+        | Some b ->
+          String.map (fun c ->
+            match c with
+            | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '.' | '~' -> c
+            | _ -> '-') b
+      in
       let version_str =
-        Printf.sprintf "%s+master.%s.%s" tag epoch sha7 in
+        Printf.sprintf "%s+%s.%s.%s" tag label epoch sha7 in
       Current.Job.log job
         "upstream %s @ %s (tag %s) → version %s"
         key.url sha tag version_str;
@@ -220,33 +242,45 @@ end
 
 module Cache = Current_cache.Make (Op)
 
-let maintain ~schedule ~url ~path : string Current.t =
+let maintain ?branch ~schedule ~url ~path () : string Current.t =
   let open Current.Syntax in
-  Current.component "github-pin-overlay %s" url |>
+  Current.component "github-pin-overlay %s%s" url
+    (match branch with Some b -> "#" ^ b | None -> "") |>
   let> () = Current.return () in
-  Cache.get ~schedule () Op.Key.{ url; path }
+  Cache.get ~schedule () Op.Key.{ url; branch; path }
 
-let maintain_commit ~schedule ~url ~path : Current_git.Commit.t Current.t =
+let maintain_commit ?branch ~schedule ~url ~path () :
+    Current_git.Commit.t Current.t =
   let open Current.Syntax in
-  let+ sha = maintain ~schedule ~url ~path in
+  let+ sha = maintain ?branch ~schedule ~url ~path () in
   let overlay = Op.overlay_dir path in
   let p = Fpath.to_string overlay in
   Current_git.Commit.v ~repo:overlay
     ~id:(Current_git.Commit_id.v
            ~repo:p ~gref:"refs/heads/master" ~hash:sha)
 
-type spec = { url : string; path : Fpath.t }
+type spec = { url : string; branch : string option; path : Fpath.t }
 
 let spec_of_arg s =
   match String.index_opt s '=' with
   | None ->
     Error (`Msg (Printf.sprintf
-      "--github-pin-overlay %S: expected URL=PATH" s))
+      "--github-pin-overlay %S: expected URL[#BRANCH]=PATH" s))
   | Some i ->
-    let url = String.sub s 0 i in
+    let url_part = String.sub s 0 i in
     let path = String.sub s (i + 1) (String.length s - i - 1) in
+    (* An optional [#BRANCH] suffix on the URL selects a non-default
+       branch to track (e.g. a fork's feature branch). Split on the
+       last [#] so the rest of the URL is unaffected. *)
+    let url, branch = match String.rindex_opt url_part '#' with
+      | Some j ->
+        let b = String.sub url_part (j + 1)
+                  (String.length url_part - j - 1) in
+        (String.sub url_part 0 j, if b = "" then None else Some b)
+      | None -> (url_part, None)
+    in
     if url = "" || path = "" then
       Error (`Msg (Printf.sprintf
         "--github-pin-overlay %S: URL and PATH must both be non-empty" s))
     else
-      Ok { url; path = Fpath.v path }
+      Ok { url; branch; path = Fpath.v path }
