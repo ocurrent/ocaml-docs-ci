@@ -67,6 +67,23 @@ end
 
 module Cache = Current_cache.Make (Op)
 
+(* Force [ensure] to re-run for [ctx] at the given [image_digest].
+
+   The ensure-base success is keyed on profile + image digest and does
+   not track whether the base dir still exists on disk. If the base is
+   removed out-of-band (an os_dir migration, a cache wipe) the stale
+   success makes OCurrent skip the rebuild, and every dependent build
+   then fails [require_base]. Callers invalidate when they observe the
+   base dir missing so the cached success is rebuilt rather than trusted.
+   Sets [rebuild=1] in the cache db (persisted). *)
+let invalidate ~image_digest (ctx : Profile_ctx.t) =
+  Cache.invalidate
+    Op.Key.{
+      profile_name = ctx.profile.name;
+      image_digest;
+      opam_build_repo = ctx.profile.opam_build_repo;
+    }
+
 let ensure ~env ~digest (ctx : Profile_ctx.t) : unit Current.t =
   let open Current.Syntax in
   Current.component "ensure-base %s" ctx.profile.name |>

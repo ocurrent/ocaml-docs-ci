@@ -66,10 +66,22 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
      job with [docker build] output visible to the web UI. Also
      threads the digest into the base layer hash so every build
      layer rebuilds when the upstream image changes. *)
-  let base_ready = Day11_base.ensure ~env ~digest ctx in
-  let* () = base_ready in
   let* d = digest in
   let ctx = Profile_ctx.with_base_digest ctx d in
+  (* Self-heal a stale ensure-base success whose base dir was removed
+     out-of-band (an os_dir migration, a cache wipe). The op is keyed on
+     profile + digest and doesn't re-check the base dir, so a cached
+     success would otherwise make [ensure] a no-op and wedge every
+     dependent build at [require_base]. If the base isn't materialised,
+     invalidate so [ensure] actually rebuilds it. Mirrors
+     [Day11_prep.reconcile_cache] for layers. *)
+  (match Profile_ctx.require_base ctx with
+   | Ok _ -> ()
+   | Error _ -> Day11_base.invalidate ~image_digest:d ctx);
+  (* Wait for base image + opam-build binary; shown as an OCurrent
+     job with [docker build] output visible to the web UI. *)
+  let base_ready = Day11_base.ensure ~env ~digest ctx in
+  let* () = base_ready in
   (* After [Day11_base.ensure] succeeds the base layer is on disk;
      require_base is a cheap marker-file check. *)
   let ctx = match Profile_ctx.require_base ctx with

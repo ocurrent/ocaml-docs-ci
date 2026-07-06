@@ -178,6 +178,22 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
         ~eio_env ~cache_dir ~profiles ~remote_commits ?cpu_slots ()
       |> Current.ignore_value)
   in
+  (* Self-heal cache/disk divergence at startup: a [day11-node] success
+     is keyed on layer hash alone and doesn't track whether the layer
+     dir still exists, so a layer removed out-of-band (layer GC by
+     last-used, an os_dir migration, manual cleanup) leaves a stale
+     success that makes OCurrent skip the rebuild forever — the node
+     shows as permanently "pending". Invalidate those so the first
+     evaluation re-dispatches them. See [Day11_prep.reconcile_cache]. *)
+  (try
+     let n = Docs_ci_lib.Day11_prep.reconcile_cache () in
+     if n > 0 then
+       Logs.app (fun f ->
+         f "cache reconcile: invalidated %d layer build(s) whose layer \
+            dir was missing" n)
+   with e ->
+     Logs.warn (fun f ->
+       f "cache reconcile skipped: %s" (Printexc.to_string e)));
   let has_role =
     if github_auth = None then Current_web.Site.allow_all else has_role
   in

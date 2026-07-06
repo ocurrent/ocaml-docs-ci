@@ -178,6 +178,42 @@ end
 
 module Cache = Current_cache.Make (Op)
 
+(* Reconcile the OCurrent cache against on-disk layers.
+
+   A [day11-node] success only records "this layer was built at some
+   point": the op is keyed by layer hash alone and Current_cache never
+   re-checks whether the layer dir still exists. Layers get removed
+   out-of-band — the layer GC prunes by last-used, an os_dir migration
+   moves them, cleanup deletes them — and the stale success then makes
+   OCurrent skip the rebuild indefinitely, so downstream renders the
+   node as permanently "pending" (it never re-dispatches, so
+   [layer_status.jsonl] never repopulates).
+
+   [reconcile_cache] walks the cached successes and, for any whose layer
+   dir is gone, calls [Cache.invalidate] — which sets [rebuild=1] in the
+   cache db (persisted) so the next evaluation re-dispatches and rebuilds
+   it. Runs in-process so both the db and any live in-memory instance are
+   updated. Cheap: one query plus a [stat] per cached success. Returns
+   the number invalidated. *)
+let reconcile_cache () =
+  let entries = Current_cache.Db.query ~op:Op.id ~ok:true () in
+  List.fold_left (fun n (e : Current_cache.Db.entry) ->
+    match e.outcome with
+    | Error _ -> n
+    | Ok payload ->
+      match (try Some (Op.Value.unmarshal payload) with _ -> None) with
+      | None -> n
+      | Some (v : Op.Value.t) ->
+        if Sys.file_exists (Filename.concat v.layer_dir "layer.json") then n
+        else begin
+          (match OpamPackage.of_string_opt v.pkg with
+           | Some pkg ->
+             Cache.invalidate Op.Key.{ hash = v.hash; pkg; label = "" }
+           | None -> ());
+          n + 1
+        end
+  ) 0 entries
+
 (* ── Public interface ──────────────────────────────────────────── *)
 
 (** Run a DAG node as an OCurrent component with job logs.
