@@ -23,15 +23,42 @@ let load_digest base_dir =
   | Ok d -> Some (String.trim d)
   | Error _ -> None
 
+(* Serialise materialisation of the shared [cache_dir/base] dir across
+   fibers and processes — the same {!Day11_sys.Dir_lock} mechanism the
+   layer builds use (build_layer.ml). All profiles import into this one
+   directory; unlocked, their concurrent [docker export | tar x]
+   extractions interleave and fail with spurious EEXIST/ENOENT (and the
+   daemon's ensure-base op then caches the error, freezing the profile
+   until a manual rebuild). The [fs/usr] marker is a directory, so we
+   can't use [with_lock]'s [?marker_file] (a file check) — callers
+   re-check the marker inside [f] instead: the winner materialises,
+   waiters see the marker and return the already-built layer. *)
+let with_base_lock ~cache_dir base_dir f =
+  let lock_file = Fpath.(cache_dir / "locks" / "base.lock") in
+  let result = ref None in
+  let (_ : (unit, [ `Msg of string ]) result) =
+    Day11_sys.Dir_lock.with_lock ~lock_file base_dir
+      (fun ~set_temp_log_path:_ _dir ->
+        result := Some (f ());
+        Ok ())
+  in
+  match !result with
+  | Some r -> r
+  | None -> Rresult.R.error_msg "base lock: body did not run"
+
 let ensure ~sw env ~cache_dir ~image =
   let base_dir = Fpath.(cache_dir / "base") in
   let marker = Fpath.(base_dir / "fs" / "usr") in
   if Bos.OS.Dir.exists marker |> Result.get_ok then
     Ok (make_base_layer ~image ~base_dir)
   else
-    match Day11_layer.Import.from_docker ~sw env ~image ~layer_dir:base_dir with
-    | Ok () -> Ok (make_base_layer ~image ~base_dir)
-    | Error _ as e -> e
+    with_base_lock ~cache_dir base_dir @@ fun () ->
+    if Bos.OS.Dir.exists marker |> Result.get_ok then
+      Ok (make_base_layer ~image ~base_dir)
+    else
+      match Day11_layer.Import.from_docker ~sw env ~image ~layer_dir:base_dir with
+      | Ok () -> Ok (make_base_layer ~image ~base_dir)
+      | Error _ as e -> e
 
 let platform = function
   | "x86_64" | "amd64" -> "linux/amd64"
@@ -265,6 +292,16 @@ let build ~sw env ~cache_dir ~os_distribution ~os_version ~arch
     Log.info (fun m -> m "Base layer cached");
     Ok (make_base_layer ~image ~base_dir)
   end else begin
+    with_base_lock ~cache_dir base_dir @@ fun () ->
+    if Bos.OS.Dir.exists marker |> Result.get_ok then begin
+      (* Another profile's ensure-base materialised the shared base
+         while we waited for the lock. Mirror the fresh-build return
+         ([image_for_hash]): the winner saved the digest, so hash by
+         it when we have one. *)
+      Log.info (fun m -> m "Base layer cached (built concurrently)");
+      let image_for_hash = match digest with Some d -> d | None -> image in
+      Ok (make_base_layer ~image:image_for_hash ~base_dir)
+    end else begin
     Log.info (fun m -> m "Building base image from %s:%s"
       os_distribution os_version);
     let temp_dir = Bos.OS.Dir.tmp "day11_base_%s" |> Result.get_ok in
@@ -346,4 +383,5 @@ let build ~sw env ~cache_dir ~os_distribution ~os_version ~arch
     | `Signaled n ->
         Day11_sys.Sudo.rm_rf ~sw env temp_dir |> ignore;
         Rresult.R.error_msgf "Docker build signaled %d" n
+    end
   end
