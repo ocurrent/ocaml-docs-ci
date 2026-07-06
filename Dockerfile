@@ -68,6 +68,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       bash coreutils util-linux procps psmisc \
       curl bzip2 gzip xz-utils unzip tar \
       graphviz \
+      attr \
       gnupg \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
        | gpg --dearmor -o /usr/share/keyrings/docker.gpg \

@@ -273,13 +273,28 @@ let build ~sw env (benv : Types.build_env)
 
        [setfattr -x] fails if the attribute isn't present, so filter
        via [getfattr -R --match] first to get only the set. *)
-    let _ = Day11_sys.Sudo.run ~sw env
-      Bos.Cmd.(v "bash" % "-c"
-        % Printf.sprintf
-            "getfattr -h -R -n trusted.overlay.opaque --absolute-names %s \
-             2>/dev/null | awk '/^# file:/ {print $3}' | \
-             xargs -r -I{} setfattr -x trusted.overlay.opaque {}"
-            (Filename.quote (Fpath.to_string upper))) in
+    (* [-m] lists only dirs that HAVE the attr (no per-file "no such
+       attribute" noise, unlike [-n]), and [pipefail] makes a missing
+       [getfattr]/[setfattr] (the [attr] package) surface as an error
+       instead of a silent no-op — which is how this strip quietly did
+       nothing for months, letting opaque markers survive into layers
+       and shadow sibling lowers (e.g. conf-libX11's [/usr/include/X11]
+       hiding conf-libXft's [Xft/], failing every graphics build). *)
+    let () =
+      match Day11_sys.Sudo.run ~sw env
+        Bos.Cmd.(v "bash" % "-c"
+          % Printf.sprintf
+              "set -o pipefail; \
+               getfattr -h -R -m trusted.overlay.opaque --absolute-names %s \
+               | awk '/^# file:/ {print $3}' | \
+               xargs -r -I{} setfattr -x trusted.overlay.opaque {}"
+              (Filename.quote (Fpath.to_string upper)))
+      with
+      | Ok _ -> ()
+      | Error (`Msg m) ->
+        Log.err (fun f -> f "opaque-xattr strip failed for %a (is the \
+          'attr' package installed?): %s" Fpath.pp target_fs m)
+    in
     let _ = Day11_sys.Sudo.run ~sw env
       Bos.Cmd.(v "mv" % Fpath.to_string upper
                % Fpath.to_string target_fs) in

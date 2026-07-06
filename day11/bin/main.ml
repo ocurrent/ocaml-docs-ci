@@ -27,6 +27,7 @@ let default_term =
     Cmd_rerun.cmd;
     Cmd_rdeps.cmd;
     Cmd_gc.cmd;
+    Cmd_strip_opaque.cmd;
     Cmd_report.cmd;
     Cmd_log.cmd;
     Cmd_debug.cmd;
