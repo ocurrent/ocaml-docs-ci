@@ -20,7 +20,7 @@ let test_layered_build () = with_eio @@ fun ~sw env ->
   mkdir cache_dir;
   let os_dir = Fpath.(cache_dir / "linux-x86_64") in
   mkdir os_dir;
-  let base = Base.ensure ~sw env ~cache_dir ~image:base_image
+  let base = Base.ensure ~sw env ~os_dir ~image:base_image
     |> ok_or_fail "base" in
   Printf.printf "Base: %s\n%!" (Fpath.to_string base.dir);
   let benv : Types.build_env =

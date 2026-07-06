@@ -263,12 +263,12 @@ let run profile_name profile_dir np cores_per_build overcommit
   let patches = ctx.patches in
   (* Delete base image early if --rebuild-base, before loading *)
   if rebuild_base then begin
-    let base_dir = Fpath.(cache_dir / "base") in
+    (* The base layer now lives under [os_dir] (os_dir/base), so removing
+       [os_dir] clears the base image and all build layers together. *)
     Printf.printf "Deleting base image and all build layers for rebuild...\n%!";
-    (* Both dirs have root-owned files — go straight to sudo rm -rf *)
+    (* Root-owned files inside — go straight to sudo rm -rf. *)
     ignore (Sys.command
-      (Printf.sprintf "sudo rm -rf %s %s"
-        (Fpath.to_string base_dir) (Fpath.to_string os_dir)))
+      (Printf.sprintf "sudo rm -rf %s" (Fpath.to_string os_dir)))
   end;
   (* Build DAG — no Eio needed. Uses the ctx's hash cache so that later
      doc-tool planning sees the same hashes. *)

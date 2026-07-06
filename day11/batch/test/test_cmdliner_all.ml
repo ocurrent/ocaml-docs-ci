@@ -10,7 +10,8 @@ open Day11_test_util.Test_util
 let scratch_cache_dir = Fpath.v "/tmp/day11-scratch-cache"
 
 let test_all_cmdliner () = with_eio @@ fun ~sw env ->
-  let base = match Base.load_cached ~cache_dir:scratch_cache_dir
+  let base = match Base.load_cached
+    ~os_dir:Fpath.(scratch_cache_dir / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
     | Some b -> b
     | None ->

@@ -1,23 +1,37 @@
 (** Base image management.
 
     Builds and caches the root filesystem layer that all package builds
-    start from. The base contains a Debian image with opam, build tools,
-    and pre-initialised opam repositories. Docker is used to produce the
-    image, which is then imported as a layer for overlayfs use.
+    start from. The base contains the profile's OS image (e.g. debian
+    or ubuntu) with opam, build tools, and pre-initialised opam
+    repositories. Docker is used to produce the image, which is then
+    imported as a layer for overlayfs use.
+
+    The base layer lives under its os_dir ([<cache>/<os_dir_name>/base]),
+    so different OS variants never share — and silently overwrite — one
+    directory.
 
     When a [digest] is provided (e.g. [sha256:abc123...] from the
     profile), the base image is pulled by digest for reproducibility.
     The digest is saved alongside the base layer so future loads use
     the same hash. *)
 
+val os_dir_name :
+  os_distribution:string -> os_version:string -> arch:string -> string
+(** The per-OS directory name under the cache root
+    ([<os_distribution>-<os_version>-<arch>]). Single source of truth;
+    {!Day11_batch.Profile.os_dir_name} delegates here. *)
+
+val base_dir_of_os_dir : Fpath.t -> Fpath.t
+(** The base layer directory for a given os_dir ([os_dir / "base"]). *)
+
 val ensure :
   sw:Eio.Switch.t ->
   Eio_unix.Stdenv.base ->
-  cache_dir:Fpath.t ->
+  os_dir:Fpath.t ->
   image:string ->
   (Day11_layer.Base.t, [> Rresult.R.msg ]) result
-(** Ensure a base layer exists for the given Docker [image] tag,
-    building and importing it if not already cached. *)
+(** Ensure a base layer exists for the given Docker [image] tag under
+    [os_dir], building and importing it if not already cached. *)
 
 val build :
   sw:Eio.Switch.t ->
@@ -69,7 +83,7 @@ val build_hash :
     upstream image is updated. *)
 
 val load_cached :
-  cache_dir:Fpath.t ->
+  os_dir:Fpath.t ->
   os_distribution:string -> os_version:string ->
   Day11_layer.Base.t option
 (** Load a previously cached base layer. Uses the stored digest

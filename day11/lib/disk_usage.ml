@@ -40,7 +40,11 @@ let is_layer_dir name =
       && String.sub name 0 6 = "build-")
 
 let scan ~os_dir ~cache_dir =
-  let base = dir_size Fpath.(cache_dir / "base") in
+  (* The base layer lives under its os_dir now, not in a shared
+     [cache_dir/base]. It is not a layer dir (only 12-hex or build-
+     prefixed names match [is_layer_dir]), so [builds] below never
+     double-counts it. *)
+  let base = dir_size Fpath.(os_dir / "base") in
   let builds =
     let dir_s = Fpath.to_string os_dir in
     if not (Sys.file_exists dir_s) then 0

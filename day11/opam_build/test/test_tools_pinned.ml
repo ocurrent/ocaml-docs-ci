@@ -37,7 +37,7 @@ let odoc_repo () =
           Alcotest.skip ())
 
 let make_build_env () =
-  match Base.load_cached ~cache_dir
+  match Base.load_cached ~os_dir
     ~os_distribution:"debian" ~os_version:"bookworm" with
   | Some base -> Types.make_build_env ~base ~os_dir ()
   | None ->

@@ -20,7 +20,8 @@ let () =
   Printf.printf "=== Doc generation benchmark ===\n\n";
   Eio_main.run @@ fun env -> Eio.Switch.run @@ fun sw ->
   let env = (env :> Eio_unix.Stdenv.base) in
-  let base = match Day11_opam_build.Base.load_cached ~cache_dir:scratch_cache
+  let base = match Day11_opam_build.Base.load_cached
+    ~os_dir:Fpath.(scratch_cache / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
     | Some b -> b
     | None -> Printf.printf "No cache\n%!"; exit 1

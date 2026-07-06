@@ -10,7 +10,7 @@ open Day11_test_util.Test_util
 let cache_dir = Fpath.v "/tmp/day11-scratch-cache"
 let os_dir = Fpath.(cache_dir / "linux-x86_64")
 let make_build_env () =
-  match Base.load_cached ~cache_dir
+  match Base.load_cached ~os_dir
     ~os_distribution:"debian" ~os_version:"bookworm" with
   | Some base -> Types.make_build_env ~base ~os_dir ()
   | None -> Alcotest.skip ()

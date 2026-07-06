@@ -217,7 +217,8 @@ let delete ~dir ~name =
   Bos.OS.File.delete path
 
 let os_dir_name t =
-  Printf.sprintf "%s-%s-%s" t.os_distribution t.os_version t.arch
+  Day11_opam_build.Base.os_dir_name
+    ~os_distribution:t.os_distribution ~os_version:t.os_version ~arch:t.arch
 
 let base_image_tag t =
   Printf.sprintf "%s:%s" t.os_distribution t.os_version

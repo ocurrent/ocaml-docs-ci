@@ -13,6 +13,20 @@ let build_hash ~os_distribution ~os_version ~arch:_ ?digest () =
 let make_base_layer ~image ~base_dir : Day11_layer.Base.t =
   { hash = hash ~image; dir = base_dir; image }
 
+(* Per-OS directory name under [cache_dir]. Single source of truth —
+   [Profile.os_dir_name] delegates here so the base dir the profile
+   context computes ([os_dir / "base"]) and the one [build] materialises
+   ([cache_dir / os_dir_name / "base"]) are always the same path. *)
+let os_dir_name ~os_distribution ~os_version ~arch =
+  Printf.sprintf "%s-%s-%s" os_distribution os_version arch
+
+(* The base layer lives {b under} its os_dir, not in a shared
+   [cache_dir/base]. A shared base can hold only one OS at a time: with
+   both a debian and an ubuntu profile, whichever ran [ensure-base]
+   first won, and every other profile silently built its packages
+   against that OS's root filesystem while labelling them its own. *)
+let base_dir_of_os_dir os_dir = Fpath.(os_dir / "base")
+
 let digest_file base_dir = Fpath.(base_dir / "base-digest")
 
 let save_digest base_dir digest =
@@ -23,18 +37,20 @@ let load_digest base_dir =
   | Ok d -> Some (String.trim d)
   | Error _ -> None
 
-(* Serialise materialisation of the shared [cache_dir/base] dir across
-   fibers and processes — the same {!Day11_sys.Dir_lock} mechanism the
-   layer builds use (build_layer.ml). All profiles import into this one
-   directory; unlocked, their concurrent [docker export | tar x]
+(* Serialise materialisation of a base dir across fibers and processes —
+   the same {!Day11_sys.Dir_lock} mechanism the layer builds use
+   (build_layer.ml). Two fibers/processes ensuring the same base import
+   into one directory; unlocked, their concurrent [docker export | tar x]
    extractions interleave and fail with spurious EEXIST/ENOENT (and the
    daemon's ensure-base op then caches the error, freezing the profile
-   until a manual rebuild). The [fs/usr] marker is a directory, so we
-   can't use [with_lock]'s [?marker_file] (a file check) — callers
+   until a manual rebuild). The lock is a sibling of the base dir
+   ([<os_dir>/base.lock]), so it is per-OS: distinct-OS bases now live in
+   distinct dirs and never contend. The [fs/usr] marker is a directory,
+   so we can't use [with_lock]'s [?marker_file] (a file check) — callers
    re-check the marker inside [f] instead: the winner materialises,
    waiters see the marker and return the already-built layer. *)
-let with_base_lock ~cache_dir base_dir f =
-  let lock_file = Fpath.(cache_dir / "locks" / "base.lock") in
+let with_base_lock base_dir f =
+  let lock_file = Fpath.(base_dir + ".lock") in
   let result = ref None in
   let (_ : (unit, [ `Msg of string ]) result) =
     Day11_sys.Dir_lock.with_lock ~lock_file base_dir
@@ -46,13 +62,13 @@ let with_base_lock ~cache_dir base_dir f =
   | Some r -> r
   | None -> Rresult.R.error_msg "base lock: body did not run"
 
-let ensure ~sw env ~cache_dir ~image =
-  let base_dir = Fpath.(cache_dir / "base") in
+let ensure ~sw env ~os_dir ~image =
+  let base_dir = base_dir_of_os_dir os_dir in
   let marker = Fpath.(base_dir / "fs" / "usr") in
   if Bos.OS.Dir.exists marker |> Result.get_ok then
     Ok (make_base_layer ~image ~base_dir)
   else
-    with_base_lock ~cache_dir base_dir @@ fun () ->
+    with_base_lock base_dir @@ fun () ->
     if Bos.OS.Dir.exists marker |> Result.get_ok then
       Ok (make_base_layer ~image ~base_dir)
     else
@@ -270,8 +286,8 @@ let opam_build_mount ~cache_dir ?opam_build_repo () =
   else
     None
 
-let load_cached ~cache_dir ~os_distribution ~os_version =
-  let base_dir = Fpath.(cache_dir / "base") in
+let load_cached ~os_dir ~os_distribution ~os_version =
+  let base_dir = base_dir_of_os_dir os_dir in
   let marker = Fpath.(base_dir / "fs" / "usr") in
   if Bos.OS.Dir.exists marker |> Result.get_ok then begin
     (* Use stored digest if available, otherwise fall back to tag *)
@@ -285,14 +301,18 @@ let load_cached ~cache_dir ~os_distribution ~os_version =
 
 let build ~sw env ~cache_dir ~os_distribution ~os_version ~arch
     ~uid ~gid ?digest () =
-  let base_dir = Fpath.(cache_dir / "base") in
+  (* [cache_dir] still holds the OS-independent bits (the opam-build
+     binary, failed-build logs); only the base layer itself is per-OS. *)
+  let os_dir =
+    Fpath.(cache_dir / os_dir_name ~os_distribution ~os_version ~arch) in
+  let base_dir = base_dir_of_os_dir os_dir in
   let marker = Fpath.(base_dir / "fs" / "usr") in
   let image = Printf.sprintf "%s:%s" os_distribution os_version in
   if Bos.OS.Dir.exists marker |> Result.get_ok then begin
     Log.info (fun m -> m "Base layer cached");
     Ok (make_base_layer ~image ~base_dir)
   end else begin
-    with_base_lock ~cache_dir base_dir @@ fun () ->
+    with_base_lock base_dir @@ fun () ->
     if Bos.OS.Dir.exists marker |> Result.get_ok then begin
       (* Another profile's ensure-base materialised the shared base
          while we waited for the lock. Mirror the fresh-build return

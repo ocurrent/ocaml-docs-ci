@@ -46,7 +46,7 @@ let finalise_load (profile : Profile.t) ~cache_dir
     (fun dir -> Day11_opam_build.Patches.create (Fpath.v dir))
     profile.patches_dir
   in
-  let base_dir = Fpath.(cache_dir / "base") in
+  let base_dir = Day11_opam_build.Base.base_dir_of_os_dir os_dir in
   let image = image_of_profile profile in
   let base : Day11_layer.Base.t =
     { hash = Day11_opam_build.Base.build_hash

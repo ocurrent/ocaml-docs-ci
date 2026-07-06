@@ -63,7 +63,7 @@ services:
       # opam-repo) but WITHOUT the eliom-fix overlay, so it uses mainline
       # odoc/driver. Diffing eliom-fix vs eliom-baseline isolates the
       # fork's odoc rendering changes from compiler/solve differences.
-      - --profiles=quick,full,eliom-fix,eliom-baseline
+      - --profiles=quick,full,eliom-fix,eliom-baseline,quick-ubuntu
       # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from the
       # eliom-fix branch of the jonludlam/odoc fork as an opam overlay
       # under .day11/overlays/eliom-fix/repo, which the eliom-fix profile

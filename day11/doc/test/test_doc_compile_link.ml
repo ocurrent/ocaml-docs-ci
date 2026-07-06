@@ -114,7 +114,8 @@ let build_docs ~sw env benv ~os_dir ~odoc_tool ~pkg_build ~pkg =
   html_count
 
 let setup () =
-  let base = match Base.load_cached ~cache_dir:scratch_cache_dir
+  let base = match Base.load_cached
+    ~os_dir:Fpath.(scratch_cache_dir / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
     | Some b -> b
     | None -> Printf.printf "No cache\n%!"; Alcotest.skip ()

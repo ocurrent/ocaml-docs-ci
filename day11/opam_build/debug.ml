@@ -25,7 +25,7 @@ let setup ~sw env ~os_dir ?(keep = false) node =
   | Error _ as e -> e
   | Ok meta ->
     (* Reconstruct base *)
-    let base_dir = Fpath.(cache_dir / "base") in
+    let base_dir = Base.base_dir_of_os_dir os_dir in
     let base : Day11_layer.Base.t = {
       hash = meta.base_hash; dir = base_dir; image = "";
     } in

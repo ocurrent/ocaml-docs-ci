@@ -8,9 +8,9 @@ let load_exit_status env layer_json =
   | Ok { exit_status; _ } -> Some exit_status
   | Error _ -> None
 
-let build_env_of_meta ~os_dir ~cache_dir ~image
+let build_env_of_meta ~os_dir ~cache_dir:_ ~image
     (meta : Day11_layer.Meta.t) =
-  let base_dir = Fpath.(cache_dir / "base") in
+  let base_dir = Day11_opam_build.Base.base_dir_of_os_dir os_dir in
   let base : Day11_layer.Base.t = {
     hash = meta.base_hash;
     dir = base_dir;
@@ -30,7 +30,7 @@ let rerun ~sw env ~os_dir ~cache_dir node =
   | Ok meta ->
     (* Read [base_image] from the layer's [build.json] sidecar so the
        rerun reconstructs the same base. Fall back to "" — the cached
-       base layer at [cache_dir/base] is still mounted by hash, so a
+       base layer at [os_dir/base] is still mounted by hash, so a
        warm cache rerun works without the image string. *)
     let image =
       match Day11_opam_layer.Build_meta.load layer_dir with

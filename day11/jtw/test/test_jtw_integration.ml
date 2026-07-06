@@ -14,7 +14,8 @@ let jtw_local_source = "/home/jjl25/monopam-myspace/js_top_worker"
 let jtw_container_path = "/home/opam/local/js_top_worker"
 
 let test_build_jsoo () = with_eio @@ fun ~sw env ->
-  let base = match Base.load_cached ~cache_dir:scratch_cache_dir
+  let base = match Base.load_cached
+    ~os_dir:Fpath.(scratch_cache_dir / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
     | Some b -> b
     | None -> Printf.printf "No cache\n%!"; Alcotest.skip ()
@@ -54,7 +55,8 @@ let test_build_jsoo () = with_eio @@ fun ~sw env ->
   Alcotest.(check bool) "js_of_ocaml binary" true has_jsoo_bin
 
 let test_build_jtw_tools () = with_eio @@ fun ~sw env ->
-  let base = match Base.load_cached ~cache_dir:scratch_cache_dir
+  let base = match Base.load_cached
+    ~os_dir:Fpath.(scratch_cache_dir / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
     | Some b -> b
     | None -> Printf.printf "No cache\n%!"; Alcotest.skip ()

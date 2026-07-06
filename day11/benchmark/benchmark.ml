@@ -86,7 +86,8 @@ let () =
   Eio.Switch.run @@ fun sw ->
   let env = (env :> Eio_unix.Stdenv.base) in
   let scratch_cache = Fpath.v "/tmp/day11-scratch-cache" in
-  (match Day11_opam_build.Base.load_cached ~cache_dir:scratch_cache
+  (match Day11_opam_build.Base.load_cached
+    ~os_dir:Fpath.(scratch_cache / "linux-x86_64")
     ~os_distribution:"debian" ~os_version:"bookworm" with
   | None ->
     Printf.printf "\nNo cached base image — skipping build benchmarks\n%!"
