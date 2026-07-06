@@ -96,6 +96,12 @@ let generate_dockerfile ~os_distribution ~os_version ~arch ~uid ~gid
     from ~platform:plat base_image
     @@ run "apt update && apt upgrade -y"
     @@ run "apt install build-essential unzip bubblewrap git sudo curl rsync -y"
+    (* Upstream binaryen (>= 119) for conf-binaryen / wasm_of_ocaml-compiler
+       (a hard dep of eliom). Debian bookworm's apt binaryen is too old
+       (~105); the release tarball drops wasm-merge/wasm-opt into
+       /usr/local (ahead of /usr/bin on PATH), and ldconfig picks up its
+       libbinaryen. *)
+    @@ run "curl -fsSL https://github.com/WebAssembly/binaryen/releases/download/version_120/binaryen-version_120-x86_64-linux.tar.gz | tar -xz -C /usr/local --strip-components=1 && ldconfig"
     @@ copy ~from:"opam-builder" ~src:[ "/usr/local/bin/opam" ]
          ~dst:"/usr/local/bin/opam" ()
     @@ (if has_opam_build_bin then
