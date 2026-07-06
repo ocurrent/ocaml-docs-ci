@@ -46,12 +46,17 @@ let compare a b = String.compare a.build_hash b.build_hash
    Current_cache provides the job/log infrastructure; day11's disk
    cache provides the real caching. *)
 
-(* Per-kind Op modules so job filenames include the node kind
-   (e.g. "day11-build-XXXXXX.log" instead of "day11-node-XXXXXX.log"). *)
-
-module type LABEL = sig val label : string end
-
-module Make_op (L : LABEL) = struct
+(* One op for every node kind. The unit of caching is the content-
+   addressed layer, identified by its [hash] ALONE — the node "kind"
+   (build/tool/compile/doc/link) is the layer's role at a DAG position,
+   not part of its identity. Keying the cache by [hash] (not by kind)
+   gives each layer exactly one cache entry, so a layer reached as both
+   a build-dep and a tool-dep is deduplicated by Current_cache's own
+   in-flight tracking — the two dispatches can no longer race to produce
+   the same layer dir, which was the source of split [ok=1]/[ok=0] rows
+   for a single layer. The kind rides on the [Key] purely for display in
+   job logs. *)
+module Op = struct
   type t = {
     os_dir : Fpath.t;
     dag_node : Day11_opam_layer.Build.t;
@@ -69,7 +74,10 @@ module Make_op (L : LABEL) = struct
     type t = {
       hash : string;
       pkg : OpamPackage.t;
+      label : string;  (* node kind — display only, deliberately NOT in [digest] *)
     }
+    (* Identity is the content hash alone, so two nodes of different kind
+       that resolve to the same layer share one cache entry. *)
     let digest t = t.hash
   end
 
@@ -85,8 +93,7 @@ module Make_op (L : LABEL) = struct
     let unmarshal s = of_yojson (Yojson.Safe.from_string s) |> Result.get_ok
   end
 
-  let label = L.label
-  let id = "day11-" ^ L.label
+  let id = "day11-node"
 
   (* Short layer hash, matching the 12-char layer-dir naming, so a job
      can be tied to its on-disk layer ([<os_dir>/<hash>]) at a glance. *)
@@ -96,13 +103,14 @@ module Make_op (L : LABEL) = struct
      OCurrent "New job:" line and the /jobs dashboard, not just in the
      job's body log. *)
   let pp f (key : Key.t) =
-    Fmt.pf f "%s %s (%s)" label (OpamPackage.to_string key.pkg)
+    Fmt.pf f "%s %s (%s)" key.label (OpamPackage.to_string key.pkg)
       (short_hash key.hash)
 
   let auto_cancel = false
 
   let build (ctx : t) job (key : Key.t) =
     let open Lwt.Syntax in
+    let label = key.label in
     let* () = Current.Job.start job ~pool:ctx.pool ~level:Current.Level.Average in
     Current.Job.log job "[profile %s] %s %s" ctx.profile_name
       label (OpamPackage.to_string key.pkg);
@@ -168,17 +176,7 @@ module Make_op (L : LABEL) = struct
     end
 end
 
-module Op_build   = Make_op (struct let label = "build" end)
-module Op_tool    = Make_op (struct let label = "tool" end)
-module Op_compile = Make_op (struct let label = "compile" end)
-module Op_doc     = Make_op (struct let label = "doc" end)
-module Op_link    = Make_op (struct let label = "link" end)
-
-module Cache_build   = Current_cache.Make (Op_build)
-module Cache_tool    = Current_cache.Make (Op_tool)
-module Cache_compile = Current_cache.Make (Op_compile)
-module Cache_doc     = Current_cache.Make (Op_doc)
-module Cache_link    = Current_cache.Make (Op_link)
+module Cache = Current_cache.Make (Op)
 
 (* ── Public interface ──────────────────────────────────────────── *)
 
@@ -200,38 +198,11 @@ let run_node ~env ~os_dir ~pool ~dispatch ~label ~profile_name
   |>
   let> () = deps in
   let result =
-    match label with
-    | "build" ->
-      Cache_build.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-        Op_build.Key.{ hash = dag_node.hash; pkg = dag_node.pkg }
-      |> Current.Primitive.map_result
-        (Result.map (fun v ->
-          (v.Op_build.Value.hash, Fpath.v v.Op_build.Value.layer_dir)))
-    | "tool" ->
-      Cache_tool.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-        Op_tool.Key.{ hash = dag_node.hash; pkg = dag_node.pkg }
-      |> Current.Primitive.map_result
-        (Result.map (fun v ->
-          (v.Op_tool.Value.hash, Fpath.v v.Op_tool.Value.layer_dir)))
-    | "compile" ->
-      Cache_compile.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-        Op_compile.Key.{ hash = dag_node.hash; pkg = dag_node.pkg }
-      |> Current.Primitive.map_result
-        (Result.map (fun v ->
-          (v.Op_compile.Value.hash, Fpath.v v.Op_compile.Value.layer_dir)))
-    | "doc" ->
-      Cache_doc.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-        Op_doc.Key.{ hash = dag_node.hash; pkg = dag_node.pkg }
-      |> Current.Primitive.map_result
-        (Result.map (fun v ->
-          (v.Op_doc.Value.hash, Fpath.v v.Op_doc.Value.layer_dir)))
-    | "link" ->
-      Cache_link.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-        Op_link.Key.{ hash = dag_node.hash; pkg = dag_node.pkg }
-      |> Current.Primitive.map_result
-        (Result.map (fun v ->
-          (v.Op_link.Value.hash, Fpath.v v.Op_link.Value.layer_dir)))
-    | l -> Fmt.failwith "Unknown node label: %s" l
+    Cache.get { os_dir; dag_node; dispatch; env; pool; profile_name }
+      Op.Key.{ hash = dag_node.hash; pkg = dag_node.pkg; label }
+    |> Current.Primitive.map_result
+      (Result.map (fun v ->
+        (v.Op.Value.hash, Fpath.v v.Op.Value.layer_dir)))
   in
   result
   |> Current.Primitive.map_result
