@@ -98,9 +98,19 @@ module SolveOp = struct
   let solution_filename pkg =
     OpamPackage.to_string pkg ^ ".json"
 
-  let compute_cache_key ~compiler_tag ~commit ~repos_digest =
+  let compute_cache_key ~compiler_tag ~commit ~repos_digest ~pinned_versions =
+    (* Append the pins only when non-empty so unpinned profiles keep
+       the historical key form and don't force a mass re-solve. When
+       pins change, the key changes and stale per-target solutions are
+       invalidated automatically (previously they were silently
+       reused, so a pin edit had no effect until manual deletion). *)
+    let pins =
+      match List.sort compare pinned_versions with
+      | [] -> ""
+      | l -> "|pins:" ^ String.concat "," l
+    in
     Digest.to_hex (Digest.string
-      (compiler_tag ^ "|" ^ commit ^ "|" ^ repos_digest))
+      (compiler_tag ^ "|" ^ commit ^ "|" ^ repos_digest ^ pins))
 
   (* Split [targets] into those whose cached solutions are still
      valid (matching [cache_key]) and those that need (re)solving. *)
@@ -140,7 +150,8 @@ module SolveOp = struct
       if key.ocaml_version = "" then "none" else key.ocaml_version in
     let cache_key =
       compute_cache_key ~compiler_tag
-        ~commit:key.commit ~repos_digest:key.repos_digest in
+        ~commit:key.commit ~repos_digest:key.repos_digest
+        ~pinned_versions:key.pinned_versions in
     let dir = snapshot_solutions_dir ctx in
     ignore (Bos.OS.Dir.create ~path:true dir);
     Lwt_eio.run_eio @@ fun () ->
