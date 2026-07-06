@@ -1,0 +1,29 @@
+{
+  "name": "eliom-fix",
+  "opam_repositories": [
+    "repo/opam-repository",
+    "overlays/eliom-fix/repo"
+  ],
+  "odoc_repo": null,
+  "opam_build_repo": null,
+  "compiler": "ocaml-base-compiler.5.4.1",
+  "target_mode": {
+    "versions": {
+      "latest": 1
+    },
+    "names": "all"
+  },
+  "with_doc": true,
+  "with_jtw": false,
+  "jtw_repo": null,
+  "arch": "x86_64",
+  "os_distribution": "debian",
+  "os_version": "bookworm",
+  "driver_compiler": "",
+  "extra_pins": [],
+  "pinned_versions": ["dune.3.23.1"],
+  "patches_dir": null,
+  "base_image_digest": null,
+  "base_image_updated": null,
+  "html_dir": "cache/html/eliom-fix"
+}

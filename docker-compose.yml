@@ -56,7 +56,20 @@ services:
       # latest version only). The heavier ocaml-odoc-master and oxcaml
       # profiles are still baked into the image (docker/profiles/) but
       # disabled here — add them back to this list to re-enable.
-      - --profiles=quick,full
+      # 'eliom-fix' builds the latest version of every package against
+      # odoc + odoc-driver from jonludlam/odoc#eliom-fix (see the
+      # --github-pin-overlay below). 'eliom-baseline' is its control: an
+      # identical profile (same compiler 5.4.1, same dune.3.23.1 pin, same
+      # opam-repo) but WITHOUT the eliom-fix overlay, so it uses mainline
+      # odoc/driver. Diffing eliom-fix vs eliom-baseline isolates the
+      # fork's odoc rendering changes from compiler/solve differences.
+      - --profiles=quick,full,eliom-fix,eliom-baseline
+      # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from the
+      # eliom-fix branch of the jonludlam/odoc fork as an opam overlay
+      # under .day11/overlays/eliom-fix/repo, which the eliom-fix profile
+      # references in its opam_repositories. Tracks the branch HEAD on the
+      # hourly schedule and re-plans when it moves.
+      - --github-pin-overlay=https://github.com/jonludlam/odoc#eliom-fix=overlays/eliom-fix
       # All opam-repository mirrors live inside the day11 volume, under
       # .day11/repo/. The clone-target PATHs below are relative, so
       # ocaml-docs-ci resolves them against the .day11 root (the parent
