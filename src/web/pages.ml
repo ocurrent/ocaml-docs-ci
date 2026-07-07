@@ -2312,19 +2312,41 @@ let package_version ~ctx name pkg ver =
       in
       (* Solver failure: if this target never produced a dependency
          solution, there's no build/history to show — surface the
-         solver's explanation instead. Shown above the build/doc
-         diagnostic since it's the upstream reason nothing was built. *)
+         solver's explanation and a "report this" affordance, mirroring
+         the build-failure box. Shown above the build/doc diagnostic
+         since it's the upstream reason nothing was built. *)
       let solver_failure_block =
         match List.find_map (fun snap -> read_solver_failure snap pkg_str)
                 snaps with
         | None -> []
         | Some err ->
+          (* Cap the solver output folded into the issue body so the
+             new-issue URL stays within GitHub's length limit; the full
+             text is shown on the page below. *)
+          let err_for_body =
+            if String.length err > 2000
+            then String.sub err 0 2000 ^ "\n…(truncated; see the page)"
+            else err in
+          let body = Printf.sprintf
+            "Package %s could not be solved on %s — no dependency solution \
+             was found, so it was never built.\n\nProfile: %s\nPage: %s\n\n\
+             Solver output:\n%s\n"
+            pkg_str os_label name page_url err_for_body in
           [ h3 [ txt "Solver failure" ];
-            p [ span ~a:[ a_class [ "fail" ] ] [ txt "⚠ Solve failed" ];
-                txt " — no dependency solution was found for this \
-                     package version, so it was never built. The \
-                     solver's explanation:" ];
-            pre [ txt err ] ]
+            div ~a:[ a_class [ "error-box" ] ]
+              [ p [ span ~a:[ a_class [ "fail" ] ] [ txt "✗ Solve failed" ];
+                    txt " — no dependency solution was found for this \
+                         package version on "; txt os_label;
+                    txt ", so it was never built. The solver's \
+                         explanation:" ];
+                pre [ txt err ];
+                report_affordance ~repo:"ocurrent/ocaml-docs-ci"
+                  ~title:(Printf.sprintf "Solve failure: %s" pkg_str)
+                  ~body
+                  ~lead:(Printf.sprintf
+                    "If you believe %s should be installable on %s, please \
+                     comment on the ocurrent/ocaml-docs-ci issues:"
+                    pkg_str os_label) ] ]
       in
       Context.respond_ok web_ctx ([
         Templates.style_block; crumbs;
