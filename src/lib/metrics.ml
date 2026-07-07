@@ -10,6 +10,9 @@
 
 let namespace = "docs_ci"
 
+(* Every metric carries a [profile] label so the profiles don't clobber
+   one another — each has its own series in the [/metrics] output. *)
+
 (* ── Pipeline counters ─────────────────────────────────────────── *)
 
 (* Counters only ever increment, so they're meaningful with rate(). Both
@@ -17,42 +20,50 @@ let namespace = "docs_ci"
    cache hits don't reach them — so these count real build/doc work. *)
 
 let builds_total =
-  Prometheus.Counter.v_label ~label_name:"result"
+  Prometheus.Counter.v_labels ~label_names:[ "profile"; "result" ]
     ~help:"Package build nodes executed (cache hits excluded), by result."
     ~namespace ~subsystem:"pipeline" "builds_total"
 
-let record_build ~success =
-  Prometheus.Counter.inc_one (builds_total (if success then "ok" else "fail"))
+let record_build ~profile ~success =
+  Prometheus.Counter.inc_one
+    (Prometheus.Counter.labels builds_total
+       [ profile; (if success then "ok" else "fail") ])
 
 let docs_total =
-  Prometheus.Counter.v_labels ~label_names:[ "result"; "blessed" ]
+  Prometheus.Counter.v_labels ~label_names:[ "profile"; "result"; "blessed" ]
     ~help:"Doc nodes (compile/doc-all/link) executed, by result and blessing."
     ~namespace ~subsystem:"pipeline" "docs_total"
 
-let record_doc ~success ~blessed =
+let record_doc ~profile ~success ~blessed =
   Prometheus.Counter.inc_one
     (Prometheus.Counter.labels docs_total
-       [ (if success then "ok" else "fail");
+       [ profile;
+         (if success then "ok" else "fail");
          (if blessed then "true" else "false") ])
 
-(* ── Status gauges (set on each status regeneration) ───────────── *)
+(* ── Status gauges (the profile's latest completed snapshot) ───────
+
+   Set from the completion-gated status step in {!Docs_ci_pipelines.Docs}
+   — which only runs once every planned node has resolved — so each
+   profile's gauge reflects its latest *completed* snapshot. *)
 
 let gauge name help =
-  Prometheus.Gauge.v ~help ~namespace ~subsystem:"status" name
+  Prometheus.Gauge.v_label ~label_name:"profile"
+    ~help ~namespace ~subsystem:"status" name
 
 let packages_blessed =
   gauge "packages_blessed"
-    "Live-blessed build outcomes in the most recent status index."
+    "Blessed build/doc outcomes in the profile's latest completed snapshot."
 
 let packages_non_blessed =
   gauge "packages_non_blessed"
-    "Non-live build outcomes in the most recent status index."
+    "Non-blessed outcomes in the profile's latest completed snapshot."
 
 let packages_scanned =
   gauge "packages_scanned"
-    "Packages the plan covered in the most recent status regeneration."
+    "Packages the plan covered in the profile's latest completed snapshot."
 
-let set_status ~blessed ~non_blessed ~scanned =
-  Prometheus.Gauge.set packages_blessed (float_of_int blessed);
-  Prometheus.Gauge.set packages_non_blessed (float_of_int non_blessed);
-  Prometheus.Gauge.set packages_scanned (float_of_int scanned)
+let set_status ~profile ~blessed ~non_blessed ~scanned =
+  Prometheus.Gauge.set (packages_blessed profile) (float_of_int blessed);
+  Prometheus.Gauge.set (packages_non_blessed profile) (float_of_int non_blessed);
+  Prometheus.Gauge.set (packages_scanned profile) (float_of_int scanned)

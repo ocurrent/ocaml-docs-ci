@@ -240,10 +240,10 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     ~env ~os_dir:ctx.os_dir ~packages_dir
     ~blessing_maps ~run_log in
   let on_pkg_complete node ~success =
-    Metrics.record_build ~success;
+    Metrics.record_build ~profile:profile.name ~success;
     Day11_batch.Recorder.record_build recorder node ~success in
   let on_doc_complete node ~blessed ~universe ~success =
-    Metrics.record_doc ~success ~blessed;
+    Metrics.record_doc ~profile:profile.name ~success ~blessed;
     Day11_batch.Recorder.record_doc recorder node ~blessed ~universe ~success in
   (* [plan_doc_dag] forks 9+ fibers (driver + per-compiler odoc),
      each running a [day11-solver-worker] subprocess. Subprocess
@@ -437,6 +437,7 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       (Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes);
     let sum = List.fold_left (fun acc (_, n) -> acc + n) 0 in
     Metrics.set_status
+      ~profile:profile.name
       ~blessed:(sum status.Day11_lib.Status_index.blessed_totals)
       ~non_blessed:(sum status.non_blessed_totals)
       ~scanned:status.scanned;
