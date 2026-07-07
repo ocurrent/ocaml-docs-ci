@@ -47,6 +47,28 @@ let load_profiles ~profile_dir names : Day11_batch.Profile.t list =
       profile
   ) names
 
+(* Root filesystem usage percent from [df -P /] (POSIX one-line format:
+   FS 1024-blocks Used Avail Capacity% Mounted-on). Returns -1 if [df]
+   fails or the line can't be parsed, so the caller leaves the gauge
+   untouched rather than recording a bogus value. *)
+let df_root_percent () =
+  try
+    let ic = Unix.open_process_in "df -P /" in
+    Fun.protect ~finally:(fun () -> ignore (Unix.close_process_in ic))
+      (fun () ->
+         let _header = input_line ic in
+         let row = input_line ic in
+         let cols =
+           String.map (fun c -> if c = '\t' then ' ' else c) row
+           |> String.split_on_char ' '
+           |> List.filter (fun s -> s <> "")
+         in
+         match cols with
+         | _fs :: _blocks :: _used :: _avail :: cap :: _ ->
+           (try Scanf.sscanf cap "%d%%" Fun.id with _ -> -1)
+         | _ -> -1)
+  with _ -> -1
+
 let main () current_config github_auth mode profiles_arg profile_dir_arg
     cache_dir_arg remotes_arg pin_overlays_arg cores_per_build overcommit
     config : unit =
@@ -222,10 +244,32 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
     Current_web.Site.(v ?authn ~has_role ~secure_cookies)
       ~name:program_name routes
   in
+  (* Host disk metrics, sampled periodically. The layer-metadata total
+     reads one [layer.json] per layer (300k+ at scale, ~tens of seconds),
+     so it runs in a separate Eio domain — via [Lwt_eio.run_eio] +
+     [Domain_manager.run] — to keep the engine and web responsive; [df]
+     is cheap enough to run inline. First sample fires at startup, then
+     every [disk_sample_period] seconds. *)
+  let disk_sample_period = 600.0 in
+  let disk_metrics_thread =
+    let dmgr = Eio.Stdenv.domain_mgr env in
+    let rec loop () =
+      let root_percent = df_root_percent () in
+      Lwt.bind
+        (Lwt_eio.run_eio (fun () ->
+           Eio.Domain_manager.run dmgr (fun () ->
+             Day11_lib.Disk_usage.layer_meta_total ~cache_dir)))
+        (fun layer_bytes ->
+           Docs_ci_lib.Metrics.set_disk ~root_percent ~layer_bytes;
+           Lwt.bind (Lwt_unix.sleep disk_sample_period) loop)
+    in
+    loop ()
+  in
   Lwt_eio.Promise.await_lwt (Lwt.choose
     [
       Current.Engine.thread engine;
       Current_web.run ~mode site;
+      disk_metrics_thread;
     ])
 
 open Cmdliner

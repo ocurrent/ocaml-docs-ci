@@ -6,6 +6,7 @@
   bos
   fpath
   day11.batch
+  day11.lib
   day11.opam-helpers
   current
   current.cache

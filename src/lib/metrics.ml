@@ -67,3 +67,25 @@ let set_status ~profile ~blessed ~non_blessed ~scanned =
   Prometheus.Gauge.set (packages_blessed profile) (float_of_int blessed);
   Prometheus.Gauge.set (packages_non_blessed profile) (float_of_int non_blessed);
   Prometheus.Gauge.set (packages_scanned profile) (float_of_int scanned)
+
+(* ── Host disk gauges (sampled periodically, host-level) ───────────
+   Not per-profile: the root filesystem and the layer cache are shared
+   across profiles. *)
+
+let disk_gauge name help =
+  Prometheus.Gauge.v ~help ~namespace ~subsystem:"disk" name
+
+let disk_root_used_percent =
+  disk_gauge "root_used_percent" "Root filesystem usage, percent (df /)."
+
+let layers_total_bytes =
+  disk_gauge "layers_total_bytes"
+    "Total size of all build layers across every os_dir, summed from \
+     each layer's disk_usage metadata (not by measuring)."
+
+(* [root_percent] < 0 means the df sample failed; leave that gauge as-is
+   rather than record a bogus value. *)
+let set_disk ~root_percent ~layer_bytes =
+  if root_percent >= 0 then
+    Prometheus.Gauge.set disk_root_used_percent (float_of_int root_percent);
+  Prometheus.Gauge.set layers_total_bytes (float_of_int layer_bytes)

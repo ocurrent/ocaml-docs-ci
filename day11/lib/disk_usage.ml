@@ -39,6 +39,36 @@ let is_layer_dir name =
   || (String.length name > 6
       && String.sub name 0 6 = "build-")
 
+(* Total bytes of all build layers across every os_dir under [cache_dir],
+   summed from each layer's recorded [disk_usage] metadata ([layer.json])
+   rather than by measuring the tree — so it's a stat+read per layer, not
+   a recursive [du]. Still reads one small JSON per layer (hundreds of
+   thousands of them at scale), so callers should run it off the event
+   loop and infrequently. *)
+let layer_meta_total ~cache_dir =
+  let cache_s = Fpath.to_string cache_dir in
+  let dirs_in d =
+    try Sys.readdir d |> Array.to_list with _ -> [] in
+  let os_dirs =
+    List.filter (fun n ->
+      try Sys.is_directory (Filename.concat cache_s n) with _ -> false)
+      (dirs_in cache_s)
+  in
+  List.fold_left (fun acc os ->
+    let os_s = Filename.concat cache_s os in
+    List.fold_left (fun acc name ->
+      if not (is_layer_dir name) then acc
+      else
+        let lj = Filename.concat (Filename.concat os_s name) "layer.json" in
+        match (try Some (Yojson.Safe.from_file lj) with _ -> None) with
+        | Some (`Assoc a) ->
+          (match List.assoc_opt "disk_usage" a with
+           | Some (`Int n) -> acc + n
+           | _ -> acc)
+        | _ -> acc)
+      acc (dirs_in os_s))
+    0 os_dirs
+
 let scan ~os_dir ~cache_dir =
   (* The base layer lives under its os_dir now, not in a shared
      [cache_dir/base]. It is not a layer dir (only 12-hex or build-
