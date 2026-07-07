@@ -90,10 +90,12 @@ let incr_totals totals category =
 
 let category ~is_doc ~ok ~cascaded =
   if ok then (if is_doc then "doc_success" else "success")
-  (* A cascade (a dep failed, so this node never built) is counted in one
-     [dependency_failure] bucket regardless of kind — it's distinct from a
-     node that ran and failed on its own. *)
-  else if cascaded then "dependency_failure"
+  (* A cascade (a dep failed, so this node never built) is distinct from a
+     node that ran and failed on its own, but still stays on its own side
+     of the build/doc split — otherwise a doc node that cascaded would be
+     miscounted as a build. *)
+  else if cascaded then
+    (if is_doc then "doc_dependency_failure" else "dependency_failure")
   else if is_doc then "doc_failure"
   else "build_failure"
 

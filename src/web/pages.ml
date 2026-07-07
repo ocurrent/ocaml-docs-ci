@@ -536,6 +536,7 @@ let snapshot_detail ~ctx name key =
         | Some st ->
           let is_doc_cat c =
             c = "doc_success" || c = "doc_failure"
+            || c = "doc_dependency_failure"
           in
           let partition rows =
             List.partition (fun (c, _) -> is_doc_cat c) rows
@@ -561,14 +562,14 @@ let snapshot_detail ~ctx name key =
                 breakdown_row "Non-blessed docs" doc_nonblessed ];
             p ~a:[ a_class [ "crumbs" ] ]
               [ em [ txt "Builds count compiled package layers; docs \
-                          count successful compile+link (or doc-all) \
-                          stages. Counts are per build_hash (a package \
-                          solved in N universes counts as N). 'Blessed' \
-                          means the entry is the chosen primary \
-                          universe per package AND the entry was \
-                          written in the current run — i.e. it's still \
-                          live. Older blessed entries superseded by a \
-                          re-solve count as non-blessed." ] ] ]
+                          count compile+link (or doc-all) stages. Counts \
+                          are per node (a package solved in N universes \
+                          counts as N). 'Blessed' means the node belongs \
+                          to the chosen primary universe for its package; \
+                          build nodes aren't universe-specific, so blessed \
+                          builds is normally empty. A dependency_failure \
+                          is a cascade — the node never ran because a \
+                          dependency failed." ] ] ]
       in
       let pkgs = snapshot_packages snapshot_dir in
       let pkg_link p =
@@ -1172,7 +1173,7 @@ let load_snapshot_pkgs ~os_dir snapshot_dir =
    predates it), so callers can fall back. *)
 let diff_status_of_category = function
   | "success" | "doc_success" -> "success"
-  | "dependency_failure" -> "cascade"
+  | "dependency_failure" | "doc_dependency_failure" -> "cascade"
   | _ -> "failure"  (* doc_failure, build_failure, or anything unknown *)
 
 let load_final_status snapshot_dir =
