@@ -50,19 +50,9 @@ let packages_non_blessed =
 
 let packages_scanned =
   gauge "packages_scanned"
-    "Package directories scanned in the most recent status regeneration."
+    "Packages the plan covered in the most recent status regeneration."
 
-let status_changes =
-  gauge "changes"
-    "Build-status changes recorded in the most recent run."
-
-let status_new =
-  gauge "new_packages"
-    "Packages appearing for the first time in the most recent run."
-
-let set_status ~blessed ~non_blessed ~scanned ~changes ~new_packages =
+let set_status ~blessed ~non_blessed ~scanned =
   Prometheus.Gauge.set packages_blessed (float_of_int blessed);
   Prometheus.Gauge.set packages_non_blessed (float_of_int non_blessed);
-  Prometheus.Gauge.set packages_scanned (float_of_int scanned);
-  Prometheus.Gauge.set status_changes (float_of_int changes);
-  Prometheus.Gauge.set status_new (float_of_int new_packages)
+  Prometheus.Gauge.set packages_scanned (float_of_int scanned)

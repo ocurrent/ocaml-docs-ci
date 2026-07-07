@@ -34,18 +34,41 @@ let classify_log log_file =
 
 (* History writes happen incrementally inside {!Recorder} now. *)
 
-let generate_status ~snapshot_dir ~packages_dir ~run_id =
-  let previous = Day11_lib.Status_index.read ~dir:snapshot_dir in
+(* Aggregate the run's per-node build/doc outcomes into [status.json].
+   Cache hits are represented as successful outcomes by the executor, so
+   this reflects the full plan state — not just freshly-dispatched nodes.
+   The daemon pipeline writes [status.json] the same way, from its own
+   collapsed build results (see {!Docs_ci_pipelines.Docs}). *)
+let write_status ~snapshot_dir ~run_id (results : results) =
+  (* The CLI outcomes only carry a success bool, so a cascade can't be
+     told apart from a real failure here ([cascaded = false]); the daemon
+     pipeline, which has the DAG, does make that distinction. Keyed by
+     package so we can drive both status.json and final_status.json. *)
+  let pkg_outcomes =
+    List.map (fun (b : build_outcome) ->
+      (OpamPackage.to_string b.pkg,
+       { Day11_lib.Status_index.is_doc = false;
+         blessed = b.blessed; ok = b.success; cascaded = false }))
+      results.builds
+    @ List.map (fun (d : doc_outcome) ->
+      (OpamPackage.to_string d.pkg,
+       { Day11_lib.Status_index.is_doc = true;
+         blessed = d.blessed; ok = d.success; cascaded = false }))
+      results.docs
+  in
   let status =
-    Day11_lib.Status_index.generate ~packages_dir ~run_id ~previous
+    Day11_lib.Status_index.of_outcomes ~run_id
+      ~scanned:(List.length results.targets)
+      (List.map snd pkg_outcomes)
   in
   Day11_lib.Status_index.write ~dir:snapshot_dir status;
-  status
+  Day11_lib.Status_index.write_final_status ~dir:snapshot_dir
+    (Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes)
 
-let finish ~snapshot_dir ~packages_dir ~run_info results =
+let finish ~snapshot_dir ~packages_dir:_ ~run_info results =
   let run_id = Day11_lib.Run_log.get_id run_info in
   (* History is written incrementally by [Recorder] now. *)
-  ignore (generate_status ~snapshot_dir ~packages_dir ~run_id : Day11_lib.Status_index.t);
+  write_status ~snapshot_dir ~run_id results;
   let builds_ok =
     List.length (List.filter (fun (b : build_outcome) -> b.success) results.builds)
   in

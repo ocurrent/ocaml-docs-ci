@@ -111,6 +111,9 @@ type doc_plan = {
   (** All nodes in the unified DAG (build + tool + doc). *)
   node_kind : Day11_opam_layer.Build.t -> node_kind;
   (** Classify a node by its phase. *)
+  node_blessed : Day11_opam_layer.Build.t -> bool;
+  (** Whether the plan blessed this node (its universe is the package's
+      canonical one). *)
   build_one : sw:Eio.Switch.t -> Eio_unix.Stdenv.base ->
     Day11_opam_layer.Build.t -> bool;
   (** Callback to build a single node. Takes a per-call Eio switch and

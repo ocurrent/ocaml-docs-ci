@@ -649,6 +649,7 @@ let make_dispatch benv ~os_dir ~html_dir ~(plan : internal_plan)
 type doc_plan = {
   all_nodes : Build.t list;
   node_kind : Build.t -> node_kind;
+  node_blessed : Build.t -> bool;
   build_one : sw:Eio.Switch.t -> Eio_unix.Stdenv.base -> Build.t -> bool;
   epoch_hash : string;
   epoch_base : Fpath.t;
@@ -1123,6 +1124,7 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
   write_universes_if_requested ~snapshot_dir plan;
   Some { all_nodes = plan.all_nodes;
          node_kind = kind_of;
+         node_blessed = node_blessed_of_plan plan;
          build_one = dispatch_with_callbacks;
          epoch_hash; epoch_base }
 

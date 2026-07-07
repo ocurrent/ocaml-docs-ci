@@ -375,22 +375,71 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       (Current.list_seq (List.map Current.catch all_nodes))
   in
   let builds =
-    let+ _results = collapsed_builds in
-    (* Status regen: history.jsonl is already up to date (incremental),
-       this just re-derives [status.json] from it. Triggered each time
-       [list_seq] re-evaluates. *)
-    let status =
-      Day11_batch.Summary.generate_status
-        ~snapshot_dir ~packages_dir
-        ~run_id:(Day11_lib.Run_log.get_id run_log)
+    let+ results = collapsed_builds in
+    (* Only act once the run has completed — i.e. every planned node has
+       a result and no build/doc job is still pending. We require one
+       result per [all_dag_nodes] entry: anything short means the plan
+       isn't fully resolved yet, so we write nothing (and, in particular,
+       don't emit a partial [final_status.json] that the diff views would
+       take as authoritative). This also guards the [List.map2] below. *)
+    if List.compare_lengths results all_dag_nodes <> 0 then ()
+    else
+    (* Derive [status.json] from the collapsed build results joined with
+       the plan — NOT from history.jsonl. [results] is one entry per plan
+       node, cache hits included (an already-built layer resolves to
+       [Ok]), so the counts reflect the full plan state rather than only
+       what this run re-dispatched. [node_blessed]/[node_kind] come from
+       the in-memory plan; no disk reads, no run-id matching. *)
+    let node_blessed = match doc_plan with
+      | Some p -> p.Day11_doc.Generate.node_blessed
+      | None -> fun _ -> false in
+    (* hash -> did this node build (or hit cache)? Used to tell a real
+       failure from a cascade: a failed node is a cascade iff a direct
+       dep also failed — the error propagated rather than originating
+       here. A dep absent from the map (shouldn't happen for a closed
+       plan) is treated as ok, so it can't spuriously mark a cascade. *)
+    let ok_of = Hashtbl.create (List.length all_dag_nodes) in
+    List.iter2 (fun (n : Day11_opam_layer.Build.t) res ->
+      Hashtbl.replace ok_of n.hash (Result.is_ok res)) all_dag_nodes results;
+    let dep_ok h = match Hashtbl.find_opt ok_of h with Some b -> b | None -> true in
+    (* Per-node outcome, keyed by package, so we can feed both the
+       aggregate totals ([status.json]) and the per-blessed-package table
+       ([final_status.json]) from the same pass. *)
+    let pkg_outcomes =
+      List.map2 (fun (dag_node : Day11_opam_layer.Build.t) res ->
+        let is_doc = match node_kind dag_node with
+          | Day11_doc.Generate.Build | Tool -> false
+          | Compile | Doc_all | Link -> true in
+        let ok = Result.is_ok res in
+        let cascaded =
+          (not ok)
+          && List.exists (fun (d : Day11_opam_layer.Build.t) -> not (dep_ok d.hash))
+               dag_node.deps
+        in
+        (OpamPackage.to_string dag_node.pkg,
+         { Day11_lib.Status_index.is_doc;
+           blessed = node_blessed dag_node;
+           ok; cascaded }))
+        all_dag_nodes results
     in
+    let outcomes = List.map snd pkg_outcomes in
+    let scanned =
+      List.sort_uniq compare (List.map fst pkg_outcomes) |> List.length
+    in
+    let status =
+      Day11_lib.Status_index.of_outcomes
+        ~run_id:(Day11_lib.Run_log.get_id run_log) ~scanned outcomes
+    in
+    Day11_lib.Status_index.write ~dir:snapshot_dir status;
+    (* Run complete (guarded above), so write the blessed-package status
+       table that drives the diff views. *)
+    Day11_lib.Status_index.write_final_status ~dir:snapshot_dir
+      (Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes);
     let sum = List.fold_left (fun acc (_, n) -> acc + n) 0 in
     Metrics.set_status
       ~blessed:(sum status.Day11_lib.Status_index.blessed_totals)
       ~non_blessed:(sum status.non_blessed_totals)
-      ~scanned:status.scanned
-      ~changes:(List.length status.changes)
-      ~new_packages:(List.length status.new_packages);
+      ~scanned:status.scanned;
     ()
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,

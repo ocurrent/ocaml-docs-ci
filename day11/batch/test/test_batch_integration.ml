@@ -128,12 +128,9 @@ let test_pipeline_with_summary () = with_eio @@ fun ~sw:_ env ->
     docs = [];
     targets = [ fst sol_astring ];
   } in
-  ignore results;
-  (* History recording moved into [Recorder.record_build] (incremental
-     per-outcome). This integration test no longer round-trips history
-     through [Summary]; the recorder unit tests cover that side. *)
-  ignore (Summary.generate_status ~snapshot_dir:os_dir ~packages_dir
-            ~run_id:"test-int" : Day11_lib.Status_index.t);
+  (* [status.json] is now aggregated from the run's per-node outcomes,
+     not from on-disk history. *)
+  Summary.write_status ~snapshot_dir:os_dir ~run_id:"test-int" results;
   let status = Day11_lib.Status_index.read
     ~dir:os_dir in
   Alcotest.(check bool) "status.json written" true (status <> None)

@@ -26,15 +26,15 @@ type results = {
   targets : OpamPackage.t list;
 }
 
-val generate_status :
+val write_status :
   snapshot_dir:Fpath.t ->
-  packages_dir:Fpath.t ->
   run_id:string ->
-  Day11_lib.Status_index.t
-(** Regenerate [status.json] from current on-disk history, detecting
-    changes from the previous snapshot, and return the snapshot. Safe to
-    call from anywhere (e.g. a periodic timer) — it just reads
-    [packages/*/history.jsonl] and writes [snapshot_dir/status.json]. *)
+  results ->
+  unit
+(** Aggregate [results]' per-node build/doc outcomes into category
+    totals and write [snapshot_dir/status.json]. Cache hits are
+    represented as successful outcomes, so the counts reflect the full
+    plan state rather than only freshly-dispatched nodes. *)
 
 val finish :
   snapshot_dir:Fpath.t ->

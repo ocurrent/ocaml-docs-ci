@@ -33,18 +33,6 @@ let run profile_name profile_dir =
     List.iter (fun (cat, n) ->
       Printf.printf "  %-20s %d\n" cat n
     ) status.non_blessed_totals;
-    if status.changes <> [] then begin
-      Printf.printf "\nChanges since last run:\n";
-      List.iter (fun (c : Day11_lib.Status_index.change) ->
-        Printf.printf "  %s: %s → %s%s\n"
-          c.package c.from_status c.to_status
-          (if c.blessed then " [blessed]" else "")
-      ) status.changes
-    end;
-    if status.new_packages <> [] then begin
-      Printf.printf "\nNew packages: %s\n"
-        (String.concat ", " status.new_packages)
-    end;
     0
 
 let cmd =
