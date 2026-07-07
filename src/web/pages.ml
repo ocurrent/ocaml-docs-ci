@@ -930,6 +930,42 @@ let snapshot_detail ~ctx name key =
         | content ->
           [ details (summary [ txt "Cascaded nodes" ]) content ]
       in
+      (* Solve failures: targets that never produced a dependency
+         solution (so they have no build/doc node and don't show in the
+         DAG failures above). Read from the consolidated
+         [solve_failures.json] the solver writes per snapshot; each links
+         to its per-version page for the solver's explanation. Folded,
+         since a full profile can have hundreds. *)
+      let solve_failures_section =
+        match Bos.OS.File.read Fpath.(snapshot_dir / "solve_failures.json") with
+        | Error _ -> []
+        | Ok data ->
+          match (try Some (Yojson.Safe.from_string data) with _ -> None) with
+          | Some (`List items) ->
+            let pkgs =
+              List.filter_map (function `String s -> Some s | _ -> None) items in
+            (match pkgs with
+             | [] -> []
+             | _ ->
+               let rows = List.map (fun pkgver ->
+                 let cell = match String.index_opt pkgver '.' with
+                   | Some i ->
+                     let n = String.sub pkgver 0 i in
+                     let v = String.sub pkgver (i + 1)
+                               (String.length pkgver - i - 1) in
+                     a ~a:[ a_href (Printf.sprintf "/profiles/%s/p/%s/%s"
+                                      name n v) ] [ txt pkgver ]
+                   | None -> txt pkgver in
+                 li [ cell ]) pkgs in
+               [ details
+                   (summary [ txt (Printf.sprintf "Solve failures (%d)"
+                                     (List.length pkgs)) ])
+                   [ p [ em [ txt "Targets with no dependency solution — \
+                                   never built. Click a package for the \
+                                   solver's explanation." ] ];
+                     ul rows ] ])
+          | _ -> []
+      in
       let r = timing "respond_ok+render" (fun () ->
         Context.respond_ok web_ctx ([
           Templates.style_block; crumbs;
@@ -941,6 +977,7 @@ let snapshot_detail ~ctx name key =
           @ [ h3 [ txt "Failures" ] ]
           @ failures_section
           @ cascade_fold
+          @ solve_failures_section
           @ [
           h3 [ txt "Status totals" ];
         ] @ totals @ [

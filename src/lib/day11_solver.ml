@@ -169,6 +169,19 @@ module SolveOp = struct
         ~pinned_versions:key.pinned_versions in
     let dir = snapshot_solutions_dir ctx in
     ignore (Bos.OS.Dir.create ~path:true dir);
+    (* Consolidated list of targets that failed to solve, written next to
+       the snapshot's other summaries as [solve_failures.json] (a JSON
+       array of "name.version"). The snapshot page reads this one file
+       for its "Solve failures" section rather than scanning the ~17k
+       per-target solution files. Failed targets are always re-solved
+       (partition_cached treats a cached failure as uncached), so
+       whenever the solver runs this is the complete current set. *)
+    let write_solve_failures failed =
+      let path = Fpath.(parent dir / "solve_failures.json") in
+      let json =
+        `List (List.map (fun s -> `String s) (List.sort compare failed)) in
+      ignore (Bos.OS.File.write path (Yojson.Safe.to_string json))
+    in
     Lwt_eio.run_eio @@ fun () ->
     let cached, uncached =
       partition_cached ~dir ~cache_key key.targets in
@@ -180,6 +193,7 @@ module SolveOp = struct
       Current.Job.log job
         "[profile %s] All %d solutions cached (commit %s) — skipping solver"
         ctx.profile_name n_cached short_commit;
+      write_solve_failures [];
       Ok Value.{ results = cached }
     end else begin
       Current.Job.log job
@@ -204,6 +218,11 @@ module SolveOp = struct
           save_failure ~dir ~cache_key pkg ~error ~examined;
           None
       ) results in
+      write_solve_failures
+        (List.filter_map (fun (pkg, r) ->
+           match r with
+           | Error _ -> Some (OpamPackage.to_string pkg)
+           | Ok _ -> None) results);
       Current.Job.log job
         "Solved %d/%d new targets; %d cached → %d total solutions"
         (List.length new_pairs) n_uncached n_cached
