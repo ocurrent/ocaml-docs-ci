@@ -1769,6 +1769,26 @@ let esc_html s =
     | c -> Buffer.add_char b c) s;
   Buffer.contents b
 
+(* A persisted solver failure for [pkg_str] in [snapshot_dir], if the
+   solve of that target failed (no dependency solution was found). Read
+   from [solutions/<pkg>.<ver>.json] ([failed:true] + the solver's
+   [error]). [None] when the package solved or there's no solve record. *)
+let read_solver_failure snapshot_dir pkg_str =
+  match Bos.OS.File.read
+          Fpath.(snapshot_dir / "solutions" / (pkg_str ^ ".json")) with
+  | Error _ -> None
+  | Ok data ->
+    match (try Some (Yojson.Safe.from_string data) with _ -> None) with
+    | Some (`Assoc _ as j) ->
+      let open Yojson.Safe.Util in
+      (match j |> member "failed" |> to_bool_option with
+       | Some true ->
+         (match j |> member "error" |> to_string_option with
+          | Some e when String.trim e <> "" -> Some e
+          | _ -> Some "(solve failed; no error message recorded)")
+       | _ -> None)
+    | _ -> None
+
 let package_version ~ctx name pkg ver =
   object
     inherit Resource.t
@@ -2253,9 +2273,26 @@ let package_version ~ctx name pkg ver =
               data_json js_logic) ]
         end
       in
+      (* Solver failure: if this target never produced a dependency
+         solution, there's no build/history to show — surface the
+         solver's explanation instead. Shown above the build/doc
+         diagnostic since it's the upstream reason nothing was built. *)
+      let solver_failure_block =
+        match List.find_map (fun snap -> read_solver_failure snap pkg_str)
+                snaps with
+        | None -> []
+        | Some err ->
+          [ h3 [ txt "Solver failure" ];
+            p [ span ~a:[ a_class [ "fail" ] ] [ txt "⚠ Solve failed" ];
+                txt " — no dependency solution was found for this \
+                     package version, so it was never built. The \
+                     solver's explanation:" ];
+            pre [ txt err ] ]
+      in
       Context.respond_ok web_ctx ([
         Templates.style_block; crumbs;
         h2 [ txt pkg_str ] ]
+        @ solver_failure_block
         @ status_block
         @ [ h3 [ txt "History" ] ]
         @ compare_control

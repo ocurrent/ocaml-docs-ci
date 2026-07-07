@@ -143,6 +143,21 @@ module SolveOp = struct
     } in
     ignore (Day11_batch.Incremental_solver.save path entry)
 
+  (* Persist a solve failure alongside the solutions (same
+     [<pkg>.<ver>.json] path, [failed:true] + the solver's [error]).
+     Previously discarded, which left the web with nothing to show for a
+     package that never got past solving; now the per-version page can
+     surface the solver's explanation. *)
+  let save_failure ~dir ~cache_key pkg ~error ~examined =
+    let path = Fpath.(dir / solution_filename pkg) in
+    let entry = Day11_batch.Incremental_solver.Cached_failure {
+      package = pkg;
+      error;
+      examined;
+      cache_key = Some cache_key;
+    } in
+    ignore (Day11_batch.Incremental_solver.save path entry)
+
   let build (ctx : t) job (key : Key.t) =
     let open Lwt.Syntax in
     let* () = Current.Job.start job ~level:Current.Level.Mostly_harmless in
@@ -185,7 +200,9 @@ module SolveOp = struct
           save_result ~dir ~cache_key pkg solve_result;
           let result_json = Day11_solution.Solve_result.to_json solve_result in
           Some (OpamPackage.to_string pkg, Yojson.Safe.to_string result_json)
-        | Error _ -> None
+        | Error (error, examined) ->
+          save_failure ~dir ~cache_key pkg ~error ~examined;
+          None
       ) results in
       Current.Job.log job
         "Solved %d/%d new targets; %d cached → %d total solutions"
