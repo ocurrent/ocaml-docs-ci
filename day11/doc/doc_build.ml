@@ -27,13 +27,28 @@ let check_stdlib_installed = Day11_opam_build.Compiler_pkg.check_stdlib_installe
    doesn't depend on [ocaml] itself; admitting it lets stdlib's
    [.cmti] files go through odoc compile and downstream [Stdlib.*]
    xrefs resolve. [ocaml-options-*], [ocaml-config], and [conf-*]
-   system packages still don't depend on [ocaml] and so are skipped. *)
+   system packages still don't depend on [ocaml] and so are skipped.
+
+   The [ocaml] dependency is checked over the *transitive* build
+   closure, not just [node.deps]: packages like [dune-rpc]/[dune-rpc-lwt]
+   reach [ocaml] only through a dep (e.g. [lwt], [stdune]) because their
+   own opam file doesn't list [ocaml] directly. A direct-deps-only check
+   dropped every such package's doc nodes. [node.deps] forms a DAG
+   ({!Build.t}), so we walk it with a visited-set keyed on layer hash. *)
 let is_ocaml_package (node : Build.t) =
   let ocaml = OpamPackage.Name.of_string "ocaml" in
   is_compiler_pkg node.pkg
-  || List.exists (fun (d : Build.t) ->
-       OpamPackage.Name.equal (OpamPackage.name d.pkg) ocaml
-     ) node.deps
+  || begin
+    let seen = Hashtbl.create 64 in
+    let rec reaches (n : Build.t) =
+      List.exists (fun (d : Build.t) ->
+        OpamPackage.Name.equal (OpamPackage.name d.pkg) ocaml
+        || (not (Hashtbl.mem seen d.hash)
+            && (Hashtbl.replace seen d.hash (); reaches d))
+      ) n.deps
+    in
+    reaches node
+  end
 
 (** Create tool binary mounts from driver and odoc tools. *)
 let make_tool_mounts ~os_dir ~(driver_tool : Day11_opam_layer.Tool.t)

@@ -131,16 +131,19 @@ val is_compiler_pkg : OpamPackage.t -> bool
 
 val is_ocaml_package :
   Day11_opam_layer.Build.t -> bool
-(** [is_ocaml_package node] returns true if [node] depends on the
-    virtual package [ocaml], OR is one of the
-    {!concrete_compiler_names} (which {e provides} [ocaml]). The
-    second disjunct ensures the compiler's stdlib is documented;
+(** [is_ocaml_package node] returns true if [node]'s {e transitive}
+    build closure includes the virtual package [ocaml], OR [node] is
+    one of the {!concrete_compiler_names} (which {e provides} [ocaml]).
+    The second disjunct ensures the compiler's stdlib is documented;
     without it, every package's [Stdlib.*] xref in the rendered
-    HTML lands as [xref-unresolved]. [conf-*] system packages,
-    [ocaml-options-*], and [ocaml-config] still don't depend on
-    [ocaml] and so are skipped. Unlike {!has_documentable_libs},
-    this works without the layer being built — useful for the first
-    run on a cold cache. *)
+    HTML lands as [xref-unresolved]. The closure (not just direct
+    deps) is walked so packages that reach [ocaml] only through a
+    dependency — e.g. [dune-rpc]/[dune-rpc-lwt] via [lwt]/[stdune],
+    whose own opam files don't list [ocaml] — are still documented.
+    [conf-*] system packages, [ocaml-options-*], and [ocaml-config]
+    don't reach [ocaml] even transitively and so are still skipped.
+    Unlike {!has_documentable_libs}, this works without the layer
+    being built — useful for the first run on a cold cache. *)
 
 val check_stdlib_installed :
   build_layer:Fpath.t ->
