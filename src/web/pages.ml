@@ -1160,7 +1160,43 @@ let load_snapshot_pkgs ~os_dir snapshot_dir =
     write_summary snapshot_dir pkgs;
     pkgs
 
-(* Per-process memo of [load_snapshot_pkgs] keyed by snapshot dir.
+(* Blessed-package status table written once per completed run
+   ([final_status.json], see {!Day11_lib.Status_index.write_final_status}).
+   This is the preferred diff source: a small [(name.version -> status)]
+   read, blessed-only — exactly the granularity the diffs compare — with
+   no 25 MB dag.json parse or layer walk. Categories are mapped to the
+   diff vocabulary (success / failure / cascade); there's no per-node
+   build hash, so a changed row renders its status badge without a
+   deep-link (the version cell still links to the package's per-version
+   page). Returns [None] when the file is absent (a snapshot that
+   predates it), so callers can fall back. *)
+let diff_status_of_category = function
+  | "success" | "doc_success" -> "success"
+  | "dependency_failure" -> "cascade"
+  | _ -> "failure"  (* doc_failure, build_failure, or anything unknown *)
+
+let load_final_status snapshot_dir =
+  match Bos.OS.File.read Fpath.(snapshot_dir / "final_status.json") with
+  | Error _ -> None
+  | Ok s ->
+    match (try Some (Yojson.Safe.from_string s) with _ -> None) with
+    | Some (`Assoc entries) ->
+      Some (List.filter_map (fun (pkgver, st) ->
+        match st, split_pkg pkgver with
+        | `String status, Some (n, v) ->
+          Some ((n, v), (diff_status_of_category status, ""))
+        | _ -> None) entries)
+    | _ -> None
+
+(* Diff source for a snapshot: prefer [final_status.json]; fall back to
+   the dag.json + layer_status classification for older snapshots that
+   don't have it. *)
+let load_diff_pkgs ~os_dir snapshot_dir =
+  match load_final_status snapshot_dir with
+  | Some pkgs -> pkgs
+  | None -> load_snapshot_pkgs ~os_dir snapshot_dir
+
+(* Per-process memo of [load_diff_pkgs] keyed by snapshot dir.
    Snapshot dirs are append-mostly + content-addressed by mtime, so
    for a single page render a hit on the same dir always returns the
    right value. Lifetime is the closure that owns the [Hashtbl] —
@@ -1174,7 +1210,7 @@ let make_load_snapshot_pkgs_memo ~os_dir =
     match Hashtbl.find_opt cache key with
     | Some v -> v
     | None ->
-      let v = load_snapshot_pkgs ~os_dir snapshot_dir in
+      let v = load_diff_pkgs ~os_dir snapshot_dir in
       Hashtbl.add cache key v;
       v
 
