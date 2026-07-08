@@ -246,18 +246,20 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
   in
   (* Host disk metrics, sampled periodically. The layer-metadata total
      reads one [layer.json] per layer (300k+ at scale, ~tens of seconds),
-     so it runs in a separate Eio domain — via [Lwt_eio.run_eio] +
-     [Domain_manager.run] — to keep the engine and web responsive; [df]
-     is cheap enough to run inline. First sample fires at startup, then
-     every [disk_sample_period] seconds. *)
+     so it runs in a systhread — via [Lwt_eio.run_eio] +
+     [Eio_unix.run_in_systhread] — to keep the engine and web responsive.
+     It must NOT spawn a domain: once any domain has been spawned OCaml 5
+     permanently forbids [Unix.fork], which the fork-helper/runc build
+     path relies on. A systhread carries no such restriction. [df] is
+     cheap enough to run inline. First sample fires at startup, then every
+     [disk_sample_period] seconds. *)
   let disk_sample_period = 600.0 in
   let disk_metrics_thread =
-    let dmgr = Eio.Stdenv.domain_mgr env in
     let rec loop () =
       let root_percent = df_root_percent () in
       Lwt.bind
         (Lwt_eio.run_eio (fun () ->
-           Eio.Domain_manager.run dmgr (fun () ->
+           Eio_unix.run_in_systhread (fun () ->
              Day11_lib.Disk_usage.layer_meta_total ~cache_dir)))
         (fun layer_bytes ->
            Docs_ci_lib.Metrics.set_disk ~root_percent ~layer_bytes;
