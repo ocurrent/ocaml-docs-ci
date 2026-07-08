@@ -432,28 +432,63 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     in
     Day11_lib.Status_index.write ~dir:snapshot_dir status;
     (* Run complete (guarded above), so write the blessed-package status
-       table that drives the diff views. *)
-    Day11_lib.Status_index.write_final_status ~dir:snapshot_dir
-      (Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes);
+       table that drives the diff views. Reused below for the package
+       metric — it's the per-blessed-package collapse (one entry each). *)
+    let final = Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes in
+    Day11_lib.Status_index.write_final_status ~dir:snapshot_dir final;
     let sum = List.fold_left (fun acc (_, n) -> acc + n) 0 in
     Metrics.set_status
       ~profile:profile.name
       ~blessed:(sum status.Day11_lib.Status_index.blessed_totals)
       ~non_blessed:(sum status.non_blessed_totals)
       ~scanned:status.scanned;
-    (* A category's total spans both buckets. build_failure only ever
-       lands in non_blessed (builds aren't blessed) but doc failures
-       occur in both, so sum across the two. *)
-    let count cat =
-      (try List.assoc cat status.blessed_totals with Not_found -> 0)
-      + (try List.assoc cat status.non_blessed_totals with Not_found -> 0)
+    (* Node-level layer accounting: (side, result) tally over every plan
+       node. [side] splits build/doc/tool; [result] is success, cascade
+       (a dep failed so this never ran), or a genuine failure. Sums to the
+       total layer count. *)
+    let layer_counts =
+      let tbl : (string * string, int) Hashtbl.t = Hashtbl.create 9 in
+      List.iter2 (fun (dn : Day11_opam_layer.Build.t) res ->
+        let side = match node_kind dn with
+          | Day11_doc.Generate.Build -> "build"
+          | Tool -> "tool"
+          | Compile | Doc_all | Link -> "doc" in
+        let result =
+          if Result.is_ok res then "success"
+          else if List.exists
+                    (fun (d : Day11_opam_layer.Build.t) -> not (dep_ok d.hash))
+                    dn.deps
+          then "cascade" else "failure" in
+        let key = (side, result) in
+        Hashtbl.replace tbl key
+          (1 + (try Hashtbl.find tbl key with Not_found -> 0)))
+        all_dag_nodes results;
+      Hashtbl.fold (fun k v acc -> (k, v) :: acc) tbl []
     in
-    Metrics.set_failures
+    Metrics.set_layers ~profile:profile.name layer_counts;
+    (* Package-level accounting. [final] holds one collapsed status per
+       blessed package, so its length is the blessed-package count and the
+       doc_success entries are the successes; everything else there is a
+       failure (cascade / build / doc). [not_documentable] is every scanned
+       package with no blessed doc node = scanned − blessed. [solver_failure]
+       is solve failures that never made it into the plan (a handful solve
+       only as another package's transitive dep — those are already counted
+       in the plan, so excluding them keeps the buckets disjoint). *)
+    let blessed_doc_success =
+      List.length (List.filter (fun (_, s) -> s = "doc_success") final) in
+    let blessed_doc_failure = List.length final - blessed_doc_success in
+    let not_documentable = status.scanned - List.length final in
+    let solver_failure =
+      let in_plan = Hashtbl.create (List.length pkg_outcomes) in
+      List.iter (fun (p, _) -> Hashtbl.replace in_plan p ()) pkg_outcomes;
+      Day11_solver.read_solve_failures ~snapshot_dir
+      |> List.filter (fun p -> not (Hashtbl.mem in_plan p))
+      |> List.length
+    in
+    Metrics.set_packages
       ~profile:profile.name
-      ~build_failure:(count "build_failure")
-      ~doc_failure:(count "doc_failure")
-      ~dependency_failure:(count "dependency_failure")
-      ~doc_dependency_failure:(count "doc_dependency_failure");
+      ~solver_failure ~not_documentable
+      ~blessed_doc_success ~blessed_doc_failure;
     ()
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,

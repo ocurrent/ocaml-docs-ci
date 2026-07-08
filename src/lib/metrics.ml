@@ -68,31 +68,71 @@ let set_status ~profile ~blessed ~non_blessed ~scanned =
   Prometheus.Gauge.set (packages_non_blessed profile) (float_of_int non_blessed);
   Prometheus.Gauge.set (packages_scanned profile) (float_of_int scanned)
 
-(* Failure counts for the profile's latest completed snapshot, broken
-   out by [kind] so build vs doc failures — and the cascade variants
-   (a node that never ran because a dependency failed) — are each their
-   own series. Summed across blessed and non-blessed nodes: blessed
-   applies only to doc nodes, so a build failure is never blessed, and a
-   doc failure is worth counting whichever universe it hit. Set from the
-   same completion-gated status record as {!set_status}. *)
-let status_failures =
-  Prometheus.Gauge.v_labels ~label_names:[ "profile"; "kind" ]
-    ~help:"Failing nodes in the profile's latest completed snapshot, by \
-           kind (build_failure, doc_failure, and the dependency_failure / \
-           doc_dependency_failure cascade variants)."
-    ~namespace ~subsystem:"status" "failures"
+(* ── Layer (node) accounting — the profile's latest completed snapshot ──
 
-let set_failures ~profile ~build_failure ~doc_failure
-    ~dependency_failure ~doc_dependency_failure =
-  let set kind n =
+   One series per (side, result). [side] ∈ build | doc | tool; [result] ∈
+   success | failure | cascade (a node that never ran because a dependency
+   failed). These partition every plan node exactly once, so
+   sum(status_layers{profile=P}) = total layers built for P, and folding
+   [cascade] into [failure] (a PromQL sum over [result]) gives the plain
+   success/failure split. Set from the same completion-gated status step as
+   the gauges above. All nine combinations are written every time (0 when
+   absent) so a category that empties out doesn't retain a stale value. *)
+let layer_sides = [ "build"; "doc"; "tool" ]
+let layer_results = [ "success"; "failure"; "cascade" ]
+
+let status_layers =
+  Prometheus.Gauge.v_labels ~label_names:[ "profile"; "side"; "result" ]
+    ~help:"Plan nodes (layers) in the profile's latest completed snapshot, \
+           by side (build/doc/tool) and result (success/failure/cascade). \
+           Partitions all layers; sum for a total, fold cascade into \
+           failure for the plain split."
+    ~namespace ~subsystem:"status" "layers"
+
+(* [counts] maps (side, result) -> n; missing pairs are recorded as 0. *)
+let set_layers ~profile counts =
+  List.iter (fun side ->
+    List.iter (fun result ->
+      let n = try List.assoc (side, result) counts with Not_found -> 0 in
+      Prometheus.Gauge.set
+        (Prometheus.Gauge.labels status_layers [ profile; side; result ])
+        (float_of_int n))
+      layer_results)
+    layer_sides
+
+(* ── Package accounting — the profile's latest completed snapshot ──
+
+   One series per package [outcome]; every package.version the pipeline
+   attempted lands in exactly one. So
+   sum(status_packages{profile=P}) = total attempted, and dropping
+   [solver_failure] gives [scanned] (the packages that solved). Blessing
+   is per package here (its canonical universe collapsed to one status),
+   unlike the node-level {!status_layers}. *)
+let package_outcomes =
+  [ "solver_failure"; "not_documentable";
+    "blessed_doc_success"; "blessed_doc_failure" ]
+
+let status_packages =
+  Prometheus.Gauge.v_labels ~label_names:[ "profile"; "outcome" ]
+    ~help:"Packages in the profile's latest completed snapshot by outcome: \
+           solver_failure (never solved), not_documentable (solved, no libs \
+           to document), blessed_doc_success / blessed_doc_failure (canonical \
+           docs built / failed). Sum = attempted; without solver_failure = \
+           scanned."
+    ~namespace ~subsystem:"status" "packages"
+
+let set_packages ~profile ~solver_failure ~not_documentable
+    ~blessed_doc_success ~blessed_doc_failure =
+  let by = [ "solver_failure", solver_failure;
+             "not_documentable", not_documentable;
+             "blessed_doc_success", blessed_doc_success;
+             "blessed_doc_failure", blessed_doc_failure ] in
+  List.iter (fun outcome ->
+    let n = try List.assoc outcome by with Not_found -> 0 in
     Prometheus.Gauge.set
-      (Prometheus.Gauge.labels status_failures [ profile; kind ])
-      (float_of_int n)
-  in
-  set "build_failure" build_failure;
-  set "doc_failure" doc_failure;
-  set "dependency_failure" dependency_failure;
-  set "doc_dependency_failure" doc_dependency_failure
+      (Prometheus.Gauge.labels status_packages [ profile; outcome ])
+      (float_of_int n))
+    package_outcomes
 
 (* ── Host disk gauges (sampled periodically, host-level) ───────────
    Not per-profile: the root filesystem and the layer cache are shared

@@ -238,6 +238,18 @@ type solution = {
   solve_result : Day11_solution.Solve_result.t;
 }
 
+(* Read the consolidated [solve_failures.json] the solver writes next to a
+   snapshot (see [write_solve_failures]): a JSON array of "name.version".
+   Returns [] if the file is absent or unparseable. *)
+let read_solve_failures ~snapshot_dir =
+  match Bos.OS.File.read Fpath.(snapshot_dir / "solve_failures.json") with
+  | Error _ -> []
+  | Ok data ->
+    match (try Some (Yojson.Safe.from_string data) with _ -> None) with
+    | Some (`List items) ->
+      List.filter_map (function `String s -> Some s | _ -> None) items
+    | _ -> []
+
 (** Solve all tracked packages using day11's solver. Returns solutions
     keyed by target package. *)
 let repos_digest repos =
