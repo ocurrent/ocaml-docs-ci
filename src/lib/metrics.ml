@@ -134,6 +134,18 @@ let set_packages ~profile ~solver_failure ~not_documentable
       (float_of_int n))
     package_outcomes
 
+(* Wall-clock seconds from the profile's latest completed snapshot first
+   entering the pipeline to first reaching completion. Stable per snapshot
+   (see {!Day11_lib.Run_timing}); a new opam-repo/overlay commit starts a
+   fresh snapshot and so a fresh measurement. *)
+let run_seconds =
+  gauge "run_seconds"
+    "Build-to-completion wall-clock (seconds) of the profile's latest \
+     completed snapshot."
+
+let set_run_seconds ~profile seconds =
+  Prometheus.Gauge.set (run_seconds profile) seconds
+
 (* ── Host disk gauges (sampled periodically, host-level) ───────────
    Not per-profile: the root filesystem and the layer cache are shared
    across profiles. *)

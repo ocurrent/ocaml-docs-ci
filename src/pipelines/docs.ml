@@ -234,6 +234,10 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
      the persisted DAG. *)
   let packages_dir = Day11_batch.Snapshot.packages_dir snapshot_dir in
   ignore (Bos.OS.Dir.create ~path:true packages_dir);
+  (* Stamp the snapshot's build start (once) so the run-time metric can be
+     measured at completion. Write-once, so re-evaluations and restarts keep
+     the original start. *)
+  Day11_lib.Run_timing.record_start ~dir:snapshot_dir;
   Day11_lib.Run_log.set_log_base_dir (Fpath.to_string snapshot_dir);
   let run_log = Day11_lib.Run_log.start_run () in
   let recorder = Day11_batch.Recorder.create
@@ -489,6 +493,10 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       ~profile:profile.name
       ~solver_failure ~not_documentable
       ~blessed_doc_success ~blessed_doc_failure;
+    (* Stamp completion (once) and publish the build-to-completion span. *)
+    (match Day11_lib.Run_timing.duration ~dir:snapshot_dir with
+     | Some seconds -> Metrics.set_run_seconds ~profile:profile.name seconds
+     | None -> ());
     ()
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,
