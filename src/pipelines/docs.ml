@@ -441,6 +441,19 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       ~blessed:(sum status.Day11_lib.Status_index.blessed_totals)
       ~non_blessed:(sum status.non_blessed_totals)
       ~scanned:status.scanned;
+    (* A category's total spans both buckets. build_failure only ever
+       lands in non_blessed (builds aren't blessed) but doc failures
+       occur in both, so sum across the two. *)
+    let count cat =
+      (try List.assoc cat status.blessed_totals with Not_found -> 0)
+      + (try List.assoc cat status.non_blessed_totals with Not_found -> 0)
+    in
+    Metrics.set_failures
+      ~profile:profile.name
+      ~build_failure:(count "build_failure")
+      ~doc_failure:(count "doc_failure")
+      ~dependency_failure:(count "dependency_failure")
+      ~doc_dependency_failure:(count "doc_dependency_failure");
     ()
   in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,

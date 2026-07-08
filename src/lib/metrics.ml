@@ -68,6 +68,32 @@ let set_status ~profile ~blessed ~non_blessed ~scanned =
   Prometheus.Gauge.set (packages_non_blessed profile) (float_of_int non_blessed);
   Prometheus.Gauge.set (packages_scanned profile) (float_of_int scanned)
 
+(* Failure counts for the profile's latest completed snapshot, broken
+   out by [kind] so build vs doc failures — and the cascade variants
+   (a node that never ran because a dependency failed) — are each their
+   own series. Summed across blessed and non-blessed nodes: blessed
+   applies only to doc nodes, so a build failure is never blessed, and a
+   doc failure is worth counting whichever universe it hit. Set from the
+   same completion-gated status record as {!set_status}. *)
+let status_failures =
+  Prometheus.Gauge.v_labels ~label_names:[ "profile"; "kind" ]
+    ~help:"Failing nodes in the profile's latest completed snapshot, by \
+           kind (build_failure, doc_failure, and the dependency_failure / \
+           doc_dependency_failure cascade variants)."
+    ~namespace ~subsystem:"status" "failures"
+
+let set_failures ~profile ~build_failure ~doc_failure
+    ~dependency_failure ~doc_dependency_failure =
+  let set kind n =
+    Prometheus.Gauge.set
+      (Prometheus.Gauge.labels status_failures [ profile; kind ])
+      (float_of_int n)
+  in
+  set "build_failure" build_failure;
+  set "doc_failure" doc_failure;
+  set "dependency_failure" dependency_failure;
+  set "doc_dependency_failure" doc_dependency_failure
+
 (* ── Host disk gauges (sampled periodically, host-level) ───────────
    Not per-profile: the root filesystem and the layer cache are shared
    across profiles. *)
