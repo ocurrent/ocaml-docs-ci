@@ -253,7 +253,7 @@
   "jtw_repo": null,
   "arch": "x86_64",
   "os_distribution": "debian",
-  "os_version": "bookworm",
+  "os_version": "trixie",
   "driver_compiler": "",
   "extra_pins": [],
   "pinned_versions": [],
