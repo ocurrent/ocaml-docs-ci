@@ -273,10 +273,19 @@ type doc_graph = {
   g_doc : Day11_solution.Deps.t;                (* direct doc-deps *)
   g_trans_doc : Day11_solution.Deps.t;          (* transitive doc-deps *)
   g_compiler : OpamPackage.t option;
+  g_memo : (string, string * doc_node option * doc_node list) Hashtbl.t;
+  (* Per-graph [visit] memo, keyed by package name string. Within one
+     graph a package's universe is fixed, so this shortcut avoids
+     recomputing [Universe.of_deps] over the package's transitive doc
+     closure — an O(closure) digest — on {e every} [visit] call. Without
+     it that digest ran once per DAG {e edge} (each dep recursion), which
+     dominated planning wall-clock on large profiles. The global
+     [memo] (keyed by [hash@universe]) still dedups across graphs. *)
 }
 
 let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
     ~odoc_tools ~nodes ~solutions =
+  let t0 = Unix.gettimeofday () in
   (* Collect tool nodes *)
   let tool_nodes =
     let seen = Hashtbl.create 64 in
@@ -376,6 +385,16 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
     | Some s -> s | None -> OpamPackage.Set.empty in
   let rec visit ~(g : doc_graph) pkg
     : string * doc_node option * doc_node list =
+    (* Per-graph memo first: hit means no universe digest at all. *)
+    let pkg_key = OpamPackage.to_string pkg in
+    match Hashtbl.find_opt g.g_memo pkg_key with
+    | Some r -> r
+    | None ->
+      let r = visit_uncached ~g pkg in
+      Hashtbl.replace g.g_memo pkg_key r;
+      r
+  and visit_uncached ~(g : doc_graph) pkg
+    : string * doc_node option * doc_node list =
     match g.g_node pkg with
     | None -> ("", None, [])  (* pkg has no build node — unreachable *)
     | Some (n : build) ->
@@ -450,13 +469,28 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
   List.iter (fun (_target, (result : Day11_solution.Solve_result.t)) ->
     let trans_doc = Day11_solution.Deps.transitive_deps result.doc_deps in
     let trans_build = Day11_solution.Deps.transitive_deps result.build_deps in
+    (* Memoised per solution: [resolve] is called for every package
+       AND every doc-dep edge below, and each call digests two full
+       transitive closures ([bh_of] + [Universe.of_deps]). Within one
+       solution a package's (bh, universe) is fixed, so pay that cost
+       once per (solution, package) instead of once per edge. *)
+    let resolve_memo : (string, (string * string) option) Hashtbl.t =
+      Hashtbl.create 64 in
     let resolve pkg =
-      let bh = bh_of ~trans_build pkg in
-      if Hashtbl.mem build_by_hash bh
-      then Some (bh, Day11_solution.Universe.to_string
-                       (Day11_solution.Universe.of_deps
-                          (deps_or_empty trans_doc pkg)))
-      else None
+      let k = OpamPackage.to_string pkg in
+      match Hashtbl.find_opt resolve_memo k with
+      | Some r -> r
+      | None ->
+        let r =
+          let bh = bh_of ~trans_build pkg in
+          if Hashtbl.mem build_by_hash bh
+          then Some (bh, Day11_solution.Universe.to_string
+                           (Day11_solution.Universe.of_deps
+                              (deps_or_empty trans_doc pkg)))
+          else None
+        in
+        Hashtbl.replace resolve_memo k r;
+        r
     in
     OpamPackage.Map.iter (fun pkg direct ->
       match resolve pkg with
@@ -469,14 +503,19 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
     ) result.doc_deps;
     let g = {
       g_node =
-        (fun pkg -> Hashtbl.find_opt build_by_hash (bh_of ~trans_build pkg));
+        (fun pkg ->
+          match resolve pkg with
+          | Some (bh, _) -> Hashtbl.find_opt build_by_hash bh
+          | None -> None);
       g_build = result.build_deps;
       g_doc = result.doc_deps;
       g_trans_doc = trans_doc;
       g_compiler = find_compiler result.build_deps;
+      g_memo = Hashtbl.create 64;
     } in
     OpamPackage.Map.iter (fun pkg _ -> ignore (visit ~g pkg)) result.doc_deps
   ) solutions;
+  let t_solutions = Unix.gettimeofday () in
   (* Tools: each is its own build DAG with no x-extra-doc-deps, so its
      doc-deps graph is just its build-deps graph. A package is unique
      within one tool (but the same package can recur across tools for
@@ -496,10 +535,12 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
       g_doc = build_graph;
       g_trans_doc = Day11_solution.Deps.transitive_deps build_graph;
       g_compiler = find_compiler build_graph;
+      g_memo = Hashtbl.create 64;
     } in
     List.iter (fun (m : build) -> ignore (visit ~g m.pkg)) tool_builds
   ) (driver_tool.builds
      :: List.map (fun (_, (t : Tool.t)) -> t.builds) odoc_tools);
+  let t_tools = Unix.gettimeofday () in
   let compile_docall_doc_nodes =
     Hashtbl.fold (fun _ (_, dn, _) acc ->
       match dn with Some dn -> dn :: acc | None -> acc) memo [] in
@@ -564,15 +605,18 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
       | _ -> None
     ) compile_docall_doc_nodes
   in
+  let t_links = Unix.gettimeofday () in
   let layers_of_kind k =
     List.filter_map (fun (dn : doc_node) ->
       if dn.kind = k then Some dn.layer else None) compile_docall_doc_nodes in
   let compile_list = layers_of_kind Compile in
   let doc_all_list = layers_of_kind Doc_all in
-  Printf.printf "  plan: %d build, %d tool, %d compile, %d doc-all, %d link\n%!"
+  Printf.printf "  plan: %d build, %d tool, %d compile, %d doc-all, %d link \
+                 (solutions %.1fs, tools %.1fs, links %.1fs)\n%!"
     (List.length nodes) (List.length tool_nodes)
     (List.length compile_list) (List.length doc_all_list)
-    (List.length !link_nodes_list);
+    (List.length !link_nodes_list)
+    (t_solutions -. t0) (t_tools -. t_solutions) (t_links -. t_tools);
   (* Dedup the concatenation by hash. [nodes] is already dedup-by-hash
      (see [Dag.build_dag]) and [tool_nodes] dedups internally, but a
      hash present in both — e.g. a tool's transitive dep that
@@ -1119,9 +1163,12 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
          ~universe:(node_universe_of_plan plan node) ~success);
     success
   in
+  let t_writes = Unix.gettimeofday () in
   write_dag_if_requested ~snapshot_dir plan;
   write_package_plans_if_requested ~snapshot_dir plan;
   write_universes_if_requested ~snapshot_dir plan;
+  Printf.printf "  plan writes (dag.json, plan.json×pkgs, universes): %.1fs\n%!"
+    (Unix.gettimeofday () -. t_writes);
   Some { all_nodes = plan.all_nodes;
          node_kind = kind_of;
          node_blessed = node_blessed_of_plan plan;

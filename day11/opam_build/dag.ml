@@ -3,6 +3,7 @@ module Tool = Day11_opam_layer.Tool
 type build = Build.t
 
 let build_dag cache ~base_hash solutions =
+  let t0 = Unix.gettimeofday () in
   (* Memo by build hash. The hash is the only true identity of a
      build: two solutions can reach [pkg] with the same build-deps
      closure but different doc-deps closures (different universes) —
@@ -17,7 +18,22 @@ let build_dag cache ~base_hash solutions =
      solution's view — that's already the case post-dedup downstream,
      so no information is lost. *)
   let memo : (string, build) Hashtbl.t = Hashtbl.create 256 in
-  let rec get_node solution trans_build trans_doc pkg =
+  (* [local] memoises (pkg → node) within one solution. Without it,
+     the [layer_hash] below — an O(closure) string build + digest even
+     on its own cache-hit path — runs once per DAG {e edge} (every
+     recursive [get_node] call from a depender), which dominated
+     wall-clock on large profiles. Within a solution a package's node
+     is fixed, so per-(solution, pkg) is the right granularity; the
+     global [memo] by hash still dedups across solutions. *)
+  let rec get_node local solution trans_build trans_doc pkg =
+    let pkg_key = OpamPackage.to_string pkg in
+    match Hashtbl.find_opt local pkg_key with
+    | Some node -> node
+    | None ->
+      let node = get_node_uncached local solution trans_build trans_doc pkg in
+      Hashtbl.replace local pkg_key node;
+      node
+  and get_node_uncached local solution trans_build trans_doc pkg =
     let pkg_build_deps =
       match OpamPackage.Map.find_opt pkg trans_build with
       | Some s -> OpamPackage.Set.elements s
@@ -50,7 +66,7 @@ let build_dag cache ~base_hash solutions =
       in
       let deps = List.filter_map (fun dep ->
         if OpamPackage.Map.mem dep solution then
-          Some (get_node solution trans_build trans_doc dep)
+          Some (get_node local solution trans_build trans_doc dep)
         else
           None
       ) direct_deps in
@@ -61,10 +77,16 @@ let build_dag cache ~base_hash solutions =
   List.iter (fun (_target, solution, doc_solution) ->
     let trans_build = Day11_solution.Deps.transitive_deps solution in
     let trans_doc = Day11_solution.Deps.transitive_deps doc_solution in
+    let local : (string, build) Hashtbl.t =
+      Hashtbl.create (OpamPackage.Map.cardinal solution) in
     OpamPackage.Map.iter (fun pkg _deps ->
-      ignore (get_node solution trans_build trans_doc pkg)
+      ignore (get_node local solution trans_build trans_doc pkg)
     ) solution
   ) solutions;
   let all_nodes = Hashtbl.fold (fun _ node acc -> node :: acc) memo [] in
-  List.sort (fun (a : build) (b : build) ->
-    compare (List.length a.deps) (List.length b.deps)) all_nodes
+  let sorted = List.sort (fun (a : build) (b : build) ->
+    compare (List.length a.deps) (List.length b.deps)) all_nodes in
+  Printf.printf "  build_dag: %d nodes from %d solutions in %.1fs\n%!"
+    (List.length sorted) (List.length solutions)
+    (Unix.gettimeofday () -. t0);
+  sorted

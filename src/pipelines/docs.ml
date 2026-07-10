@@ -169,10 +169,11 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
   let build_solutions = List.map (fun (s : Day11_solver.solution) ->
     (s.target, s.solve_result.build_deps, s.solve_result.doc_deps)
   ) solutions in
+  let t_dag = Unix.gettimeofday () in
   let nodes = Day11_opam_build.Dag.build_dag ctx.hash_cache
     ~base_hash:ctx.base.hash build_solutions in
-  Log.info (fun f -> f "[%s] %d build nodes"
-    profile.name (List.length nodes));
+  Log.info (fun f -> f "[%s] %d build nodes (build_dag %.1fs)"
+    profile.name (List.length nodes) (Unix.gettimeofday () -. t_dag));
 
   (* 4) Doc plan (only if this profile has an html_dir).
 
@@ -358,7 +359,20 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       Hashtbl.replace node_cache dag_node.hash node;
       node
   in
+  (* Time the OCurrent-graph construction: one [run_node] per plan node
+     plus a [Current.all] gate over each node's dep list, so the graph
+     size scales with total edges, not just nodes. The log line makes a
+     slow construction visible instead of an unexplained gap between
+     "plan:" and the first job. *)
+  let t_mk = Unix.gettimeofday () in
   let all_nodes = List.map make_node all_dag_nodes in
+  Log.info (fun f ->
+    let edges = List.fold_left
+      (fun acc (n : Day11_opam_layer.Build.t) -> acc + List.length n.deps)
+      0 all_dag_nodes in
+    f "[%s] OCurrent graph: %d nodes, %d dep edges in %.1fs"
+      profile.name (List.length all_dag_nodes) edges
+      (Unix.gettimeofday () -. t_mk));
   (* Collapse the build+doc subtree into a single node in the
      pipeline diagram. All the individual build/doc [Current.t]s
      are still created (so the [/jobs] page and per-node caching
