@@ -242,12 +242,19 @@ end
 
 module Cache = Current_cache.Make (Op)
 
+(* [Current.cutoff]: the overlay's HEAD sha is unchanged across no-op
+   ticks (see [Value] above), but each scheduled rebuild returns a
+   physically new string, which the default [(==)] propagation
+   equality treats as a change — re-firing the solve → doc-plan chain
+   hourly for nothing. See {!Docs_ci_lib.Remote_opam_repo.maintain}
+   for the mechanics. *)
 let maintain ?branch ~schedule ~url ~path () : string Current.t =
   let open Current.Syntax in
-  Current.component "github-pin-overlay %s%s" url
+  (Current.component "github-pin-overlay %s%s" url
     (match branch with Some b -> "#" ^ b | None -> "") |>
-  let> () = Current.return () in
-  Cache.get ~schedule () Op.Key.{ url; branch; path }
+   let> () = Current.return () in
+   Cache.get ~schedule () Op.Key.{ url; branch; path })
+  |> Current.cutoff ~eq:String.equal
 
 let maintain_commit ?branch ~schedule ~url ~path () :
     Current_git.Commit.t Current.t =

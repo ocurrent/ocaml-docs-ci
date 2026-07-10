@@ -110,12 +110,23 @@ module Cache = Current_cache.Make (Op)
 
 (** [maintain ~schedule ~url ~path] installs a scheduled puller that
     keeps [path] up to date with [url]. Returns the latest commit SHA
-    as a [Current.t]. *)
+    as a [Current.t].
+
+    The result is wrapped in [Current.cutoff ~eq:String.equal]: a
+    scheduled re-pull that resolves to the {e same} SHA must not
+    re-fire downstream. Without the cutoff, each hourly refresh
+    completes with a freshly-unmarshalled (physically new) sha string,
+    the default [(==)] equality in OCurrent's propagation fails, and
+    the whole track → solve → profile-ctx → doc-plan chain re-runs on
+    every poll even when nothing moved. Errors still propagate
+    ([Dyn.equal] never equates Ok with Error), so a failing pull
+    remains visible in the pipeline. *)
 let maintain ~schedule ~url ~path : string Current.t =
   let open Current.Syntax in
-  Current.component "pull %s" url |>
-  let> () = Current.return () in
-  Cache.get ~schedule () Op.Key.{ url; path }
+  (Current.component "pull %s" url |>
+   let> () = Current.return () in
+   Cache.get ~schedule () Op.Key.{ url; path })
+  |> Current.cutoff ~eq:String.equal
 
 (** Same as {!maintain}, but lifts the SHA into a
     [Current_git.Commit.t Current.t]. Downstream consumers that want

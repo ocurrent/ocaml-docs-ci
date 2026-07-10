@@ -80,9 +80,16 @@ end
 module Cache = Current_cache.Make (Op)
 
 (** Resolve the digest of [image] for [arch], refreshed per
-    [schedule]. *)
+    [schedule].
+
+    [Current.cutoff]: a scheduled re-resolve that returns the same
+    digest string must not re-fire downstream — without it, every
+    daily refresh re-plans the entire profile even when the upstream
+    image is unchanged. See {!Docs_ci_lib.Remote_opam_repo.maintain}
+    for the mechanics. *)
 let current ~schedule ~image ~arch : string Current.t =
   let open Current.Syntax in
-  Current.component "base-digest %s" image |>
-  let> () = Current.return () in
-  Cache.get ~schedule () Op.Key.{ image; arch }
+  (Current.component "base-digest %s" image |>
+   let> () = Current.return () in
+   Cache.get ~schedule () Op.Key.{ image; arch })
+  |> Current.cutoff ~eq:String.equal
