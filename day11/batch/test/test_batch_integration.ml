@@ -230,7 +230,7 @@ let test_incremental_reuse () =
   let changed_empty = OpamPackage.Name.Set.empty in
   let reused = Incremental_solver.reuse_solutions
     ~solutions_cache_dir:sha2_dir ~previous_dir:sha1_dir
-    ~changed_packages:changed_empty ~packages:targets in
+    ~changed_packages:changed_empty ~packages:targets () in
   Printf.printf "  Reused (no changes): %d/%d\n%!" reused (List.length targets);
   Alcotest.(check int) "all reused" (List.length targets) reused;
   (* Verify reused solutions load correctly *)
@@ -258,7 +258,7 @@ let test_incremental_reuse () =
   let changed_one = OpamPackage.Name.Set.singleton examined_name in
   let reused2 = Incremental_solver.reuse_solutions
     ~solutions_cache_dir:sha3_dir ~previous_dir:sha1_dir
-    ~changed_packages:changed_one ~packages:targets in
+    ~changed_packages:changed_one ~packages:targets () in
   Printf.printf "  Reused (1 change): %d/%d\n%!" reused2 (List.length targets);
   (* astring should NOT be reused since its examined set overlaps *)
   Alcotest.(check bool) "not all reused" true

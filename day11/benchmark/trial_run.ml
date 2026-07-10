@@ -180,7 +180,7 @@ let () =
         let target_strs = List.map OpamPackage.to_string targets in
         let reused = Day11_batch.Incremental_solver.reuse_solutions
           ~solutions_cache_dir:solutions_dir ~previous_dir:prev_dir
-          ~changed_packages:changed ~packages:target_strs in
+          ~changed_packages:changed ~packages:target_strs () in
         (changed, reused)
     in
     let n_changed = OpamPackage.Name.Set.cardinal changed in

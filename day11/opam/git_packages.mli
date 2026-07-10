@@ -59,4 +59,18 @@ val diff_packages :
   store:Store.t -> Store.Hash.t -> Store.Hash.t ->
   OpamPackage.Name.t list
 (** [diff_packages ~store commit1 commit2] returns package names
-    whose tree objects differ between the two commits. *)
+    whose tree objects differ between the two commits.
+
+    {b Asymmetric}: iterates [commit1]'s [packages/] entries, so it
+    reports names changed in or removed from [commit1]'s view — a
+    package present only in [commit2] (newly added) is not reported.
+    Callers needing a symmetric diff should union both directions.
+
+    Runs its own Lwt loop ([Lwt_main.run]); do not call from inside a
+    running Lwt or Lwt_eio event loop — use {!diff_packages_lwt}. *)
+
+val diff_packages_lwt :
+  store:Store.t -> Store.Hash.t -> Store.Hash.t ->
+  OpamPackage.Name.t list Lwt.t
+(** Lwt-native version of {!diff_packages}, safe under a running
+    event loop (e.g. from an OCurrent Op). *)

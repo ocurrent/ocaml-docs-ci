@@ -135,7 +135,7 @@ let test_scenario ~name ~before_sha ~after_sha () =
   mkdir after_dir;
   let reused = Incremental_solver.reuse_solutions
     ~solutions_cache_dir:after_dir ~previous_dir:before_dir
-    ~changed_packages:changed_set ~packages:target_strs in
+    ~changed_packages:changed_set ~packages:target_strs () in
   Printf.printf "  Reused: %d/%d\n%!" reused (List.length target_strs);
   (* Step 4: Re-solve invalidated packages at "after" commit *)
   let after_packages = load_packages_at_commit store after_sha in

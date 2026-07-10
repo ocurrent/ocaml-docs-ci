@@ -100,16 +100,23 @@ let load file_path =
     with exn ->
       Error (`Msg (Printexc.to_string exn))
 
-let reuse_solutions ~solutions_cache_dir ~previous_dir
-    ~changed_packages ~packages =
+let reuse_solutions ?expected_cache_key ?rekey_to ~solutions_cache_dir
+    ~previous_dir ~changed_packages ~packages () =
   let reused = ref 0 in
   List.iter (fun pkg_name ->
     let cache_file = Fpath.(solutions_cache_dir / (pkg_name ^ ".json")) in
-    if not (Sys.file_exists (Fpath.to_string cache_file)) then begin
+    (* In rekey mode the caller passes exactly the targets it knows to
+       be missing or stale, so an existing (stale) file is overwritten;
+       in hardlink mode preserve the historical skip-if-present. *)
+    let skip =
+      rekey_to = None && Sys.file_exists (Fpath.to_string cache_file) in
+    if not skip then begin
       let prev_file = Fpath.(previous_dir / (pkg_name ^ ".json")) in
       if Sys.file_exists (Fpath.to_string prev_file) then
         match load prev_file with
         | Error _ -> ()
+        | Ok entry when
+            not (is_cache_key_valid ~expected:expected_cache_key entry) -> ()
         | Ok entry ->
           let examined = match entry with
             | Cached_solution s -> s.result.examined
@@ -118,17 +125,33 @@ let reuse_solutions ~solutions_cache_dir ~previous_dir
           if OpamPackage.Name.Set.is_empty
                (OpamPackage.Name.Set.inter examined changed_packages)
           then begin
-            (try
-               Unix.link (Fpath.to_string prev_file)
-                 (Fpath.to_string cache_file);
-               incr reused
-             with Unix.Unix_error _ ->
-               match Bos.OS.File.read prev_file with
-               | Ok data ->
-                 (match Bos.OS.File.write cache_file data with
+            match rekey_to with
+            | None ->
+              (try
+                 Unix.link (Fpath.to_string prev_file)
+                   (Fpath.to_string cache_file);
+                 incr reused
+               with Unix.Unix_error _ ->
+                 match Bos.OS.File.read prev_file with
+                 | Ok data ->
+                   (match Bos.OS.File.write cache_file data with
+                    | Ok () -> incr reused
+                    | Error _ -> ())
+                 | Error _ -> ())
+            | Some new_key ->
+              (* Re-stamp with the destination snapshot's cache key so
+                 the consumer's [is_cache_key_valid] accepts the entry.
+                 Failures are skipped in this mode: ocaml-docs-ci
+                 re-attempts failed solves every run regardless, so
+                 copying them forward is wasted IO. *)
+              (match entry with
+               | Cached_failure _ -> ()
+               | Cached_solution s ->
+                 let entry' =
+                   Cached_solution { s with cache_key = Some new_key } in
+                 (match save cache_file entry' with
                   | Ok () -> incr reused
-                  | Error _ -> ())
-               | Error _ -> ())
+                  | Error _ -> ()))
           end
     end
   ) packages;

@@ -160,9 +160,8 @@ let find_package (t : t) pkg =
 let all_names (t : t) =
   OpamPackage.Name.Map.fold (fun name _ acc -> name :: acc) t []
 
-let diff_packages ~store commit1 commit2 =
-  Lwt_main.run @@
-  (Search.find store commit1 (`Commit (`Path [ "packages" ])) >>= function
+let diff_packages_lwt ~store commit1 commit2 =
+  Search.find store commit1 (`Commit (`Path [ "packages" ])) >>= function
   | None -> Fmt.failwith "Failed to find packages directory in commit1"
   | Some tree1_hash ->
       read_dir store tree1_hash >>= function
@@ -190,4 +189,7 @@ let diff_packages ~store commit1 commit2 =
                              (match OpamPackage.Name.of_string entry.name with
                               | exception _ -> acc
                               | name -> name :: acc))
-                       [] tree1_list))
+                       [] tree1_list)
+
+let diff_packages ~store commit1 commit2 =
+  Lwt_main.run (diff_packages_lwt ~store commit1 commit2)

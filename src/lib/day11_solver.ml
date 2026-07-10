@@ -3,6 +3,13 @@
     Replaces the Cap'n Proto solver service. Uses day11's solver_worker
     binaries for parallel solving, communicating via JSONL files. *)
 
+(* Order-insensitive digest of a [(path, sha)] repo set. Part of both
+   the OCurrent cache key and each per-target entry's [cache_key]. *)
+let repos_digest repos =
+  let sorted = List.sort compare
+    (List.map (fun (path, sha) -> path ^ "@" ^ sha) repos) in
+  Digest.to_hex (Digest.string (String.concat "\n" sorted))
+
 module SolveOp = struct
   type t = {
     repos_with_shas : (string * string) list;
@@ -67,22 +74,28 @@ module SolveOp = struct
 
   let auto_cancel = false
 
-  let snapshot_solutions_dir ctx =
-    let snapshot_dir =
-      Day11_profile_ctx_loader.snapshot_dir_of
-        ~cache_dir:ctx.cache_dir
-        ~profile_name:ctx.profile_name
-        ctx.repos_with_shas
-    in
-    Fpath.(snapshot_dir / "solutions")
+  let snapshot_dir_of ctx =
+    Day11_profile_ctx_loader.snapshot_dir_of
+      ~cache_dir:ctx.cache_dir
+      ~profile_name:ctx.profile_name
+      ctx.repos_with_shas
+
+  let snapshot_solutions_dir ctx = Fpath.(snapshot_dir_of ctx / "solutions")
+
+  (* [<...>/snapshots/<profile>] — the dir holding all of this
+     profile's snapshot dirs. *)
+  let profile_snapshots_base ctx = Fpath.parent (snapshot_dir_of ctx)
 
   (* Per-target solution cache.
 
      Files live at [snapshot_dir/solutions/<pkg>.<ver>.json] and are
      read/written via {!Day11_batch.Incremental_solver}. We embed a
      [cache_key = hash(compiler ∥ commit ∥ repos_digest)] in each
-     entry so a repo or compiler change invalidates only the
-     affected entries — other cached solutions stay valid.
+     entry, so within a snapshot a compiler or pin change invalidates
+     prior entries. Because the key bakes in the global commit, a repo
+     bump alone would invalidate {e everything} — that case is handled
+     by the incremental-reuse pass below, which carries forward
+     solutions provably unaffected by the commits' changed packages.
 
      This is deliberately per-file (not a directory-level
      fingerprint) so adding a new target to opam-repo doesn't nuke
@@ -111,6 +124,150 @@ module SolveOp = struct
     in
     Digest.to_hex (Digest.string
       (compiler_tag ^ "|" ^ commit ^ "|" ^ repos_digest ^ pins))
+
+  (* ── Incremental reuse from the previous snapshot ────────────────
+
+     A new opam-repo commit mints a new snapshot with an empty
+     [solutions/] dir, and the commit is baked into [cache_key], so
+     without help every target re-solves even though most commits
+     touch a handful of packages. Before solving, seed the dir from
+     the chronologically-previous snapshot: compute the set of package
+     names whose [packages/<name>] tree changed between the two
+     snapshots (per repo, both diff directions so added packages
+     count) and carry over every cached solution whose [examined] set
+     doesn't intersect it, re-stamped with this snapshot's [cache_key]
+     ({!Day11_batch.Incremental_solver.reuse_solutions} with
+     [~rekey_to]).
+
+     Soundness: a solve's result can only change if some package name
+     it examined changed, so a disjoint examined set means the cached
+     result still holds. The [expected_cache_key] gate only trusts
+     entries that were valid {e at the previous snapshot} (same
+     compiler/pins, that snapshot's commit + repos digest) — leftovers
+     from an interrupted run under different inputs are ignored. Reuse
+     composes across snapshot chains by induction: each hop
+     re-validates against that hop's diff before re-stamping.
+
+     Any failure — no previous snapshot, the profile's repo set
+     changed, a commit no longer resolvable locally (pruned by fetch)
+     — logs and falls back to the plain full-solve path. *)
+
+  (* Most recent other snapshot (by its repos.json [created] stamp)
+     that has a [solutions/] dir on disk. Sorted by [created], not dir
+     mtime: file regeneration inside a snapshot bumps mtimes and can
+     float an old snapshot above the true predecessor. *)
+  let find_previous_snapshot ~base ~current_key =
+    match Bos.OS.Dir.contents base with
+    | Error _ -> None
+    | Ok entries ->
+      entries
+      |> List.filter_map (fun p ->
+          if String.equal (Fpath.basename p) current_key then None
+          else
+            match Day11_batch.Snapshot.load p with
+            | Ok s ->
+              let sols = Fpath.(p / "solutions") in
+              if Bos.OS.Dir.exists sols |> Result.value ~default:false
+              then Some (s, sols)
+              else None
+            | Error _ -> None)
+      |> List.sort
+           (fun ((a : Day11_batch.Snapshot.t), _) ((b : Day11_batch.Snapshot.t), _) ->
+             compare b.created a.created)
+      |> function [] -> None | x :: _ -> Some x
+
+  (* Package names changed between two snapshots, unioned across every
+     repo and across both diff directions (the tree diff is
+     asymmetric; the reverse direction catches added packages).
+     [Error] when the repo sets differ or a commit can't be resolved
+     locally — callers must treat that as "cannot bound the change". *)
+  let changed_packages_lwt ~prev_repos ~cur_repos =
+    let open Lwt.Syntax in
+    let sorted_paths l = List.sort compare (List.map fst l) in
+    if sorted_paths prev_repos <> sorted_paths cur_repos then
+      Lwt.return (Error "repo set changed between snapshots")
+    else
+      Lwt.catch
+        (fun () ->
+           let rec go acc = function
+             | [] -> Lwt.return (Ok acc)
+             | (path, cur_sha) :: rest ->
+               let prev_sha = List.assoc path prev_repos in
+               if String.equal prev_sha cur_sha then go acc rest
+               else
+                 let* store, prev_h =
+                   Day11_opam.Git_utils.get_git_repo_store_and_hash_commit_lwt
+                     path (Some prev_sha) in
+                 let* cur_h =
+                   Day11_opam.Git_utils.resolve_commit_in_store_lwt
+                     store (Some cur_sha) in
+                 let* d1 = Day11_opam.Git_packages.diff_packages_lwt
+                     ~store prev_h cur_h in
+                 let* d2 = Day11_opam.Git_packages.diff_packages_lwt
+                     ~store cur_h prev_h in
+                 let acc =
+                   List.fold_left
+                     (fun s n -> OpamPackage.Name.Set.add n s)
+                     acc (d1 @ d2)
+                 in
+                 go acc rest
+           in
+           go OpamPackage.Name.Set.empty cur_repos)
+        (fun exn -> Lwt.return (Error (Printexc.to_string exn)))
+
+  let incremental_reuse ~job ctx (key : Key.t) ~compiler_tag ~cache_key ~dir =
+    let open Lwt.Syntax in
+    (* Only targets with no file at all: a file that exists but fails
+       the cache-key check means compiler/pins changed within this
+       snapshot — the previous snapshot's entries would fail the
+       [expected_cache_key] gate for the same reason, so there is
+       nothing to gain from looking there. *)
+    let missing =
+      List.filter (fun pkg ->
+        not (Sys.file_exists
+               (Fpath.to_string Fpath.(dir / solution_filename pkg))))
+        key.targets
+    in
+    if missing = [] then Lwt.return_unit
+    else
+      let base = profile_snapshots_base ctx in
+      let current_key =
+        Day11_batch.Snapshot.compute_key ctx.repos_with_shas in
+      match find_previous_snapshot ~base ~current_key with
+      | None -> Lwt.return_unit
+      | Some ((prev : Day11_batch.Snapshot.t), prev_solutions) ->
+        let* changed =
+          changed_packages_lwt ~prev_repos:prev.repos
+            ~cur_repos:ctx.repos_with_shas in
+        (match changed with
+         | Error msg ->
+           Current.Job.log job
+             "incremental: cannot diff against previous snapshot %s (%s); \
+              solving from scratch" prev.key msg;
+           Lwt.return_unit
+         | Ok changed ->
+           let mainline_path = match ctx.repos_with_shas with
+             | (p, _) :: _ -> p
+             | [] -> "" (* unreachable: profiles require >= 1 repo *)
+           in
+           (match List.assoc_opt mainline_path prev.repos with
+            | None -> Lwt.return_unit
+            | Some prev_commit ->
+              let prev_cache_key =
+                compute_cache_key ~compiler_tag ~commit:prev_commit
+                  ~repos_digest:(repos_digest prev.repos)
+                  ~pinned_versions:key.pinned_versions in
+              let packages = List.map OpamPackage.to_string missing in
+              let reused = Day11_batch.Incremental_solver.reuse_solutions
+                  ~expected_cache_key:prev_cache_key ~rekey_to:cache_key
+                  ~solutions_cache_dir:dir ~previous_dir:prev_solutions
+                  ~changed_packages:changed ~packages () in
+              Current.Job.log job
+                "incremental: %d package(s) changed since snapshot %s; \
+                 reused %d/%d cached solutions"
+                (OpamPackage.Name.Set.cardinal changed) prev.key
+                reused (List.length missing);
+              Lwt.return_unit))
 
   (* Split [targets] into those whose cached solutions are still
      valid (matching [cache_key]) and those that need (re)solving. *)
@@ -169,6 +326,11 @@ module SolveOp = struct
         ~pinned_versions:key.pinned_versions in
     let dir = snapshot_solutions_dir ctx in
     ignore (Bos.OS.Dir.create ~path:true dir);
+    (* Seed from the previous snapshot before partitioning, so a repo
+       bump only re-solves targets whose examined set intersects the
+       commits' changed packages. Uses the Lwt-native git APIs — we're
+       under the daemon's Lwt loop here, before [run_eio]. *)
+    let* () = incremental_reuse ~job ctx key ~compiler_tag ~cache_key ~dir in
     (* Consolidated list of targets that failed to solve, written next to
        the snapshot's other summaries as [solve_failures.json] (a JSON
        array of "name.version"). The snapshot page reads this one file
@@ -252,11 +414,6 @@ let read_solve_failures ~snapshot_dir =
 
 (** Solve all tracked packages using day11's solver. Returns solutions
     keyed by target package. *)
-let repos_digest repos =
-  let sorted = List.sort compare
-    (List.map (fun (path, sha) -> path ^ "@" ^ sha) repos) in
-  Digest.to_hex (Digest.string (String.concat "\n" sorted))
-
 let solve ~env ~np ~profile_name ~repos_with_shas ?ocaml_version
     ?(pinned_versions = [])
     ~cache_dir

@@ -216,7 +216,7 @@ let test_reuse_no_overlap () =
     (OpamPackage.Name.of_string "dune") in
   let reused = Incremental_solver.reuse_solutions
     ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
-    ~changed_packages:changed ~packages:["astring.0.8.5"] in
+    ~changed_packages:changed ~packages:["astring.0.8.5"] () in
   Alcotest.(check int) "1 reused" 1 reused;
   (* Verify the file was hardlinked *)
   match Incremental_solver.load Fpath.(cur_dir / "astring.0.8.5.json") with
@@ -249,8 +249,78 @@ let test_reuse_with_overlap () =
     (OpamPackage.Name.of_string "ocaml") in
   let reused = Incremental_solver.reuse_solutions
     ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
-    ~changed_packages:changed ~packages:["astring.0.8.5"] in
+    ~changed_packages:changed ~packages:["astring.0.8.5"] () in
   Alcotest.(check int) "0 reused" 0 reused
+
+let test_reuse_rekey () =
+  (* Rekey mode: entries valid for the previous snapshot's key are
+     carried over re-stamped with the new key; entries with a
+     different key are not trusted; failures are not carried. *)
+  with_tmp_dir @@ fun dir ->
+  let prev_dir = Fpath.(dir / "prev") in
+  let cur_dir = Fpath.(dir / "cur") in
+  ignore (Bos.OS.Dir.create prev_dir);
+  ignore (Bos.OS.Dir.create cur_dir);
+  let solution =
+    OpamPackage.Map.singleton (pkg "astring.0.8.5") OpamPackage.Set.empty in
+  let mk_solution ?cache_key name =
+    Incremental_solver.Cached_solution {
+      package = pkg name;
+      result = { Day11_solution.Solve_result.
+        packages = OpamPackage.Set.singleton (pkg name);
+        build_deps = solution;
+        doc_deps = solution;
+        examined =
+          OpamPackage.Name.Set.of_list
+            (List.map OpamPackage.Name.of_string [ "astring"; "ocaml" ]);
+      };
+      cache_key;
+    }
+  in
+  let save name entry =
+    match Incremental_solver.save Fpath.(prev_dir / (name ^ ".json")) entry with
+    | Ok () -> () | Error (`Msg e) -> Alcotest.fail e
+  in
+  save "astring.0.8.5" (mk_solution ~cache_key:"prev-key" "astring.0.8.5");
+  save "fmt.0.9.0" (mk_solution ~cache_key:"other-key" "fmt.0.9.0");
+  save "broken.1.0" (Incremental_solver.Cached_failure {
+    package = pkg "broken.1.0";
+    error = "no solution";
+    examined = OpamPackage.Name.Set.empty;
+    cache_key = Some "prev-key";
+  });
+  let changed = OpamPackage.Name.Set.singleton
+    (OpamPackage.Name.of_string "dune") in
+  let reused = Incremental_solver.reuse_solutions
+    ~expected_cache_key:"prev-key" ~rekey_to:"new-key"
+    ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
+    ~changed_packages:changed
+    ~packages:["astring.0.8.5"; "fmt.0.9.0"; "broken.1.0"] () in
+  (* Only astring: fmt has the wrong key, broken is a failure. *)
+  Alcotest.(check int) "1 reused" 1 reused;
+  (match Incremental_solver.load Fpath.(cur_dir / "astring.0.8.5.json") with
+   | Ok (Cached_solution s) ->
+     Alcotest.(check (option string)) "re-stamped key"
+       (Some "new-key") s.cache_key
+   | _ -> Alcotest.fail "expected rekeyed solution in cur_dir");
+  Alcotest.(check bool) "fmt not carried" false
+    (Sys.file_exists (Fpath.to_string Fpath.(cur_dir / "fmt.0.9.0.json")));
+  Alcotest.(check bool) "failure not carried" false
+    (Sys.file_exists (Fpath.to_string Fpath.(cur_dir / "broken.1.0.json")));
+  (* Overwrite semantics: a stale existing file is replaced. *)
+  (match Incremental_solver.save Fpath.(cur_dir / "astring.0.8.5.json")
+           (mk_solution ~cache_key:"stale-key" "astring.0.8.5") with
+   | Ok () -> () | Error (`Msg e) -> Alcotest.fail e);
+  let reused2 = Incremental_solver.reuse_solutions
+    ~expected_cache_key:"prev-key" ~rekey_to:"new-key"
+    ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
+    ~changed_packages:changed ~packages:["astring.0.8.5"] () in
+  Alcotest.(check int) "overwrote stale entry" 1 reused2;
+  match Incremental_solver.load Fpath.(cur_dir / "astring.0.8.5.json") with
+  | Ok (Cached_solution s) ->
+    Alcotest.(check (option string)) "stale key replaced"
+      (Some "new-key") s.cache_key
+  | _ -> Alcotest.fail "expected rekeyed solution after overwrite"
 
 let test_find_previous_sha_dir () =
   with_tmp_dir @@ fun dir ->
@@ -335,6 +405,7 @@ let () =
             test_reuse_no_overlap;
           Alcotest.test_case "reuse with overlap" `Quick
             test_reuse_with_overlap;
+          Alcotest.test_case "reuse rekey" `Quick test_reuse_rekey;
           Alcotest.test_case "find previous SHA dir" `Quick
             test_find_previous_sha_dir;
           Alcotest.test_case "find previous SHA dir none" `Quick

@@ -59,16 +59,36 @@ val load : Fpath.t -> (cache_entry, [> Rresult.R.msg ]) result
     basename (minus [.json]) is parsed as [name.version]. *)
 
 val reuse_solutions :
+  ?expected_cache_key:string ->
+  ?rekey_to:string ->
   solutions_cache_dir:Fpath.t ->
   previous_dir:Fpath.t ->
   changed_packages:OpamPackage.Name.Set.t ->
   packages:string list ->
+  unit ->
   int
 (** [reuse_solutions ~solutions_cache_dir ~previous_dir
-    ~changed_packages ~packages] hardlinks reusable solutions from
+    ~changed_packages ~packages ()] hardlinks reusable solutions from
     [previous_dir] into [solutions_cache_dir]. A solution is reusable
     when its examined set does not intersect [changed_packages].
-    Returns the number of solutions reused. *)
+    Returns the number of solutions reused.
+
+    [?expected_cache_key] additionally requires each previous entry to
+    pass {!is_cache_key_valid} against it — pass the cache key the
+    previous snapshot's entries were written with, so entries left by
+    an interrupted run under different inputs are not trusted.
+
+    [?rekey_to] switches from hardlinking to rewriting: each reused
+    entry is re-saved with the given cache key so the destination
+    snapshot's own validity check accepts it. In this mode an existing
+    destination file is overwritten (the caller is expected to pass
+    only targets it knows to be missing or stale), and cached
+    {e failures} are not carried forward (ocaml-docs-ci re-attempts
+    failed solves every run regardless).
+
+    Reuse composes across snapshots: an entry reused into snapshot N
+    was checked against the N-1→N diff and rekeyed, so checking the
+    N→N+1 diff at the next hop maintains validity inductively. *)
 
 val find_previous_sha_dir :
   Fpath.t -> current_sha:string -> Fpath.t option
