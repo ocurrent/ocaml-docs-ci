@@ -2198,7 +2198,7 @@ let package_version ~ctx name pkg ver =
                   [ txt "Open rendered docs" ] ] ]
         else
           match blessed_build, blessed_doc with
-          | Some bb, _ when bb.status <> "success" ->
+          | Some bb, _ when bb.status = "failure" ->
             let body = Printf.sprintf
               "Package %s failed to build on %s, so no documentation could \
                be produced.\n\nBuild hash: %s\nCategory: %s\n%sProfile: %s\n\
@@ -2221,7 +2221,7 @@ let package_version ~ctx name pkg ver =
                          "If you believe %s should compile correctly on %s, \
                           please comment on the ocurrent/ocaml-docs-ci issues:"
                          pkg_str os_label) ]) ]
-          | _, Some bd when bd.status <> "success" ->
+          | _, Some bd when bd.status = "failure" ->
             let univ = if bd.universe = "" then "(unknown)" else bd.universe in
             let body = Printf.sprintf
               "Documentation generation failed for %s, although the package \
@@ -2246,11 +2246,20 @@ let package_version ~ctx name pkg ver =
                     ~lead:(Printf.sprintf
                       "If you believe %s's documentation should build, please \
                        comment on the ocaml/odoc issues:" pkg_str) ] ]
-          | Some _, _ ->
+          | Some bb, _ when bb.status = "success" ->
             [ p [ em [ txt "No rendered docs found on disk, though the latest \
-                            blessed build and docs succeeded — the output may \
-                            still be syncing." ] ] ]
-          | None, _ ->
+                            blessed build succeeded — the output may still be \
+                            syncing." ] ] ]
+          | _ ->
+            (* Neither the blessed build nor the blessed doc is a hard
+               failure, yet no docs exist — the node never ran. The usual
+               reason is a cascade: an upstream dependency failed, so this
+               package's build was skipped. A cascade leaves no
+               history.jsonl entry (see [record_cascade]); the plan.json
+               fallback then synthesises a "pending" node, so we land here
+               rather than in a failure arm. Name the failing dependency
+               from the run log when it recorded one — otherwise fall back
+               to a generic note. *)
             (match latest_cascade_dep () with
              | Some dep -> cascade_blurb dep
              | None ->
