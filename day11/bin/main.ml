@@ -31,6 +31,7 @@ let default_term =
     Cmd_report.cmd;
     Cmd_log.cmd;
     Cmd_debug.cmd;
+    Cmd_verify_solver.cmd;
   ]
 
 let () =
