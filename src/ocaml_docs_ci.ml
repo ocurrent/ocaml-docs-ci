@@ -71,7 +71,7 @@ let df_root_percent () =
 
 let main () current_config github_auth mode profiles_arg profile_dir_arg
     cache_dir_arg remotes_arg pin_overlays_arg cores_per_build overcommit
-    config : unit =
+    poll_interval config : unit =
   (* The epoch-promote node runs at [Current.Level.Dangerous]. By default
      OCurrent's [--confirm] is unset (nothing is gated), so it would fire
      immediately — defeating the manual-promote design. Default the
@@ -171,7 +171,7 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
      between. A profile entry whose path isn't backed by a [--remote]
      spec falls back to a one-shot read of HEAD at startup. *)
   let remote_schedule =
-    Current_cache.Schedule.v ~valid_for:(Duration.of_hour 1) () in
+    Current_cache.Schedule.v ~valid_for:(Duration.of_sec poll_interval) () in
   let remote_commits :
     (string, Current_git.Commit.t Current.t) Hashtbl.t =
     Hashtbl.create (List.length remote_specs) in
@@ -356,6 +356,18 @@ let overcommit_arg =
              effective when --cores-per-build is set."
        ~docv:"FACTOR" [ "overcommit" ]
 
+let poll_interval_arg =
+  Arg.value
+  @@ Arg.opt Arg.int 3600
+  @@ Arg.info
+       ~doc:"Seconds between $(b,--remote) / $(b,--github-pin-overlay) \
+             refreshes (default 3600). A refresh that resolves to an \
+             unchanged commit is inert (see the cutoff in \
+             Remote_opam_repo), so short intervals are safe; mainly \
+             useful for testing, e.g. driving the pipeline through a \
+             series of commits from a local origin."
+       ~docv:"SECONDS" [ "poll-interval" ]
+
 let version =
   match Build_info.V1.version () with
   | None -> "n/a"
@@ -378,6 +390,7 @@ let cmd =
       $ pin_overlays_arg
       $ cores_per_build_arg
       $ overcommit_arg
+      $ poll_interval_arg
       $ Docs_ci_lib.Config.cmdliner)
 
 let () = exit @@ Cmd.eval cmd
