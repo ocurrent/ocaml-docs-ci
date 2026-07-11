@@ -968,9 +968,20 @@ let unique_compilers solutions =
   ) solutions
 
 (** Resolve tools (driver + per-compiler odoc). Returns the tools
-    and source dirs, or None if driver solving fails. *)
+    and source dirs, or None if driver solving fails.
+
+    When [snapshot_dir] is given (and the profile has no [odoc_repo]
+    pin — pinned checkouts aren't captured by repo SHAs), each tool's
+    [Solve_result] is cached at
+    [<snapshot_dir>/tool_solutions/<pkg>@<compiler>.json] via
+    {!Day11_batch.Incremental_solver}, keyed by the repo-set digest.
+    A hit skips the ~13s solver-worker subprocess whose cost is almost
+    entirely re-parsing the tool's dependency cone from the git store.
+    Entries carry [examined] like package solutions, so
+    ocaml-docs-ci's cross-snapshot reuse pass carries them over
+    commits that don't touch the tool cone. *)
 let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
-    ?driver_compiler ~solutions () =
+    ?driver_compiler ?snapshot_dir ~solutions () =
   let all_pin_dirs, all_source_dirs = match odoc_repo with
     | Some dir ->
       let pins = Day11_opam_build.Tools.read_pins_from_dir dir in
@@ -1049,23 +1060,78 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
   let tasks =
     `Driver :: List.map (fun c -> `Odoc c) compiler_versions
   in
+  (* Tool-solve cache. Only when the caller passed a snapshot dir and
+     nothing is pinned from a local checkout: [pin_dirs] content isn't
+     captured by the repo SHAs the cache key digests. *)
+  let tool_cache_dir = match snapshot_dir with
+    | Some d when all_pin_dirs = [] ->
+      let dir =
+        Fpath.(d / Day11_batch.Incremental_solver.tool_solutions_dirname) in
+      ignore (Bos.OS.Dir.create ~path:true dir);
+      Some dir
+    | _ -> None
+  in
+  let tool_key = Day11_batch.Incremental_solver.tool_cache_key ~repos in
+  let cache_hits = ref 0 in
+  (* Solve [pkg] under [ocaml_version], consulting / populating the
+     tool cache. The compiler pin is encoded in the entry filename;
+     the JSON body carries the real package name. *)
+  let solve_tool_cached ~pin_dirs ~source_dirs ?ocaml_version pkg =
+    let entry_file dir =
+      let tag = match ocaml_version with
+        | Some c -> OpamPackage.to_string c
+        | None -> "none" in
+      Fpath.(dir / (OpamPackage.to_string pkg ^ "@" ^ tag ^ ".json"))
+    in
+    let cached = match tool_cache_dir with
+      | None -> None
+      | Some dir ->
+        match Day11_batch.Incremental_solver.load (entry_file dir) with
+        | Ok (Day11_batch.Incremental_solver.Cached_solution s as e)
+          when Day11_batch.Incremental_solver.is_cache_key_valid
+                 ~expected:(Some tool_key) e ->
+          incr cache_hits;
+          Some s.result
+        | _ -> None
+    in
+    match cached with
+    | Some result ->
+      Day11_opam_build.Tools.plan_tool_of_result benv ~packages
+        ~source_dirs ~cache pkg result
+    | None ->
+      match Day11_opam_build.Tools.solve_tool ~sw env ~repos
+              ~pin_dirs ~doc:false ?ocaml_version pkg with
+      | Error _ as e -> e
+      | Ok result ->
+        (match tool_cache_dir with
+         | Some dir ->
+           ignore (Day11_batch.Incremental_solver.save (entry_file dir)
+             (Day11_batch.Incremental_solver.Cached_solution
+                { package = pkg; result; cache_key = Some tool_key }))
+         | None -> ());
+        Day11_opam_build.Tools.plan_tool_of_result benv ~packages
+          ~source_dirs ~cache pkg result
+  in
   Printf.printf "Planning doc driver + %d odoc tools in parallel...\n%!"
     (List.length compiler_versions);
+  let t_tools0 = Unix.gettimeofday () in
   let results =
     Eio.Fiber.List.map ~max_fibers:(List.length tasks) (function
       | `Driver ->
-        let r = Day11_opam_build.Tools.plan_tool ~sw env benv
-          ~packages ~repos ~doc:false ~cache
+        let r = solve_tool_cached ~pin_dirs:[]
+          ~source_dirs:OpamPackage.Name.Map.empty
           ?ocaml_version:driver_compiler driver_pkg in
         (`Driver, r)
       | `Odoc compiler_v ->
-        let r = Day11_opam_build.Tools.plan_tool ~sw env benv
-          ~packages ~repos ~pin_dirs:all_pin_dirs
-          ~source_dirs:all_source_dirs ~doc:false ~cache
+        let r = solve_tool_cached ~pin_dirs:all_pin_dirs
+          ~source_dirs:all_source_dirs
           ~ocaml_version:compiler_v odoc_pkg in
         (`Odoc compiler_v, r)
     ) tasks
   in
+  Printf.printf "  tool plans: %d cached, %d solved (%.1fs)\n%!"
+    !cache_hits (List.length tasks - !cache_hits)
+    (Unix.gettimeofday () -. t_tools0);
   let driver_result = List.find_map (function
     | `Driver, r -> Some r | _ -> None) results in
   let odoc_tools = List.filter_map (function
@@ -1133,7 +1199,7 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
   match resolve_tools ~sw env ctx.benv
     ~packages:ctx.git_packages ~repos:ctx.repos_with_shas
     ~odoc_repo:ctx.profile.odoc_repo ~cache:ctx.hash_cache
-    ?driver_compiler:ctx.driver_compiler ~solutions () with
+    ?driver_compiler:ctx.driver_compiler ?snapshot_dir ~solutions () with
   | None -> None
   | Some (driver_tool, odoc_tools, all_source_dirs) ->
   let epoch_hash =
@@ -1190,7 +1256,7 @@ let build_tools_and_run ~sw env (ctx : Day11_batch.Profile_ctx.t)
   match resolve_tools ~sw env ctx.benv
     ~packages:ctx.git_packages ~repos:ctx.repos_with_shas
     ~odoc_repo:ctx.profile.odoc_repo ~cache:ctx.hash_cache
-    ?driver_compiler:ctx.driver_compiler ~solutions () with
+    ?driver_compiler:ctx.driver_compiler ?snapshot_dir ~solutions () with
   | None ->
     (* When doc tool solving fails — e.g. running against an old
        opam-repository commit where odoc-driver's deps can't be

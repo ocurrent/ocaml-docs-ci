@@ -25,7 +25,34 @@ val plan_tool :
     [pin_dirs] are directories of [.opam] files pinned at version [dev].
     [constraints] pins packages at exact versions.
     When [cache] is provided, shares hash computation with the main
-    build DAG. Returns the tool plan and source_dirs for pinned packages. *)
+    build DAG. Returns the tool plan and source_dirs for pinned packages.
+    Equivalent to {!solve_tool} followed by {!plan_tool_of_result}. *)
+
+val solve_tool :
+  sw:Eio.Switch.t ->
+  Eio_unix.Stdenv.base ->
+  repos:(string * string) list ->
+  ?constraints:OpamPackage.t list ->
+  ?pin_dirs:string list ->
+  ?doc:bool ->
+  ?ocaml_version:OpamPackage.t ->
+  OpamPackage.t ->
+  (Day11_solution.Solve_result.t, [> Rresult.R.msg ]) result
+(** Solver half of {!plan_tool}: one solver-worker subprocess for one
+    target. Exposed so callers can interpose a solution cache (see
+    {!Day11_batch.Incremental_solver}) between solving and planning. *)
+
+val plan_tool_of_result :
+  Types.build_env ->
+  packages:Day11_opam.Git_packages.t ->
+  ?source_dirs:string OpamPackage.Name.Map.t ->
+  ?cache:Hash_cache.t ->
+  OpamPackage.t ->
+  Day11_solution.Solve_result.t ->
+  (Day11_opam_layer.Tool.t * string OpamPackage.Name.Map.t,
+   [> Rresult.R.msg ]) result
+(** DAG-planning half of {!plan_tool}: build the tool's node DAG from
+    an already-obtained (possibly cached) solve result. *)
 
 val build_tool :
   sw:Eio.Switch.t ->

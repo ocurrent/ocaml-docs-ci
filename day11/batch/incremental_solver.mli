@@ -90,6 +90,17 @@ val reuse_solutions :
     was checked against the N-1→N diff and rekeyed, so checking the
     N→N+1 diff at the next hop maintains validity inductively. *)
 
+val tool_solutions_dirname : string
+(** Per-snapshot subdirectory holding cached doc-tool solves
+    ([<pkg>@<compiler>.json] entries — the compiler pin is encoded in
+    the filename; {!load} reads the package from the JSON body). *)
+
+val tool_cache_key : repos:(string * string) list -> string
+(** [tool_cache_key ~repos] is the cache key stamped on tool-solve
+    entries: a digest of the [(path, sha)] repo set alone. The
+    compiler rides in the entry's filename, so one key covers every
+    entry in a snapshot's {!tool_solutions_dirname}. *)
+
 val find_previous_sha_dir :
   Fpath.t -> current_sha:string -> Fpath.t option
 (** [find_previous_sha_dir base ~current_sha] finds the most recently

@@ -322,6 +322,52 @@ let test_reuse_rekey () =
       (Some "new-key") s.cache_key
   | _ -> Alcotest.fail "expected rekeyed solution after overwrite"
 
+let test_reuse_tool_stems () =
+  (* Tool entries use [<pkg>@<compiler>.json] stems: the package must
+     come from the JSON body (the stem doesn't parse as a package),
+     and rekey-reuse must work across such filenames. *)
+  with_tmp_dir @@ fun dir ->
+  let prev_dir = Fpath.(dir / "prev") in
+  let cur_dir = Fpath.(dir / "cur") in
+  ignore (Bos.OS.Dir.create prev_dir);
+  ignore (Bos.OS.Dir.create cur_dir);
+  let key_prev = Incremental_solver.tool_cache_key
+      ~repos:[ ("repo", "aaaa") ] in
+  let key_cur = Incremental_solver.tool_cache_key
+      ~repos:[ ("repo", "bbbb") ] in
+  Alcotest.(check bool) "keys differ per repo state" true
+    (key_prev <> key_cur);
+  let solution =
+    OpamPackage.Map.singleton (pkg "odoc.3.1.0") OpamPackage.Set.empty in
+  let entry = Incremental_solver.Cached_solution {
+    package = pkg "odoc.3.1.0";
+    result = { Day11_solution.Solve_result.
+      packages = OpamPackage.Set.singleton (pkg "odoc.3.1.0");
+      build_deps = solution;
+      doc_deps = solution;
+      examined =
+        OpamPackage.Name.Set.of_list
+          (List.map OpamPackage.Name.of_string [ "odoc"; "ocaml" ]);
+    };
+    cache_key = Some key_prev;
+  } in
+  let stem = "odoc.3.1.0@ocaml-base-compiler.5.2.0" in
+  (match Incremental_solver.save Fpath.(prev_dir / (stem ^ ".json")) entry with
+   | Ok () -> () | Error (`Msg e) -> Alcotest.fail e);
+  let changed = OpamPackage.Name.Set.singleton
+    (OpamPackage.Name.of_string "dune") in
+  let reused = Incremental_solver.reuse_solutions
+    ~expected_cache_key:key_prev ~rekey_to:key_cur
+    ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
+    ~changed_packages:changed ~packages:[ stem ] () in
+  Alcotest.(check int) "1 reused" 1 reused;
+  match Incremental_solver.load Fpath.(cur_dir / (stem ^ ".json")) with
+  | Ok (Cached_solution s) ->
+    Alcotest.(check string) "package from body"
+      "odoc.3.1.0" (OpamPackage.to_string s.package);
+    Alcotest.(check (option string)) "rekeyed" (Some key_cur) s.cache_key
+  | _ -> Alcotest.fail "expected reused tool entry"
+
 let test_find_previous_sha_dir () =
   with_tmp_dir @@ fun dir ->
   let sha1 = Fpath.(dir / "abc123") in
@@ -406,6 +452,8 @@ let () =
           Alcotest.test_case "reuse with overlap" `Quick
             test_reuse_with_overlap;
           Alcotest.test_case "reuse rekey" `Quick test_reuse_rekey;
+          Alcotest.test_case "reuse tool stems" `Quick
+            test_reuse_tool_stems;
           Alcotest.test_case "find previous SHA dir" `Quick
             test_find_previous_sha_dir;
           Alcotest.test_case "find previous SHA dir none" `Quick

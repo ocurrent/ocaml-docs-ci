@@ -228,14 +228,34 @@ module SolveOp = struct
                (Fpath.to_string Fpath.(dir / solution_filename pkg))))
         key.targets
     in
-    if missing = [] then Lwt.return_unit
-    else
-      let base = profile_snapshots_base ctx in
-      let current_key =
-        Day11_batch.Snapshot.compute_key ctx.repos_with_shas in
-      match find_previous_snapshot ~base ~current_key with
-      | None -> Lwt.return_unit
-      | Some ((prev : Day11_batch.Snapshot.t), prev_solutions) ->
+    let base = profile_snapshots_base ctx in
+    let current_key =
+      Day11_batch.Snapshot.compute_key ctx.repos_with_shas in
+    match find_previous_snapshot ~base ~current_key with
+    | None -> Lwt.return_unit
+    | Some ((prev : Day11_batch.Snapshot.t), prev_solutions) ->
+      (* Tool solves live beside the solutions with the same envelope
+         (see {!Day11_batch.Incremental_solver.tool_solutions_dirname});
+         carry the ones missing here over with the same diff. The stems
+         encode the compiler pin, so they come from a directory listing
+         rather than the target list. *)
+      let tool_sub = Day11_batch.Incremental_solver.tool_solutions_dirname in
+      let prev_tool_dir = Fpath.(parent prev_solutions / tool_sub) in
+      let cur_tool_dir = Fpath.(parent dir / tool_sub) in
+      let tool_stems =
+        match Bos.OS.Dir.contents prev_tool_dir with
+        | Error _ -> []
+        | Ok entries ->
+          List.filter_map (fun p ->
+            if Fpath.has_ext ".json" p then
+              let stem = Fpath.(basename (rem_ext p)) in
+              if Sys.file_exists
+                   (Fpath.to_string Fpath.(cur_tool_dir / (stem ^ ".json")))
+              then None else Some stem
+            else None) entries
+      in
+      if missing = [] && tool_stems = [] then Lwt.return_unit
+      else
         let* changed =
           changed_packages_lwt ~prev_repos:prev.repos
             ~cur_repos:ctx.repos_with_shas in
@@ -253,20 +273,42 @@ module SolveOp = struct
            (match List.assoc_opt mainline_path prev.repos with
             | None -> Lwt.return_unit
             | Some prev_commit ->
-              let prev_cache_key =
-                compute_cache_key ~compiler_tag ~commit:prev_commit
-                  ~repos_digest:(repos_digest prev.repos)
-                  ~pinned_versions:key.pinned_versions in
-              let packages = List.map OpamPackage.to_string missing in
-              let reused = Day11_batch.Incremental_solver.reuse_solutions
-                  ~expected_cache_key:prev_cache_key ~rekey_to:cache_key
-                  ~solutions_cache_dir:dir ~previous_dir:prev_solutions
-                  ~changed_packages:changed ~packages () in
+              let reused =
+                if missing = [] then 0
+                else begin
+                  let prev_cache_key =
+                    compute_cache_key ~compiler_tag ~commit:prev_commit
+                      ~repos_digest:(repos_digest prev.repos)
+                      ~pinned_versions:key.pinned_versions in
+                  let packages = List.map OpamPackage.to_string missing in
+                  Day11_batch.Incremental_solver.reuse_solutions
+                    ~expected_cache_key:prev_cache_key ~rekey_to:cache_key
+                    ~solutions_cache_dir:dir ~previous_dir:prev_solutions
+                    ~changed_packages:changed ~packages ()
+                end
+              in
+              let tools_reused =
+                if tool_stems = [] then 0
+                else begin
+                  ignore (Bos.OS.Dir.create ~path:true cur_tool_dir);
+                  Day11_batch.Incremental_solver.reuse_solutions
+                    ~expected_cache_key:
+                      (Day11_batch.Incremental_solver.tool_cache_key
+                         ~repos:prev.repos)
+                    ~rekey_to:
+                      (Day11_batch.Incremental_solver.tool_cache_key
+                         ~repos:ctx.repos_with_shas)
+                    ~solutions_cache_dir:cur_tool_dir
+                    ~previous_dir:prev_tool_dir
+                    ~changed_packages:changed ~packages:tool_stems ()
+                end
+              in
               Current.Job.log job
                 "incremental: %d package(s) changed since snapshot %s; \
-                 reused %d/%d cached solutions"
+                 reused %d/%d cached solutions, %d/%d tool solves"
                 (OpamPackage.Name.Set.cardinal changed) prev.key
-                reused (List.length missing);
+                reused (List.length missing)
+                tools_reused (List.length tool_stems);
               Lwt.return_unit))
 
   (* Split [targets] into those whose cached solutions are still

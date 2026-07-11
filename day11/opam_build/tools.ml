@@ -27,13 +27,42 @@ let source_dir_strategy pkg =
       pkg_str;
     cleanup = Build_layer.opam_build_cleanup }
 
-let plan_tool ~sw env (benv : Types.build_env) ~packages ~repos
+(* DAG-planning half of {!plan_tool}: everything after the solve.
+   Split out so a caller holding a cached [Solve_result] (see
+   {!Day11_batch.Incremental_solver.tool_solutions_dirname}) can skip
+   the solver-worker subprocess entirely. *)
+let plan_tool_of_result (benv : Types.build_env) ~packages
+    ?(source_dirs = OpamPackage.Name.Map.empty)
+    ?cache
+    target (result : Day11_solution.Solve_result.t) =
+  let pkg_str = OpamPackage.to_string target in
+  let solution = result.build_deps in
+  let doc_solution = result.doc_deps in
+  let cache = match cache with
+    | Some c -> c
+    | None ->
+      let find_opam = Day11_opam.Git_packages.find_package packages in
+      Hash_cache.create ~find_opam ()
+  in
+  let nodes = Dag.build_dag cache ~base_hash:benv.base.hash
+    [ (target, solution, doc_solution) ] in
+  let last = List.find (fun (n : build) ->
+    OpamPackage.equal n.pkg target) nodes in
+  let tool_dir = Build.dir ~os_dir:benv.os_dir last in
+  Log.info (fun m -> m "Tool %s: %d nodes in DAG"
+    pkg_str (List.length nodes));
+  Ok ({ Tool.hash = last.hash; dir = tool_dir;
+        builds = nodes },
+      source_dirs)
+
+(* Solver half of {!plan_tool}: one solver-worker subprocess for one
+   target. Exposed so callers can interpose a solution cache between
+   solving and planning. *)
+let solve_tool ~sw env ~repos
     ?(constraints = [])
     ?(pin_dirs = [])
     ?(doc = true)
     ?ocaml_version
-    ?(source_dirs = OpamPackage.Name.Map.empty)
-    ?cache
     target =
   let pkg_str = OpamPackage.to_string target in
   Log.info (fun m -> m "Planning tool %s" pkg_str);
@@ -45,25 +74,21 @@ let plan_tool ~sw env (benv : Types.build_env) ~packages ~repos
       Rresult.R.error_msgf "Cannot solve %s: no result" pkg_str
   | Some (Error (diag, _examined)) ->
       Rresult.R.error_msgf "Cannot solve %s: %s" pkg_str diag
-  | Some (Ok result) ->
-      let solution = result.Day11_solution.Solve_result.build_deps in
-      let doc_solution = result.Day11_solution.Solve_result.doc_deps in
-      let cache = match cache with
-        | Some c -> c
-        | None ->
-          let find_opam = Day11_opam.Git_packages.find_package packages in
-          Hash_cache.create ~find_opam ()
-      in
-      let nodes = Dag.build_dag cache ~base_hash:benv.base.hash
-        [ (target, solution, doc_solution) ] in
-      let last = List.find (fun (n : build) ->
-        OpamPackage.equal n.pkg target) nodes in
-      let tool_dir = Build.dir ~os_dir:benv.os_dir last in
-      Log.info (fun m -> m "Tool %s: %d nodes in DAG"
-        pkg_str (List.length nodes));
-      Ok ({ Tool.hash = last.hash; dir = tool_dir;
-            builds = nodes },
-          source_dirs)
+  | Some (Ok result) -> Ok result
+
+let plan_tool ~sw env (benv : Types.build_env) ~packages ~repos
+    ?(constraints = [])
+    ?(pin_dirs = [])
+    ?(doc = true)
+    ?ocaml_version
+    ?(source_dirs = OpamPackage.Name.Map.empty)
+    ?cache
+    target =
+  match solve_tool ~sw env ~repos ~constraints ~pin_dirs ~doc
+          ?ocaml_version target with
+  | Error _ as e -> e
+  | Ok result ->
+    plan_tool_of_result benv ~packages ~source_dirs ?cache target result
 
 let build_tool ~sw env (benv : Types.build_env) ?(np = 4) ~packages ~repos
     ?(constraints = [])

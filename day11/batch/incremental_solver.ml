@@ -157,6 +157,21 @@ let reuse_solutions ?expected_cache_key ?rekey_to ~solutions_cache_dir
   ) packages;
   !reused
 
+(* ── Tool-solve caching ─────────────────────────────────────────
+   Doc-tool solves (odoc-driver + one odoc per compiler) use the same
+   cache-entry envelope as package solutions, stored per snapshot
+   under [tool_solutions/]. The compiler pin rides in the {e filename}
+   ([<pkg>@<compiler>.json] — [load] reads the package from the JSON
+   body, so the stem is free-form); the cache key captures only the
+   repo state, so one key covers every entry in the dir. *)
+
+let tool_solutions_dirname = "tool_solutions"
+
+let tool_cache_key ~repos =
+  let sorted = List.sort compare
+    (List.map (fun (path, sha) -> path ^ "@" ^ sha) repos) in
+  Digest.to_hex (Digest.string (String.concat "\n" ("tool-v1" :: sorted)))
+
 let find_previous_sha_dir base ~current_sha =
   match Bos.OS.Dir.contents base with
   | Error _ -> None
