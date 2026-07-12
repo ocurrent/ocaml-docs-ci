@@ -55,6 +55,16 @@ val find_package : t -> OpamPackage.t -> OpamFile.OPAM.t option
 val all_names : t -> OpamPackage.Name.t list
 (** [all_names t] returns all package names in the index. *)
 
+val list_package_versions_lwt :
+  store:Store.t -> Store.Hash.t ->
+  (OpamPackage.t * string) list Lwt.t
+(** [list_package_versions_lwt ~store commit] lists every package
+    version under [packages/] at [commit], each paired with its
+    version-directory tree OID (hex) — a change fingerprint covering
+    the opam file {e and} any [files/] patches. Costs one tree read
+    per package name; no blob reads, no checkout. Raises on a
+    malformed repository (no [packages/] tree). *)
+
 val diff_packages :
   store:Store.t -> Store.Hash.t -> Store.Hash.t ->
   OpamPackage.Name.t list

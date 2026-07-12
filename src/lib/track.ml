@@ -16,10 +16,14 @@ end
 module Track = struct
   type t = No_context
 
-  (* v2: [Value] now embeds the commit the packages were read from
-     (see the glitch note on {!v}). The id bump cleanly separates the
-     old cached outcomes, whose JSON no longer unmarshals. *)
-  let id = "opam-repo-track-v2"
+  (* v2: [Value] embeds the commit the packages were read from (see
+     the glitch note on {!v}).
+     v3: per-package digests are version-directory tree OIDs read
+     straight from the git store (covering opam + files/ patches),
+     replacing md5-of-opam-content over a full checkout — one tree
+     read per package name instead of materialising and hashing ~38k
+     files. Each id bump cleanly separates older cached outcomes. *)
+  let id = "opam-repo-track-v3"
   let auto_cancel = true
 
   module Key = struct
@@ -66,57 +70,50 @@ module Track = struct
 
   let take = function Some n -> take n | None -> Fun.id
 
-  let get_file path =
-    Lwt_io.with_file ~mode:Input (Fpath.to_string path) Lwt_io.read
-
-  let get_versions ~limit path =
-    let open Lwt.Syntax in
-    let open Rresult in
-    Bos.OS.Dir.contents path
-    >>| (fun versions ->
-    versions
-    |> Lwt_list.map_p (fun path ->
-           let+ content = get_file Fpath.(path / "opam") in
-           Value.
-             {
-               package = path |> Fpath.basename |> OpamPackage.of_string;
-               digest = Digest.(string content |> to_hex);
-             }))
-    |> Result.get_ok
-    |> Lwt.map (fun v ->
-           v
-           |> List.sort (fun a b ->
-                  -OpamPackage.compare a.Value.package b.package)
-           |> take limit)
-
   let build No_context job { Key.repo; filter; limit } =
     let open Lwt.Syntax in
-    let open Rresult in
     let filter name =
-      match filter with [] -> true | lst -> List.mem (Fpath.basename name) lst
+      match filter with [] -> true | lst -> List.mem name lst
     in
     Log.info (fun f ->
         f "Tracking packages in %a" Fpath.pp (Git.Commit.repo repo));
     let* () = Current.Job.start ~level:Harmless job in
-    Git.with_checkout ~job repo @@ fun dir ->
-    let result =
-      Bos.OS.Dir.contents Fpath.(dir / "packages") >>| fun packages ->
-      packages
-      (* Skip non-directory entries. Some repos keep a README.md
-         directly under [packages/] (e.g. local overlays), which
-         isn't a package and would crash [get_versions] when it
-         tries to list versions beneath it. *)
-      |> List.filter (fun p ->
-           match Bos.OS.Dir.exists p with Ok true -> true | _ -> false)
-      |> List.filter filter
-      |> Lwt_list.map_s (get_versions ~limit)
-      |> Lwt.map (fun v ->
-           Value.{ commit = Git.Commit.hash repo;
-                   packages = List.flatten v })
-    in
-    match result with
-    | Ok v -> Lwt.map Result.ok v
-    | Error e -> Lwt.return_error e
+    (* Read the package list straight from the git store at the
+       commit — no checkout, no file content: each package's
+       fingerprint is its version-directory tree OID. *)
+    Lwt.catch
+      (fun () ->
+        let path = Fpath.to_string (Git.Commit.repo repo) in
+        let hash = Git.Commit.hash repo in
+        let* store, commit =
+          Day11_opam.Git_utils.get_git_repo_store_and_hash_commit_lwt
+            path (Some hash) in
+        let* entries =
+          Day11_opam.Git_packages.list_package_versions_lwt ~store commit in
+        let packages =
+          entries
+          |> List.filter (fun (pkg, _) ->
+               filter (OpamPackage.Name.to_string (OpamPackage.name pkg)))
+          |> List.map (fun (pkg, oid) ->
+               Value.{ package = pkg; digest = oid })
+          (* Group by name to apply [limit] (newest N versions per
+             name), matching the historical per-name semantics. *)
+          |> List.fold_left (fun m (e : Value.package_definition) ->
+               let n = OpamPackage.name e.package in
+               OpamPackage.Name.Map.update n (fun es -> e :: es) [] m)
+               OpamPackage.Name.Map.empty
+          |> OpamPackage.Name.Map.values
+          |> List.concat_map (fun es ->
+               es
+               |> List.sort (fun (a : Value.package_definition) b ->
+                    -OpamPackage.compare a.package b.package)
+               |> take limit)
+        in
+        Lwt.return_ok
+          Value.{ commit = Git.Commit.hash repo; packages })
+      (fun exn ->
+        Lwt.return_error
+          (`Msg (Printf.sprintf "track failed: %s" (Printexc.to_string exn))))
 end
 
 module LatchedBuilder (B : Current_cache.S.BUILDER) = struct

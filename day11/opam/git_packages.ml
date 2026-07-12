@@ -160,6 +160,33 @@ let find_package (t : t) pkg =
 let all_names (t : t) =
   OpamPackage.Name.Map.fold (fun name _ acc -> name :: acc) t []
 
+(* List every package version under [packages/] at [commit] with its
+   version-directory {e tree OID} — a per-package change fingerprint
+   that covers the opam file and any [files/] patches, obtained purely
+   from tree reads (1 + one per package name; no blob reads, no
+   checkout). Entries whose name doesn't parse as a package version
+   (stray READMEs etc.) are skipped. *)
+let list_package_versions_lwt ~store commit =
+  Search.find store commit (`Commit (`Path [ "packages" ])) >>= function
+  | None -> Fmt.failwith "Failed to find packages directory"
+  | Some tree_oid ->
+      read_dir store tree_oid >>= function
+      | None -> Fmt.failwith "'packages' is not a directory"
+      | Some tree ->
+          Store.Value.Tree.to_list tree
+          |> Lwt_list.map_s (fun (name_entry : Store.Value.Tree.entry) ->
+              read_dir store name_entry.node >|= function
+              | None -> [] (* non-directory entry under packages/ *)
+              | Some versions ->
+                  Store.Value.Tree.to_list versions
+                  |> List.filter_map
+                       (fun (v_entry : Store.Value.Tree.entry) ->
+                         match OpamPackage.of_string v_entry.name with
+                         | exception _ -> None
+                         | pkg ->
+                             Some (pkg, Store.Hash.to_hex v_entry.node)))
+          >|= List.concat
+
 let diff_packages_lwt ~store commit1 commit2 =
   Search.find store commit1 (`Commit (`Path [ "packages" ])) >>= function
   | None -> Fmt.failwith "Failed to find packages directory in commit1"
