@@ -311,13 +311,25 @@ module SolveOp = struct
                 tools_reused (List.length tool_stems);
               Lwt.return_unit))
 
-  (* Split [targets] into those whose cached solutions are still
-     valid (matching [cache_key]) and those that need (re)solving. *)
+  (* Split [targets] three ways: cached solutions still valid for
+     [cache_key]; cached {e failures} still valid; and targets that
+     need (re)solving.
+
+     A failure counts as cached only on a {b strict} key match (not
+     the lenient {!is_cache_key_valid}, which accepts key-less legacy
+     entries): a day11-CLI-written failure carries no key and no
+     provenance, so re-attempting it stays the safe default. A
+     strictly-keyed failure was either solved under exactly these
+     inputs or carried forward by the incremental pass after checking
+     its examined set against the commits' changed packages — in both
+     cases re-solving is provably futile, and failed solves are the
+     expensive (exhaustive-search) kind, ~85% of a steady-state
+     commit's solver time before this shortcut. *)
   let partition_cached ~dir ~cache_key targets =
     if not (Bos.OS.Dir.exists dir |> Result.value ~default:false)
-    then ([], targets)
+    then ([], [], targets)
     else
-      List.fold_left (fun (cached, uncached) pkg ->
+      List.fold_left (fun (cached, failed, uncached) pkg ->
         let path = Fpath.(dir / solution_filename pkg) in
         match Day11_batch.Incremental_solver.load path with
         | Ok entry
@@ -328,10 +340,14 @@ module SolveOp = struct
              let result_json =
                Yojson.Safe.to_string
                  (Day11_solution.Solve_result.to_json result) in
-             (OpamPackage.to_string pkg, result_json) :: cached, uncached
-           | Cached_failure _ -> cached, pkg :: uncached)
-        | _ -> cached, pkg :: uncached
-      ) ([], []) targets
+             ((OpamPackage.to_string pkg, result_json) :: cached,
+              failed, uncached)
+           | Cached_failure { cache_key = Some k; _ }
+             when String.equal k cache_key ->
+             (cached, pkg :: failed, uncached)
+           | Cached_failure _ -> (cached, failed, pkg :: uncached))
+        | _ -> (cached, failed, pkg :: uncached)
+      ) ([], [], []) targets
 
   let save_result ~dir ~cache_key pkg result =
     let path = Fpath.(dir / solution_filename pkg) in
@@ -377,8 +393,8 @@ module SolveOp = struct
        the snapshot's other summaries as [solve_failures.json] (a JSON
        array of "name.version"). The snapshot page reads this one file
        for its "Solve failures" section rather than scanning the ~17k
-       per-target solution files. Failed targets are always re-solved
-       (partition_cached treats a cached failure as uncached), so
+       per-target solution files. Includes both freshly-failed targets
+       and cached failures (strict-key hits that were not re-solved), so
        whenever the solver runs this is the complete current set. *)
     let write_solve_failures failed =
       let path = Fpath.(parent dir / "solve_failures.json") in
@@ -387,22 +403,27 @@ module SolveOp = struct
       ignore (Bos.OS.File.write path (Yojson.Safe.to_string json))
     in
     Lwt_eio.run_eio @@ fun () ->
-    let cached, uncached =
+    let cached, cached_failures, uncached =
       partition_cached ~dir ~cache_key key.targets in
+    let cached_failure_strs =
+      List.map OpamPackage.to_string cached_failures in
     let n_cached = List.length cached in
+    let n_failed_cached = List.length cached_failures in
     let n_uncached = List.length uncached in
     let short_commit =
       String.sub key.commit 0 (min 12 (String.length key.commit)) in
     if n_uncached = 0 then begin
       Current.Job.log job
-        "[profile %s] All %d solutions cached (commit %s) — skipping solver"
-        ctx.profile_name n_cached short_commit;
-      write_solve_failures [];
+        "[profile %s] All cached: %d solutions, %d failures (commit %s) — \
+         skipping solver"
+        ctx.profile_name n_cached n_failed_cached short_commit;
+      write_solve_failures cached_failure_strs;
       Ok Value.{ results = cached }
     end else begin
       Current.Job.log job
-        "[profile %s] %d cached, solving %d new/stale targets (commit %s)"
-        ctx.profile_name n_cached n_uncached short_commit;
+        "[profile %s] %d cached (+%d cached failures), solving %d new/stale \
+         targets (commit %s)"
+        ctx.profile_name n_cached n_failed_cached n_uncached short_commit;
       Eio.Switch.run @@ fun sw ->
       let results =
         Day11_solver_pool.Solver_pool.solve_many ~sw ctx.env
@@ -423,10 +444,11 @@ module SolveOp = struct
           None
       ) results in
       write_solve_failures
-        (List.filter_map (fun (pkg, r) ->
-           match r with
-           | Error _ -> Some (OpamPackage.to_string pkg)
-           | Ok _ -> None) results);
+        (cached_failure_strs
+         @ List.filter_map (fun (pkg, r) ->
+             match r with
+             | Error _ -> Some (OpamPackage.to_string pkg)
+             | Ok _ -> None) results);
       Current.Job.log job
         "Solved %d/%d new targets; %d cached → %d total solutions"
         (List.length new_pairs) n_uncached n_cached
@@ -456,39 +478,64 @@ let read_solve_failures ~snapshot_dir =
 
 (** Solve all tracked packages using day11's solver. Returns solutions
     keyed by target package. *)
+(* [tracks] carries one [(commit, packages)] tracking result per entry
+   of [repos_with_shas], in the same order. {!Track.v} is latched:
+   right after a repo moves, its track current still reports the
+   previous commit's packages while the re-track runs. If we solved on
+   that torn state (new snapshot dir + old target list — or the
+   reverse) we'd waste a full solve per commit and could write
+   mixed-provenance solutions into the snapshot; instead, any
+   evaluation whose track commits don't all match [repos_with_shas] is
+   answered with a plain "still running" output — the consistent
+   evaluation always follows once the re-track lands. *)
 let solve ~env ~np ~profile_name ~repos_with_shas ?ocaml_version
     ?(pinned_versions = [])
     ~cache_dir
-    ~(opam_commit : Current_git.Commit.t Current.t)
-    (tracked : Track.t list Current.t) =
+    (tracks : (string * Track.t list) Current.t list) =
   let open Current.Syntax in
   Current.component "[%s] day11-solve" profile_name
   |>
-  let> tracked and> commit = opam_commit in
-  let commit_hash = Current_git.Commit.id commit
-    |> Current_git.Commit_id.hash in
-  let targets = List.map Track.pkg tracked in
-  let ocaml_version_str = match ocaml_version with
-    | Some pkg -> OpamPackage.to_string pkg
-    | None -> "" in
-  let pinned_strs = List.map OpamPackage.to_string pinned_versions in
-  Solver_cache.get
-    { repos_with_shas; env; np; profile_name; ocaml_version;
-      pinned_versions; cache_dir }
-    SolveOp.Key.{
-      targets;
-      commit = commit_hash;
-      repos_digest = repos_digest repos_with_shas;
-      ocaml_version = ocaml_version_str;
-      pinned_versions = pinned_strs;
-    }
-  |> Current.Primitive.map_result (Result.map (fun v ->
-    List.filter_map (fun (pkg_str, json_str) ->
-      try
-        let pkg = OpamPackage.of_string pkg_str in
-        let json = Yojson.Safe.from_string json_str in
-        match Day11_solution.Solve_result.of_json json with
-        | Ok result -> Some { target = pkg; solve_result = result }
-        | Error _ -> None
-      with _ -> None
-    ) v.SolveOp.Value.results))
+  let> tracks = Current.list_seq tracks in
+  let consistent =
+    List.compare_lengths tracks repos_with_shas = 0
+    && List.for_all2
+         (fun (_, sha) (track_commit, _) -> String.equal sha track_commit)
+         repos_with_shas tracks
+  in
+  if not consistent then
+    (* Not an error: a latched input hasn't caught up with the repo
+       state yet. Report "active" so downstream stays pending until
+       the consistent evaluation replaces this one. *)
+    Current_incr.const (Error (`Active `Ready), None)
+  else begin
+    let tracked = Track.merge_values (List.map snd tracks) in
+    let commit_hash = match repos_with_shas with
+      | (_, sha) :: _ -> sha
+      | [] -> "" (* unreachable: profiles require >= 1 repo *)
+    in
+    let targets = List.map Track.pkg tracked in
+    let ocaml_version_str = match ocaml_version with
+      | Some pkg -> OpamPackage.to_string pkg
+      | None -> "" in
+    let pinned_strs = List.map OpamPackage.to_string pinned_versions in
+    Solver_cache.get
+      { repos_with_shas; env; np; profile_name; ocaml_version;
+        pinned_versions; cache_dir }
+      SolveOp.Key.{
+        targets;
+        commit = commit_hash;
+        repos_digest = repos_digest repos_with_shas;
+        ocaml_version = ocaml_version_str;
+        pinned_versions = pinned_strs;
+      }
+    |> Current.Primitive.map_result (Result.map (fun v ->
+      List.filter_map (fun (pkg_str, json_str) ->
+        try
+          let pkg = OpamPackage.of_string pkg_str in
+          let json = Yojson.Safe.from_string json_str in
+          match Day11_solution.Solve_result.of_json json with
+          | Ok result -> Some { target = pkg; solve_result = result }
+          | Error _ -> None
+        with _ -> None
+      ) v.SolveOp.Value.results))
+  end

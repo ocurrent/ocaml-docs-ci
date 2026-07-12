@@ -16,7 +16,10 @@ end
 module Track = struct
   type t = No_context
 
-  let id = "opam-repo-track"
+  (* v2: [Value] now embeds the commit the packages were read from
+     (see the glitch note on {!v}). The id bump cleanly separates the
+     old cached outcomes, whose JSON no longer unmarshals. *)
+  let id = "opam-repo-track-v2"
   let auto_cancel = true
 
   module Key = struct
@@ -42,7 +45,14 @@ module Track = struct
     type package_definition = { package : OpamPackage.t; digest : string }
     [@@deriving yojson]
 
-    type t = package_definition list [@@deriving yojson]
+    (* The commit rides in the value so consumers can check that a
+       (possibly latched) tracking result actually corresponds to the
+       repo state the rest of their inputs were derived from. *)
+    type t = {
+      commit : string;
+      packages : package_definition list;
+    }
+    [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
     let unmarshal t = t |> Yojson.Safe.from_string |> of_yojson |> Result.get_ok
@@ -100,7 +110,9 @@ module Track = struct
            match Bos.OS.Dir.exists p with Ok true -> true | _ -> false)
       |> List.filter filter
       |> Lwt_list.map_s (get_versions ~limit)
-      |> Lwt.map (fun v -> List.flatten v)
+      |> Lwt.map (fun v ->
+           Value.{ commit = Git.Commit.hash repo;
+                   packages = List.flatten v })
     in
     match result with
     | Ok v -> Lwt.map Result.ok v
@@ -151,7 +163,15 @@ let v ~repo_label ~limit ~(filter : string list)
      fan-out in a single profile, or two profiles that both track
      mainline. Without it, OCurrent treats the shared component as
      one "instance" and errors "set to different values in the same
-     step" when the input commits don't match. *)
+     step" when the input commits don't match.
+
+     The result pairs the package list with the commit it was read
+     from. The op is {e latched}: right after the input commit moves,
+     the current still reports the {e previous} commit's packages
+     while the re-track runs. Consumers combining this with other
+     repo-derived inputs (the solver) must check the embedded commit
+     against their view of the repo and skip mismatched evaluations —
+     see {!Docs_ci_lib.Day11_solver.solve}. *)
   let limit_s = match limit with
     | None -> "all"
     | Some n -> string_of_int n
@@ -167,18 +187,20 @@ let v ~repo_label ~limit ~(filter : string list)
      let opkey = Printf.sprintf "track-%s-%s-%s"
        repo_label limit_s (String.concat "," filter) in
      TrackCache.get ~opkey No_context { filter; repo; limit }
+     |> Current.Primitive.map_result
+          (Result.map (fun (v : Track.Value.t) -> (v.commit, v.packages)))
 
-(** Union multiple per-repo tracking results, with later repos'
-    entries overriding earlier by [(name, version)] — mirroring
-    opam's overlay resolution. *)
-let merge (tracks : t list Current.t list) : t list Current.t =
-  let open Current.Syntax in
-  let+ lists = Current.list_seq tracks in
+(** Union per-repo tracking results (as plain values), with later
+    repos' entries overriding earlier by [(name, version)] —
+    mirroring opam's overlay resolution. Sorted by package for a
+    deterministic order (it feeds cache-key digests). *)
+let merge_values (per_repo : t list list) : t list =
   let table = Hashtbl.create 1024 in
-  List.iter (fun per_repo ->
+  List.iter (fun pkgs ->
     List.iter (fun (pkg : t) ->
       Hashtbl.replace table pkg.package pkg
-    ) per_repo
-  ) lists;
+    ) pkgs
+  ) per_repo;
   Hashtbl.fold (fun _ v acc -> v :: acc) table []
+  |> List.sort (fun (a : t) b -> OpamPackage.compare a.package b.package)
   |> List.sort (fun a b -> -(OpamPackage.compare a.package b.package))

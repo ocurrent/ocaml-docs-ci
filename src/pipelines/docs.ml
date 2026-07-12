@@ -106,17 +106,19 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
     | [] -> Config.track_packages config
     | f -> f
   in
-  (* Fan out [Track.v] across all of [profile.opam_repositories] and
-     merge. [repo_label] (the static path string, stable across
-     ticks) distinguishes per-repo components so OCurrent doesn't
-     collide different repos into one "instance" when multiple
-     profiles share the same filter+limit. *)
-  let tracked =
+  (* Fan out [Track.v] across all of [profile.opam_repositories];
+     merging happens inside the solver, which also checks each
+     track's embedded commit against this evaluation's repo shas
+     (Track is latched, so a track can briefly lag a repo bump).
+     [repo_label] (the static path string, stable across ticks)
+     distinguishes per-repo components so OCurrent doesn't collide
+     different repos into one "instance" when multiple profiles
+     share the same filter+limit. *)
+  let tracks =
     List.map2
       (fun repo_label commit ->
         Track.v ~repo_label ~limit ~filter commit)
       profile.opam_repositories tracking_commits
-    |> Track.merge
   in
 
   (* 2) Solve against this profile's repo set. Pin the compiler to
@@ -140,11 +142,7 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       ?ocaml_version:ctx.ocaml_version
       ~pinned_versions
       ~cache_dir:ctx.cache_dir
-      (* [opam_commit] drives the solver's re-run trigger and goes
-         into the cache key. Pick mainline (first entry) — overlay
-         commits already flow through [repos_with_shas] which is
-         part of the same cache key, so this doesn't lose anything. *)
-      ~opam_commit:(List.hd tracking_commits) tracked
+      tracks
   in
   let* solutions in
   (* Drop solutions whose [build_deps] graph contains a cycle (the
