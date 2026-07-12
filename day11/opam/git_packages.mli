@@ -38,6 +38,22 @@ val of_repositories_lwt : (string * string option) list ->
     from inside an already-running Lwt event loop (e.g. an OCurrent
     Op) to avoid nested {!Lwt_main.run} errors. *)
 
+type name_cache
+(** Per-repo reuse state from an incremental load: each package
+    name's [packages/<name>] tree OID paired with its parsed version
+    map. Opaque; thread the previous load's caches into the next. *)
+
+val of_repositories_incremental_lwt :
+  prev:(string * name_cache) list ->
+  (string * string option) list ->
+  (t * (string * string) list * (string * name_cache) list) Lwt.t
+(** Like {!of_repositories_lwt}, but reuses parsed version maps from
+    [prev] (keyed by repo path) for every package name whose tree OID
+    is unchanged — only the diff is re-read and re-parsed. Loading is
+    eager like {!of_repositories_lwt} (safe to consume from non-Lwt
+    contexts); a full parse only happens on first load or when [prev]
+    lacks the repo. Returns the fresh caches for the next load. *)
+
 val force_all : t -> unit
 (** [force_all t] forces all lazy version maps. Call before using
     [t] from multiple domains. *)

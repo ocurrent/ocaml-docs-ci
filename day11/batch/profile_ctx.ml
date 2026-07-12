@@ -108,12 +108,30 @@ let load (profile : Profile.t) ~cache_dir =
   let oid_index = Lwt_main.run (build_oid_index_lwt repos_with_shas) in
   finalise_load profile ~cache_dir ~oid_index git_packages repos_with_shas
 
+(* Per-repo parsed-package caches from the previous [load_lwt], keyed
+   by repo path. Lets the next load reuse version maps for every name
+   whose tree OID is unchanged — reloading the ctx on an upstream
+   commit costs the diff, not a full ~38k-opam-file parse. Process
+   lifetime only; shared across profiles (same repo path → same
+   content). Benign races: concurrent profile loads of the same path
+   write equivalent caches. *)
+let name_caches :
+  (string, Day11_opam.Git_packages.name_cache) Hashtbl.t = Hashtbl.create 4
+
 let load_lwt (profile : Profile.t) ~cache_dir =
   let open Lwt.Infix in
   let repos_with_heads =
     List.map (fun r -> (r, None)) profile.opam_repositories in
-  Day11_opam.Git_packages.of_repositories_lwt repos_with_heads
-  >>= fun (git_packages, repos_with_shas) ->
+  let prev =
+    List.filter_map (fun r ->
+      Option.map (fun c -> (r, c)) (Hashtbl.find_opt name_caches r))
+      profile.opam_repositories
+  in
+  Day11_opam.Git_packages.of_repositories_incremental_lwt
+    ~prev repos_with_heads
+  >>= fun (git_packages, repos_with_shas, fresh_caches) ->
+  List.iter (fun (path, cache) -> Hashtbl.replace name_caches path cache)
+    fresh_caches;
   build_oid_index_lwt repos_with_shas
   >|= fun oid_index ->
   finalise_load profile ~cache_dir ~oid_index git_packages repos_with_shas

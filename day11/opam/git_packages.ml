@@ -91,6 +91,52 @@ let of_commit_lwt ?(super = empty) store commit : t Lwt.t =
 let of_commit ?(super = empty) store commit : t =
   Lwt_main.run (of_commit_lwt ~super store commit)
 
+(* ── Incremental loading ─────────────────────────────────────────
+   [of_commit_lwt] is deliberately eager (see its comment), which
+   means a full ~38k-opam-file parse per load — the dominant cost of
+   reloading a Profile_ctx on every upstream commit. The incremental
+   variant reuses the previous load's parsed version maps for every
+   package name whose [packages/<name>] tree OID is unchanged,
+   re-reading only the diff. Sound because the version map is a pure
+   function of the name's tree content, which the OID fingerprints. *)
+
+type name_cache =
+  (string, string * OpamFile.OPAM.t OpamPackage.Version.Map.t) Hashtbl.t
+(* name → (name-tree OID, parsed versions) from a previous load. *)
+
+let of_commit_incremental_lwt ?(super = empty) ?prev store commit
+    : (t * name_cache) Lwt.t =
+  Search.find store commit (`Commit (`Path [ "packages" ])) >>= function
+  | None -> Fmt.failwith "Failed to find packages directory!"
+  | Some tree_hash ->
+      read_dir store tree_hash >>= function
+      | None -> Fmt.failwith "'packages' is not a directory!"
+      | Some tree ->
+          let fresh : name_cache = Hashtbl.create 8192 in
+          Store.Value.Tree.to_list tree
+          |> Lwt_list.filter_map_s (fun (entry : Store.Value.Tree.entry) ->
+              match OpamPackage.Name.of_string entry.name with
+              | exception _ -> Lwt.return_none
+              | name ->
+                  let oid = Store.Hash.to_hex entry.node in
+                  let reuse = match prev with
+                    | None -> None
+                    | Some prev ->
+                      (match Hashtbl.find_opt prev entry.name with
+                       | Some (prev_oid, versions)
+                         when String.equal prev_oid oid -> Some versions
+                       | _ -> None)
+                  in
+                  (match reuse with
+                   | Some versions -> Lwt.return versions
+                   | None -> read_versions_lwt store entry)
+                  >|= fun versions ->
+                  Hashtbl.replace fresh entry.name (oid, versions);
+                  Some (name, lazy versions))
+          >|= fun resolved ->
+          let packages = OpamPackage.Name.Map.of_list resolved in
+          (OpamPackage.Name.Map.union overlay super packages, fresh)
+
 let of_commit_eager store commit : t =
   Lwt_main.run @@
   (Search.find store commit (`Commit (`Path [ "packages" ])) >>= function
@@ -135,6 +181,33 @@ let of_repositories_lwt repos =
 
 let of_repositories repos =
   Lwt_main.run (of_repositories_lwt repos)
+
+(* Multi-repo incremental variant: [prev] maps repo path → the
+   {!name_cache} returned by the previous load of that repo. Returns
+   the merged index, the resolved shas, and fresh per-repo caches to
+   feed the next load. *)
+let of_repositories_incremental_lwt ~prev repos =
+  assert (repos <> []);
+  Lwt_list.map_s (fun (repo_path, commit_opt) ->
+    Git_utils.get_git_repo_store_and_hash_lwt repo_path
+    >>= fun (store, head) ->
+    (match commit_opt with
+     | Some sha ->
+       Git_utils.resolve_commit_in_store_lwt store (Some sha)
+     | None -> Lwt.return head)
+    >|= fun commit -> (repo_path, store, commit)
+  ) repos
+  >>= fun stores_and_commits ->
+  Lwt_list.fold_left_s (fun (super, caches) (path, store, commit) ->
+    of_commit_incremental_lwt ~super
+      ?prev:(List.assoc_opt path prev) store commit
+    >|= fun (t, cache) -> (t, (path, cache) :: caches)
+  ) (empty, []) stores_and_commits
+  >|= fun (packages, caches) ->
+  let repos_with_shas = List.map (fun (repo_path, _store, commit) ->
+    (repo_path, Store.Hash.to_hex commit)
+  ) stores_and_commits in
+  (packages, repos_with_shas, List.rev caches)
 
 let force_all (t : t) =
   OpamPackage.Name.Map.iter (fun _name versions ->
