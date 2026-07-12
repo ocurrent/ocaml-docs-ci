@@ -141,17 +141,22 @@ let reuse_solutions ?expected_cache_key ?rekey_to ~solutions_cache_dir
             | Some new_key ->
               (* Re-stamp with the destination snapshot's cache key so
                  the consumer's [is_cache_key_valid] accepts the entry.
-                 Failures are skipped in this mode: ocaml-docs-ci
-                 re-attempts failed solves every run regardless, so
-                 copying them forward is wasted IO. *)
-              (match entry with
-               | Cached_failure _ -> ()
-               | Cached_solution s ->
-                 let entry' =
-                   Cached_solution { s with cache_key = Some new_key } in
-                 (match save cache_file entry' with
-                  | Ok () -> incr reused
-                  | Error _ -> ()))
+                 Failures are carried too: a failure whose examined set
+                 is untouched by the changed packages is provably still
+                 a failure, and re-attempting it is the {e expensive}
+                 kind of solve (exhaustive search). Consumers decide
+                 whether a carried failure short-circuits the re-solve
+                 (ocaml-docs-ci's partition does, on a strict key
+                 match) or is merely informational. *)
+              let entry' = match entry with
+                | Cached_solution s ->
+                  Cached_solution { s with cache_key = Some new_key }
+                | Cached_failure f ->
+                  Cached_failure { f with cache_key = Some new_key }
+              in
+              (match save cache_file entry' with
+               | Ok () -> incr reused
+               | Error _ -> ())
           end
     end
   ) packages;

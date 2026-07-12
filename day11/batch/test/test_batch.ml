@@ -296,8 +296,9 @@ let test_reuse_rekey () =
     ~solutions_cache_dir:cur_dir ~previous_dir:prev_dir
     ~changed_packages:changed
     ~packages:["astring.0.8.5"; "fmt.0.9.0"; "broken.1.0"] () in
-  (* Only astring: fmt has the wrong key, broken is a failure. *)
-  Alcotest.(check int) "1 reused" 1 reused;
+  (* astring (solution) and broken (failure) carry; fmt has the wrong
+     key and is not trusted. *)
+  Alcotest.(check int) "2 reused" 2 reused;
   (match Incremental_solver.load Fpath.(cur_dir / "astring.0.8.5.json") with
    | Ok (Cached_solution s) ->
      Alcotest.(check (option string)) "re-stamped key"
@@ -305,8 +306,11 @@ let test_reuse_rekey () =
    | _ -> Alcotest.fail "expected rekeyed solution in cur_dir");
   Alcotest.(check bool) "fmt not carried" false
     (Sys.file_exists (Fpath.to_string Fpath.(cur_dir / "fmt.0.9.0.json")));
-  Alcotest.(check bool) "failure not carried" false
-    (Sys.file_exists (Fpath.to_string Fpath.(cur_dir / "broken.1.0.json")));
+  (match Incremental_solver.load Fpath.(cur_dir / "broken.1.0.json") with
+   | Ok (Cached_failure f) ->
+     Alcotest.(check (option string)) "failure re-stamped"
+       (Some "new-key") f.cache_key
+   | _ -> Alcotest.fail "expected rekeyed failure in cur_dir");
   (* Overwrite semantics: a stale existing file is replaced. *)
   (match Incremental_solver.save Fpath.(cur_dir / "astring.0.8.5.json")
            (mk_solution ~cache_key:"stale-key" "astring.0.8.5") with

@@ -82,9 +82,10 @@ val reuse_solutions :
     entry is re-saved with the given cache key so the destination
     snapshot's own validity check accepts it. In this mode an existing
     destination file is overwritten (the caller is expected to pass
-    only targets it knows to be missing or stale), and cached
-    {e failures} are not carried forward (ocaml-docs-ci re-attempts
-    failed solves every run regardless).
+    only targets it knows to be missing or stale). Cached {e failures}
+    are carried like solutions — an untouched examined set means the
+    failure provably still holds; whether that short-circuits the
+    re-solve is the consumer's call.
 
     Reuse composes across snapshots: an entry reused into snapshot N
     was checked against the N-1→N diff and rekeyed, so checking the
