@@ -23,7 +23,33 @@ let image_of_profile (profile : Profile.t) =
   | None ->
     Printf.sprintf "%s:%s" profile.os_distribution profile.os_version
 
-let finalise_load (profile : Profile.t) ~cache_dir
+(* Package -> version-dir tree OID at the current repo state, merged
+   across the profile's repos with later-repo-wins overlay semantics.
+   Feeds {!Day11_opam_build.Hash_cache}'s persistent digest store so
+   unchanged packages cost no opam parse (see hash_cache.mli). One
+   tree read per package name per repo — ~1-2s for mainline. *)
+let build_oid_index_lwt repos_with_shas =
+  let open Lwt.Infix in
+  let tbl : (string, string) Hashtbl.t = Hashtbl.create 65536 in
+  Lwt_list.iter_s (fun (path, sha) ->
+    Lwt.catch
+      (fun () ->
+        Day11_opam.Git_utils.get_git_repo_store_and_hash_commit_lwt
+          path (Some sha)
+        >>= fun (store, commit) ->
+        Day11_opam.Git_packages.list_package_versions_lwt ~store commit
+        >|= List.iter (fun (pkg, oid) ->
+              Hashtbl.replace tbl (OpamPackage.to_string pkg) oid))
+      (fun exn ->
+        (* Best-effort: a repo we cannot walk just means no OID index
+           for its packages — the hash cache falls back to parsing. *)
+        Logs.warn (fun m -> m "oid index: skipping %s: %s"
+          path (Printexc.to_string exn));
+        Lwt.return_unit))
+    repos_with_shas
+  >|= fun () -> tbl
+
+let finalise_load (profile : Profile.t) ~cache_dir ?oid_index
     git_packages repos_with_shas =
   let os_dir = Fpath.(cache_dir / Profile.os_dir_name profile) in
   (* ocaml-git clobbers Bos's temp dir default; reset for downstream
@@ -59,7 +85,16 @@ let finalise_load (profile : Profile.t) ~cache_dir
   in
   let benv = Day11_opam_build.Types.make_build_env ~base ~os_dir () in
   let find_opam = Day11_opam.Git_packages.find_package git_packages in
-  let hash_cache = Day11_opam_build.Hash_cache.create ~find_opam ?patches () in
+  let find_oid = Option.map (fun idx ->
+    fun pkg -> Hashtbl.find_opt idx (OpamPackage.to_string pkg)) oid_index in
+  let digest_store = match oid_index with
+    | None -> None
+    | Some _ ->
+      Some (Day11_opam_build.Hash_cache.Digest_store.load
+              Fpath.(cache_dir / "opam-effective-digests"))
+  in
+  let hash_cache = Day11_opam_build.Hash_cache.create
+    ~find_opam ?find_oid ?digest_store ?patches () in
   { profile; cache_dir; os_dir;
     git_packages; repos_with_shas; opam_env;
     ocaml_version; driver_compiler; patches;
@@ -70,15 +105,18 @@ let load (profile : Profile.t) ~cache_dir =
     List.map (fun r -> (r, None)) profile.opam_repositories in
   let git_packages, repos_with_shas =
     Day11_opam.Git_packages.of_repositories repos_with_heads in
-  finalise_load profile ~cache_dir git_packages repos_with_shas
+  let oid_index = Lwt_main.run (build_oid_index_lwt repos_with_shas) in
+  finalise_load profile ~cache_dir ~oid_index git_packages repos_with_shas
 
 let load_lwt (profile : Profile.t) ~cache_dir =
   let open Lwt.Infix in
   let repos_with_heads =
     List.map (fun r -> (r, None)) profile.opam_repositories in
   Day11_opam.Git_packages.of_repositories_lwt repos_with_heads
-  >|= fun (git_packages, repos_with_shas) ->
-  finalise_load profile ~cache_dir git_packages repos_with_shas
+  >>= fun (git_packages, repos_with_shas) ->
+  build_oid_index_lwt repos_with_shas
+  >|= fun oid_index ->
+  finalise_load profile ~cache_dir ~oid_index git_packages repos_with_shas
 
 let base_materialised (base : Day11_layer.Base.t) =
   let dir = base.Day11_layer.Base.dir in
