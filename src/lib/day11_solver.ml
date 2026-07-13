@@ -215,7 +215,33 @@ module SolveOp = struct
            go OpamPackage.Name.Set.empty cur_repos)
         (fun exn -> Lwt.return (Error (Printexc.to_string exn)))
 
-  let incremental_reuse ~job ctx (key : Key.t) ~compiler_tag ~cache_key ~dir =
+  (* Cooperative yield for the file sweeps below (17k+ entries each):
+     they run on the daemon's single domain and would otherwise starve
+     the event loop for seconds. No-op outside an Eio fiber. *)
+  let cooperative_yield =
+    let n = ref 0 in
+    fun () ->
+      incr n;
+      if !n land 63 = 0 then (try Eio.Fiber.yield () with _ -> ())
+
+  (* Everything [execute_reuse] needs, computed on the Lwt side (the
+     git diff uses the Lwt-native APIs); the sweeps themselves run in
+     the op's Eio section so they can yield. *)
+  type reuse_plan = {
+    rp_changed : OpamPackage.Name.Set.t;
+    rp_prev_snapshot : string;          (* for logging *)
+    rp_prev_cache_key : string;
+    rp_prev_solutions : Fpath.t;
+    rp_prev_tool_key : string;
+    rp_new_tool_key : string;
+    rp_prev_tool_dir : Fpath.t;
+    rp_cur_tool_dir : Fpath.t;
+    rp_missing : OpamPackage.t list;
+    rp_tool_stems : string list;
+  }
+
+  let incremental_reuse_plan ~job ctx (key : Key.t) ~compiler_tag
+      ~cache_key:_ ~dir =
     let open Lwt.Syntax in
     (* Only targets with no file at all: a file that exists but fails
        the cache-key check means compiler/pins changed within this
@@ -232,7 +258,7 @@ module SolveOp = struct
     let current_key =
       Day11_batch.Snapshot.compute_key ctx.repos_with_shas in
     match find_previous_snapshot ~base ~current_key with
-    | None -> Lwt.return_unit
+    | None -> Lwt.return_none
     | Some ((prev : Day11_batch.Snapshot.t), prev_solutions) ->
       (* Tool solves live beside the solutions with the same envelope
          (see {!Day11_batch.Incremental_solver.tool_solutions_dirname});
@@ -254,7 +280,7 @@ module SolveOp = struct
               then None else Some stem
             else None) entries
       in
-      if missing = [] && tool_stems = [] then Lwt.return_unit
+      if missing = [] && tool_stems = [] then Lwt.return_none
       else
         let* changed =
           changed_packages_lwt ~prev_repos:prev.repos
@@ -264,52 +290,69 @@ module SolveOp = struct
            Current.Job.log job
              "incremental: cannot diff against previous snapshot %s (%s); \
               solving from scratch" prev.key msg;
-           Lwt.return_unit
+           Lwt.return_none
          | Ok changed ->
            let mainline_path = match ctx.repos_with_shas with
              | (p, _) :: _ -> p
              | [] -> "" (* unreachable: profiles require >= 1 repo *)
            in
            (match List.assoc_opt mainline_path prev.repos with
-            | None -> Lwt.return_unit
+            | None -> Lwt.return_none
             | Some prev_commit ->
-              let reused =
-                if missing = [] then 0
-                else begin
-                  let prev_cache_key =
-                    compute_cache_key ~compiler_tag ~commit:prev_commit
-                      ~repos_digest:(repos_digest prev.repos)
-                      ~pinned_versions:key.pinned_versions in
-                  let packages = List.map OpamPackage.to_string missing in
-                  Day11_batch.Incremental_solver.reuse_solutions
-                    ~expected_cache_key:prev_cache_key ~rekey_to:cache_key
-                    ~solutions_cache_dir:dir ~previous_dir:prev_solutions
-                    ~changed_packages:changed ~packages ()
-                end
-              in
-              let tools_reused =
-                if tool_stems = [] then 0
-                else begin
-                  ignore (Bos.OS.Dir.create ~path:true cur_tool_dir);
-                  Day11_batch.Incremental_solver.reuse_solutions
-                    ~expected_cache_key:
-                      (Day11_batch.Incremental_solver.tool_cache_key
-                         ~repos:prev.repos)
-                    ~rekey_to:
-                      (Day11_batch.Incremental_solver.tool_cache_key
-                         ~repos:ctx.repos_with_shas)
-                    ~solutions_cache_dir:cur_tool_dir
-                    ~previous_dir:prev_tool_dir
-                    ~changed_packages:changed ~packages:tool_stems ()
-                end
-              in
-              Current.Job.log job
-                "incremental: %d package(s) changed since snapshot %s; \
-                 reused %d/%d cached solutions, %d/%d tool solves"
-                (OpamPackage.Name.Set.cardinal changed) prev.key
-                reused (List.length missing)
-                tools_reused (List.length tool_stems);
-              Lwt.return_unit))
+              let prev_cache_key =
+                compute_cache_key ~compiler_tag ~commit:prev_commit
+                  ~repos_digest:(repos_digest prev.repos)
+                  ~pinned_versions:key.pinned_versions in
+              Lwt.return_some {
+                rp_changed = changed;
+                rp_prev_snapshot = prev.key;
+                rp_prev_cache_key = prev_cache_key;
+                rp_prev_solutions = prev_solutions;
+                rp_prev_tool_key =
+                  Day11_batch.Incremental_solver.tool_cache_key
+                    ~repos:prev.repos;
+                rp_new_tool_key =
+                  Day11_batch.Incremental_solver.tool_cache_key
+                    ~repos:ctx.repos_with_shas;
+                rp_prev_tool_dir = prev_tool_dir;
+                rp_cur_tool_dir = cur_tool_dir;
+                rp_missing = missing;
+                rp_tool_stems = tool_stems;
+              }))
+
+  (* The sweeps: run in the op's Eio section (see [build]), yielding
+     as they go. [dir] is the current snapshot's solutions dir. *)
+  let execute_reuse ~job ~cache_key ~dir plan =
+    let reused =
+      if plan.rp_missing = [] then 0
+      else
+        Day11_batch.Incremental_solver.reuse_solutions
+          ~expected_cache_key:plan.rp_prev_cache_key ~rekey_to:cache_key
+          ~yield:cooperative_yield
+          ~solutions_cache_dir:dir ~previous_dir:plan.rp_prev_solutions
+          ~changed_packages:plan.rp_changed
+          ~packages:(List.map OpamPackage.to_string plan.rp_missing) ()
+    in
+    let tools_reused =
+      if plan.rp_tool_stems = [] then 0
+      else begin
+        ignore (Bos.OS.Dir.create ~path:true plan.rp_cur_tool_dir);
+        Day11_batch.Incremental_solver.reuse_solutions
+          ~expected_cache_key:plan.rp_prev_tool_key
+          ~rekey_to:plan.rp_new_tool_key
+          ~yield:cooperative_yield
+          ~solutions_cache_dir:plan.rp_cur_tool_dir
+          ~previous_dir:plan.rp_prev_tool_dir
+          ~changed_packages:plan.rp_changed
+          ~packages:plan.rp_tool_stems ()
+      end
+    in
+    Current.Job.log job
+      "incremental: %d package(s) changed since snapshot %s; \
+       reused %d/%d cached solutions, %d/%d tool solves"
+      (OpamPackage.Name.Set.cardinal plan.rp_changed) plan.rp_prev_snapshot
+      reused (List.length plan.rp_missing)
+      tools_reused (List.length plan.rp_tool_stems)
 
   (* Split [targets] three ways: cached solutions still valid for
      [cache_key]; cached {e failures} still valid; and targets that
@@ -330,6 +373,7 @@ module SolveOp = struct
     then ([], [], targets)
     else
       List.fold_left (fun (cached, failed, uncached) pkg ->
+        cooperative_yield ();
         let path = Fpath.(dir / solution_filename pkg) in
         match Day11_batch.Incremental_solver.load path with
         | Ok entry
@@ -386,9 +430,11 @@ module SolveOp = struct
     ignore (Bos.OS.Dir.create ~path:true dir);
     (* Seed from the previous snapshot before partitioning, so a repo
        bump only re-solves targets whose examined set intersects the
-       commits' changed packages. Uses the Lwt-native git APIs — we're
-       under the daemon's Lwt loop here, before [run_eio]. *)
-    let* () = incremental_reuse ~job ctx key ~compiler_tag ~cache_key ~dir in
+       commits' changed packages. The git diff runs here on the Lwt
+       side (Lwt-native APIs); the file sweeps run below inside
+       [run_eio] where they can cooperatively yield. *)
+    let* reuse_plan =
+      incremental_reuse_plan ~job ctx key ~compiler_tag ~cache_key ~dir in
     (* Consolidated list of targets that failed to solve, written next to
        the snapshot's other summaries as [solve_failures.json] (a JSON
        array of "name.version"). The snapshot page reads this one file
@@ -403,6 +449,9 @@ module SolveOp = struct
       ignore (Bos.OS.File.write path (Yojson.Safe.to_string json))
     in
     Lwt_eio.run_eio @@ fun () ->
+    (match reuse_plan with
+     | None -> ()
+     | Some plan -> execute_reuse ~job ~cache_key ~dir plan);
     let cached, cached_failures, uncached =
       partition_cached ~dir ~cache_key key.targets in
     let cached_failure_strs =

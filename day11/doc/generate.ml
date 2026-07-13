@@ -283,6 +283,19 @@ type doc_graph = {
      [memo] (keyed by [hash@universe]) still dedups across graphs. *)
 }
 
+(* Cooperative yield for the planning hot loops. Planning runs on the
+   daemon's single domain (via the pipeline body / run_eio); without
+   yields a full-profile pass starves the event loop for ~20s+ —
+   stalling every other job's subprocess I/O and the web UI (observed
+   as pull jobs whose [rev-parse] "took" 100s). Cadenced so the cost
+   is negligible; a no-op outside an Eio fiber (e.g. odd test
+   harnesses). *)
+let cooperative_yield =
+  let n = ref 0 in
+  fun () ->
+    incr n;
+    if !n land 63 = 0 then (try Eio.Fiber.yield () with _ -> ())
+
 let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
     ~odoc_tools ~nodes ~solutions =
   let t0 = Unix.gettimeofday () in
@@ -513,7 +526,9 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
       g_compiler = find_compiler result.build_deps;
       g_memo = Hashtbl.create 64;
     } in
-    OpamPackage.Map.iter (fun pkg _ -> ignore (visit ~g pkg)) result.doc_deps
+    OpamPackage.Map.iter (fun pkg _ ->
+      cooperative_yield ();
+      ignore (visit ~g pkg)) result.doc_deps
   ) solutions;
   let t_solutions = Unix.gettimeofday () in
   (* Tools: each is its own build DAG with no x-extra-doc-deps, so its
@@ -553,6 +568,7 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
      [(dep_bh, dep_U)] resolves to its per-universe compile node. *)
   let link_doc_nodes =
     List.filter_map (fun (dn : doc_node) ->
+      cooperative_yield ();
       match dn.kind, dn.odoc_tool with
       | Compile, Some odoc_tool ->
         let bh = dn.build_node.hash and u_s = dn.universe in

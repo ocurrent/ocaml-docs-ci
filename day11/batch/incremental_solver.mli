@@ -61,6 +61,7 @@ val load : Fpath.t -> (cache_entry, [> Rresult.R.msg ]) result
 val reuse_solutions :
   ?expected_cache_key:string ->
   ?rekey_to:string ->
+  ?yield:(unit -> unit) ->
   solutions_cache_dir:Fpath.t ->
   previous_dir:Fpath.t ->
   changed_packages:OpamPackage.Name.Set.t ->
@@ -86,6 +87,10 @@ val reuse_solutions :
     are carried like solutions — an untouched examined set means the
     failure provably still holds; whether that short-circuits the
     re-solve is the consumer's call.
+
+    [?yield] is invoked once per package considered — pass a
+    cooperative-yield hook when running on an event loop so a large
+    sweep doesn't starve other work.
 
     Reuse composes across snapshots: an entry reused into snapshot N
     was checked against the N-1→N diff and rekeyed, so checking the

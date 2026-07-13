@@ -100,10 +100,12 @@ let load file_path =
     with exn ->
       Error (`Msg (Printexc.to_string exn))
 
-let reuse_solutions ?expected_cache_key ?rekey_to ~solutions_cache_dir
+let reuse_solutions ?expected_cache_key ?rekey_to ?(yield = fun () -> ())
+    ~solutions_cache_dir
     ~previous_dir ~changed_packages ~packages () =
   let reused = ref 0 in
   List.iter (fun pkg_name ->
+    yield ();
     let cache_file = Fpath.(solutions_cache_dir / (pkg_name ^ ".json")) in
     (* In rekey mode the caller passes exactly the targets it knows to
        be missing or stale, so an existing (stale) file is overwritten;

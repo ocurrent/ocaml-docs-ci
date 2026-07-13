@@ -2,6 +2,15 @@ module Build = Day11_opam_layer.Build
 module Tool = Day11_opam_layer.Tool
 type build = Build.t
 
+(* See {!Day11_doc.Generate}'s cooperative_yield — same rationale:
+   this walk digests every solution's closures on the daemon's single
+   domain and would otherwise starve the event loop for seconds. *)
+let cooperative_yield =
+  let n = ref 0 in
+  fun () ->
+    incr n;
+    if !n land 63 = 0 then (try Eio.Fiber.yield () with _ -> ())
+
 let build_dag cache ~base_hash solutions =
   let t0 = Unix.gettimeofday () in
   (* Memo by build hash. The hash is the only true identity of a
@@ -80,6 +89,7 @@ let build_dag cache ~base_hash solutions =
     let local : (string, build) Hashtbl.t =
       Hashtbl.create (OpamPackage.Map.cardinal solution) in
     OpamPackage.Map.iter (fun pkg _deps ->
+      cooperative_yield ();
       ignore (get_node local solution trans_build trans_doc pkg)
     ) solution
   ) solutions;
