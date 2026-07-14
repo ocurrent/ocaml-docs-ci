@@ -32,15 +32,19 @@ type node_outcome = {
     from disk and does not depend on run-id matching. *)
 val of_outcomes : run_id:string -> scanned:int -> node_outcome list -> t
 
-(** [final_status_of_outcomes items] collapses each blessed package's
-    nodes (keyed by ["name.version"]) to a single status string
-    (["doc_success"] / ["doc_failure"] / ["build_failure"] /
-    ["dependency_failure"] / ["success"]), worst-outcome-first. Only
-    blessed packages are included. *)
+(** [final_status_of_outcomes items] collapses each package's blessed
+    doc nodes and (never-blessed, universe-agnostic) build nodes —
+    keyed by ["name.version"] — to a single status string:
+    ["build_failure"] / ["doc_failure"] when the package has a failed
+    node of its own, ["dependency_failure"] when its only failed nodes
+    are cascades, else ["doc_success"] (docs built) or ["success"]
+    (a build-only package such as a conf package). Tool nodes should
+    be filtered out by the caller — they'd otherwise appear as
+    packages. *)
 val final_status_of_outcomes :
   (string * node_outcome) list -> (string * string) list
 
-(** Write the blessed-package [(name.version -> status)] table as
+(** Write the per-package [(name.version -> status)] table as
     [final_status.json] in [dir], for the snapshot diff views. *)
 val write_final_status : dir:Fpath.t -> (string * string) list -> unit
 

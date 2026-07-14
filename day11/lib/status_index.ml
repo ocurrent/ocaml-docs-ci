@@ -126,25 +126,33 @@ let of_outcomes ~run_id ~scanned (outcomes : node_outcome list) : t =
     non_blessed_totals = !non_blessed_totals;
   }
 
-(* Per-blessed-package status for the snapshot diff views. Collapses a
-   package's blessed nodes (its canonical universe) to one status,
-   worst-first: a cascade (dep failed) dominates a build failure, which
-   dominates a doc failure, else all built. Only blessed packages are
-   emitted — the canonical universe is what the diffs compare. *)
+(* Per-package status for the snapshot diff views. Collapses a
+   package's blessed doc nodes (its canonical universe) plus its build
+   nodes to one status. Build nodes are universe-agnostic and never
+   blessed, so they must be admitted by [not o.is_doc] — filtering on
+   blessing alone would drop the very node a build failure originates
+   from, leaving only its cascaded doc nodes and misreporting the
+   package as a dependency_failure (it would also omit build-only
+   packages such as conf-* entirely).
+
+   Origin-first: a node that failed on its own ([not cascaded]) makes
+   the package a genuine build_failure / doc_failure; only when every
+   failed node is a cascade did the breakage come from a dependency. *)
 let final_status_of_outcomes (items : (string * node_outcome) list)
   : (string * string) list =
   let by_pkg : (string, node_outcome list) Hashtbl.t = Hashtbl.create 4096 in
   List.iter (fun (pkg, o) ->
-    if o.blessed then
+    if o.blessed || not o.is_doc then
       let prev = try Hashtbl.find by_pkg pkg with Not_found -> [] in
       Hashtbl.replace by_pkg pkg (o :: prev)
   ) items;
   Hashtbl.fold (fun pkg os acc ->
     let any f = List.exists f os in
     let status =
-      if any (fun o -> (not o.ok) && o.cascaded) then "dependency_failure"
-      else if any (fun o -> (not o.ok) && not o.is_doc) then "build_failure"
-      else if any (fun o -> not o.ok) then "doc_failure"
+      if any (fun o -> (not o.ok) && (not o.cascaded) && not o.is_doc)
+      then "build_failure"
+      else if any (fun o -> (not o.ok) && not o.cascaded) then "doc_failure"
+      else if any (fun o -> not o.ok) then "dependency_failure"
       else if any (fun o -> o.is_doc) then "doc_success"
       else "success"
     in

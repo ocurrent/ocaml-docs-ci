@@ -419,11 +419,13 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       Hashtbl.replace ok_of n.hash (Result.is_ok res)) all_dag_nodes results;
     let dep_ok h = match Hashtbl.find_opt ok_of h with Some b -> b | None -> true in
     (* Per-node outcome, keyed by package, so we can feed both the
-       aggregate totals ([status.json]) and the per-blessed-package table
-       ([final_status.json]) from the same pass. *)
-    let pkg_outcomes =
+       aggregate totals ([status.json]) and the per-package table
+       ([final_status.json]) from the same pass. The node kind rides
+       along so the final-status aggregation can drop tool nodes. *)
+    let node_rows =
       List.map2 (fun (dag_node : Day11_opam_layer.Build.t) res ->
-        let is_doc = match node_kind dag_node with
+        let kind = node_kind dag_node in
+        let is_doc = match kind with
           | Day11_doc.Generate.Build | Tool -> false
           | Compile | Doc_all | Link -> true in
         let ok = Result.is_ok res in
@@ -432,12 +434,14 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
           && List.exists (fun (d : Day11_opam_layer.Build.t) -> not (dep_ok d.hash))
                dag_node.deps
         in
-        (OpamPackage.to_string dag_node.pkg,
-         { Day11_lib.Status_index.is_doc;
-           blessed = node_blessed dag_node;
-           ok; cascaded }))
+        (kind,
+         (OpamPackage.to_string dag_node.pkg,
+          { Day11_lib.Status_index.is_doc;
+            blessed = node_blessed dag_node;
+            ok; cascaded })))
         all_dag_nodes results
     in
+    let pkg_outcomes = List.map snd node_rows in
     let outcomes = List.map snd pkg_outcomes in
     let scanned =
       List.sort_uniq compare (List.map fst pkg_outcomes) |> List.length
@@ -447,10 +451,16 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
         ~run_id:(Day11_lib.Run_log.get_id run_log) ~scanned outcomes
     in
     Day11_lib.Status_index.write ~dir:snapshot_dir status;
-    (* Run complete (guarded above), so write the blessed-package status
-       table that drives the diff views. Reused below for the package
-       metric — it's the per-blessed-package collapse (one entry each). *)
-    let final = Day11_lib.Status_index.final_status_of_outcomes pkg_outcomes in
+    (* Run complete (guarded above), so write the per-package status
+       table that drives the diff views. Tool nodes are dropped — they'd
+       otherwise show up as packages of their own. Reused below for the
+       package metric — it's the per-package collapse (one entry each). *)
+    let final =
+      Day11_lib.Status_index.final_status_of_outcomes
+        (List.filter_map (fun (kind, row) ->
+           if kind = Day11_doc.Generate.Tool then None else Some row)
+           node_rows)
+    in
     Day11_lib.Status_index.write_final_status ~dir:snapshot_dir final;
     let sum = List.fold_left (fun acc (_, n) -> acc + n) 0 in
     Metrics.set_status
@@ -482,18 +492,27 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       Hashtbl.fold (fun k v acc -> (k, v) :: acc) tbl []
     in
     Metrics.set_layers ~profile:profile.name layer_counts;
-    (* Package-level accounting. [final] holds one collapsed status per
-       blessed package, so its length is the blessed-package count and the
-       doc_success entries are the successes; everything else there is a
-       failure (cascade / build / doc). [not_documentable] is every scanned
-       package with no blessed doc node = scanned − blessed. [solver_failure]
-       is solve failures that never made it into the plan (a handful solve
-       only as another package's transitive dep — those are already counted
-       in the plan, so excluding them keeps the buckets disjoint). *)
+    (* Package-level accounting. [final] now covers every plan package
+       (build-only conf-* packages included), so the blessed-doc metrics
+       are computed over the subset that actually has a blessed doc node.
+       [not_documentable] is every scanned package with no blessed doc
+       node. [solver_failure] is solve failures that never made it into
+       the plan (a handful solve only as another package's transitive
+       dep — those are already counted in the plan, so excluding them
+       keeps the buckets disjoint). *)
+    let has_blessed_doc =
+      let t = Hashtbl.create 4096 in
+      List.iter (fun (p, (o : Day11_lib.Status_index.node_outcome)) ->
+        if o.blessed && o.is_doc then Hashtbl.replace t p ()) pkg_outcomes;
+      t
+    in
     let blessed_doc_success =
       List.length (List.filter (fun (_, s) -> s = "doc_success") final) in
-    let blessed_doc_failure = List.length final - blessed_doc_success in
-    let not_documentable = status.scanned - List.length final in
+    let blessed_doc_failure =
+      List.length (List.filter (fun (p, _) -> Hashtbl.mem has_blessed_doc p)
+                     final)
+      - blessed_doc_success in
+    let not_documentable = status.scanned - Hashtbl.length has_blessed_doc in
     let solver_failure =
       let in_plan = Hashtbl.create (List.length pkg_outcomes) in
       List.iter (fun (p, _) -> Hashtbl.replace in_plan p ()) pkg_outcomes;
