@@ -199,6 +199,16 @@ let list_snapshots_newest_first ctx name =
     |> List.sort (fun (_, a) (_, b) -> compare b a)
     |> List.map fst
 
+(** A snapshot is complete once its run finished and wrote
+    [final_status.json] (see
+    {!Day11_lib.Status_index.write_final_status}) — a run that is
+    still in flight, or was superseded before every planned node
+    resolved, never writes it. Package diffs are only offered between
+    complete snapshots: an incomplete side has no authoritative
+    per-package statuses to compare. *)
+let snapshot_completed dir =
+  Sys.file_exists (Fpath.to_string Fpath.(dir / "final_status.json"))
+
 (** Read [packages/] under a snapshot dir. *)
 let snapshot_packages snapshot_dir =
   let pdir = Fpath.(snapshot_dir / "packages") in
@@ -245,19 +255,20 @@ let latest_pkg_status_full snapshot_dir pkg_str =
         Some (status, category, build_hash)
       with _ -> None
 
-(** Find the snapshot key chronologically just before [current_key]
-    in this profile, by mtime. Returns [None] if [current_key] is the
-    oldest. Used for the "Diff against previous" button on
-    {!snapshot_detail}. *)
+(** Find the key of the nearest {e completed} snapshot chronologically
+    before [current_key] in this profile. Returns [None] if there is
+    none. Used for the "Diff against previous" button on
+    {!snapshot_detail} — diffs only work between completed snapshots,
+    so incomplete ones are skipped over. *)
 let find_previous_snapshot_key ctx name current_key =
   let snaps = list_snapshots_newest_first ctx name in
-  let keys = List.map Fpath.basename snaps in
   let rec walk = function
-    | [] | [_] -> None
-    | k :: next :: _ when k = current_key -> Some next
+    | [] -> None
+    | dir :: rest when Fpath.basename dir = current_key ->
+      Option.map Fpath.basename (List.find_opt snapshot_completed rest)
     | _ :: rest -> walk rest
   in
-  walk keys
+  walk snaps
 
 (* ── /profiles ────────────────────────────────────────────────── *)
 
@@ -587,7 +598,14 @@ let snapshot_detail ~ctx name key =
          can list every package from dag.json (not just those with
          per-snapshot history). See further down. *)
       let _ = pkgs in
-      let diff_link = match find_previous_snapshot_key ctx name key with
+      (* Diffs are only meaningful between completed snapshots, so the
+         link is offered only when this snapshot is complete and an
+         older completed one exists. *)
+      let diff_link = match
+          (if snapshot_completed snapshot_dir
+           then find_previous_snapshot_key ctx name key
+           else None)
+        with
         | None -> []
         | Some prev ->
           [ p [ a ~a:[ a_href (Printf.sprintf
@@ -1021,34 +1039,6 @@ let split_pkg pkg_str =
     let v = String.sub pkg_str (i + 1) (String.length pkg_str - i - 1) in
     Some (n, v)
 
-(* Aggregate a list of [(status, build_hash)] entries (one per
-   universe of the same (name, version)) into a single
-   [(status_str, hash)] pair. Status is the highest-priority status
-   present (failure > cascade > pending > success); the chosen hash
-   is the first entry with the chosen status, so failed builds yield
-   a hash that links to a failed build log. Returns empty string
-   for the hash when [entries] is empty. *)
-let aggregate_pkg_status_with_hash entries =
-  let is_failed = function Day11_lib.Cascade.Failed -> true | _ -> false in
-  let is_cascade = function
-    | Day11_lib.Cascade.Cascade _ -> true | _ -> false in
-  let is_pending = function
-    | Day11_lib.Cascade.Pending -> true | _ -> false in
-  let pick filter =
-    match List.find_opt (fun (s, _) -> filter s) entries with
-    | Some (_, h) -> h
-    | None -> ""
-  in
-  if List.exists (fun (s, _) -> is_failed s) entries
-  then ("failure", pick is_failed)
-  else if List.exists (fun (s, _) -> is_cascade s) entries
-  then ("cascade", pick is_cascade)
-  else if List.exists (fun (s, _) -> is_pending s) entries
-  then ("pending", pick is_pending)
-  else
-    let h = match entries with (_, h) :: _ -> h | [] -> "" in
-    ("success", h)
-
 let os_dir_for ~ctx name =
   match Profile.load ~dir:ctx.profile_dir ~name with
   | Ok profile -> Some Fpath.(ctx.cache_dir / Profile.os_dir_name profile)
@@ -1072,142 +1062,18 @@ let docs_index_path ~html_dir pkg version =
 let docs_exist ~html_dir pkg version =
   Sys.file_exists (Fpath.to_string (docs_index_path ~html_dir pkg version))
 
-(* Compute [(name, version) → (status, hash)] from dag.json + layer
-   state. Sources from [dag.json] + layer state so cached nodes
-   still appear (the legacy [packages/] dir is only the dispatched-
-   this-run subset). Falls back to per-package history when dag.json
-   is missing. Slow — typically ≥1s per snapshot because dag.json
-   is ~25 MB; callers should go through [load_snapshot_pkgs] which
-   adds an on-disk summary cache.
-
-   The aggregation considers ALL kinds for a (name, version) — the
-   build, the doc-side compile, and link / doc_all — not just the
-   build itself. A package whose build succeeded but whose link
-   cascaded due to an upstream doc-side failure correctly shows up
-   as "cascade" rather than "success". The chosen [hash] points at
-   the node matching the dominant status, so a "cascade" badge
-   deep-links to the actually-cascaded link / doc_all node, not to
-   the (uninteresting) successful build. *)
-let compute_snapshot_pkgs ~os_dir snapshot_dir =
-  match read_dag_cached snapshot_dir, os_dir with
-  | Ok entries, Some od ->
-    let status_index = load_layer_status_cached od in
-    let table = Day11_lib.Cascade.classify_from_layer_index
-      ~status_index entries in
-    let by_pkg : (string * string,
-                  (Day11_lib.Cascade.status * string) list) Hashtbl.t =
-      Hashtbl.create 4096 in
-    List.iter (fun (e : Day11_lib.Dag_marshal.entry) ->
-      match e.kind, split_pkg (OpamPackage.to_string e.pkg) with
-      | (Build | Compile | Link | Doc_all), Some (n, v) ->
-        let st = match Hashtbl.find_opt table e.hash with
-          | Some r -> r.status
-          | None -> Day11_lib.Cascade.Pending
-        in
-        let prev = try Hashtbl.find by_pkg (n, v)
-          with Not_found -> [] in
-        Hashtbl.replace by_pkg (n, v) ((st, e.hash) :: prev)
-      | _ -> ()
-    ) entries;
-    Hashtbl.fold (fun key entries acc ->
-      let agg = aggregate_pkg_status_with_hash entries in
-      (key, agg) :: acc) by_pkg []
-  | _ ->
-    snapshot_packages snapshot_dir
-    |> List.fold_left (fun m pkg ->
-      let entries = Day11_lib.History.read
-        ~packages_dir:Fpath.(snapshot_dir / "packages") ~pkg_str:pkg in
-      match entries, split_pkg pkg with
-      | latest :: _, Some (n, v) ->
-        let hash = match latest.build_hash with s -> s in
-        ((n, v), (latest.status, hash)) :: m
-      | _ -> m
-    ) []
-
-(* On-disk summary cache. Stored next to dag.json as
-   [pkgs_summary.v3.json], keyed by dag.json's mtime. The summary
-   is a small (~250 KB) JSON file mapping [(name, version) →
-   (status, hash)]; reading it skips the 25 MB JSON parse +
-   classify_from_layers walk that dominates [compute_snapshot_pkgs]
-   (~1 s each). Cache is invalidated by dag.json changing, by the
-   format version bumping, or by the summary file being deleted.
-   Layer state changes (failures flipping to ok via rebuild) are
-   NOT detected — the summary records the state at the moment of
-   first read; refresh by deleting the summary file if you need a
-   re-classify.
-
-   v3: aggregates status across build + compile + link + doc_all
-       node kinds. Older summaries only saw the build kind so a
-       package whose build was OK but whose docs cascaded showed
-       as success.
-   v2: added [h] field per entry for deep-linking.
-   v1: build status only. *)
-let summary_path snapshot_dir =
-  Fpath.(snapshot_dir / "pkgs_summary.v3.json")
-
-let dag_mtime snapshot_dir =
-  try Some (Unix.stat
-    (Fpath.to_string Fpath.(snapshot_dir / "dag.json"))).Unix.st_mtime
-  with _ -> None
-
-let read_summary snapshot_dir =
-  match Bos.OS.File.read (summary_path snapshot_dir) with
-  | Error _ -> None
-  | Ok s ->
-    try
-      let json = Yojson.Safe.from_string s in
-      let open Yojson.Safe.Util in
-      let dag_mtime_in_file =
-        try Some (json |> member "dag_mtime" |> to_number)
-        with _ -> None
-      in
-      let actual = dag_mtime snapshot_dir in
-      match dag_mtime_in_file, actual with
-      | Some a, Some b when abs_float (a -. b) < 0.5 ->
-        let pkgs =
-          json |> member "pkgs" |> to_list
-          |> List.map (fun e ->
-            let n = e |> member "n" |> to_string in
-            let v = e |> member "v" |> to_string in
-            let s = e |> member "s" |> to_string in
-            let h =
-              try e |> member "h" |> to_string with _ -> "" in
-            ((n, v), (s, h)))
-        in
-        Some pkgs
-      | _ -> None
-    with _ -> None
-
-let write_summary snapshot_dir pkgs =
-  let dag_mtime = dag_mtime snapshot_dir |> Option.value ~default:0.0 in
-  let json : Yojson.Safe.t = `Assoc [
-    "dag_mtime", `Float dag_mtime;
-    "pkgs", `List (List.map (fun ((n, v), (s, h)) ->
-      `Assoc [ "n", `String n; "v", `String v;
-               "s", `String s; "h", `String h ]) pkgs);
-  ] in
-  ignore (Bos.OS.File.write (summary_path snapshot_dir)
-            (Yojson.Safe.to_string json))
-
-(* [(name, version) → (status, build_hash)] with on-disk caching. *)
-let load_snapshot_pkgs ~os_dir snapshot_dir =
-  match read_summary snapshot_dir with
-  | Some pkgs -> pkgs
-  | None ->
-    let pkgs = compute_snapshot_pkgs ~os_dir snapshot_dir in
-    write_summary snapshot_dir pkgs;
-    pkgs
-
-(* Blessed-package status table written once per completed run
+(* Per-package status table written once per completed run
    ([final_status.json], see {!Day11_lib.Status_index.write_final_status}).
-   This is the preferred diff source: a small [(name.version -> status)]
-   read, blessed-only — exactly the granularity the diffs compare — with
-   no 25 MB dag.json parse or layer walk. Categories are mapped to the
-   diff vocabulary (success / failure / cascade); there's no per-node
-   build hash, so a changed row renders its status badge without a
-   deep-link (the version cell still links to the package's per-version
-   page). Returns [None] when the file is absent (a snapshot that
-   predates it), so callers can fall back. *)
+   The only diff source: a small [(name.version -> status)] read —
+   exactly the granularity the diffs compare — with no 25 MB dag.json
+   parse or layer walk. Categories are mapped to the diff vocabulary
+   (success / failure / cascade); there's no per-node build hash, so a
+   changed row renders its status badge without a deep-link (the
+   version cell still links to the package's per-version page).
+   Returns [None] when the file is absent — an incomplete snapshot
+   (see {!snapshot_completed}); diff views must gate on completeness
+   rather than fall back to another source, since mixing sources with
+   different coverage/classification fabricates changes. *)
 let diff_status_of_category = function
   | "success" | "doc_success" -> "success"
   | "dependency_failure" | "doc_dependency_failure" -> "cascade"
@@ -1226,20 +1092,12 @@ let load_final_status snapshot_dir =
         | _ -> None) entries)
     | _ -> None
 
-(* Diff source for a snapshot: prefer [final_status.json]; fall back to
-   the dag.json + layer_status classification for older snapshots that
-   don't have it. *)
-let load_diff_pkgs ~os_dir snapshot_dir =
-  match load_final_status snapshot_dir with
-  | Some pkgs -> pkgs
-  | None -> load_snapshot_pkgs ~os_dir snapshot_dir
-
-(* Per-process memo of [load_diff_pkgs] keyed by snapshot dir.
-   Snapshot dirs are append-mostly + content-addressed by mtime, so
-   for a single page render a hit on the same dir always returns the
-   right value. Lifetime is the closure that owns the [Hashtbl] —
-   one per request. *)
-let make_load_snapshot_pkgs_memo ~os_dir =
+(* Per-request memo of [load_final_status] keyed by snapshot dir (an
+   absent file memoizes to []). Snapshot dirs are append-mostly +
+   content-addressed, so for a single page render a hit on the same
+   dir always returns the right value. Lifetime is the closure that
+   owns the [Hashtbl] — one per request. *)
+let make_load_diff_pkgs_memo () =
   let cache : (string,
                ((string * string) * (string * string)) list) Hashtbl.t =
     Hashtbl.create 32 in
@@ -1248,7 +1106,7 @@ let make_load_snapshot_pkgs_memo ~os_dir =
     match Hashtbl.find_opt cache key with
     | Some v -> v
     | None ->
-      let v = load_diff_pkgs ~os_dir snapshot_dir in
+      let v = Option.value ~default:[] (load_final_status snapshot_dir) in
       Hashtbl.add cache key v;
       v
 
@@ -1412,22 +1270,6 @@ let diff_table_thead =
 
 (* ── /profiles/<name>/snapshots/<key>/diff/<other> ────────────── *)
 
-(* The diff page must ignore "pending" rows: their status isn't
-   final, so a pending entry would otherwise show as "removed" (when
-   the prior version was OK and the new one isn't ready yet) or
-   "added" (the mirror case). The right semantics is symmetric and
-   keyed by {b package name} — version bumps in a single profile go
-   together with pending while the new version builds, so dropping by
-   [(name, version)] still misclassifies the old version as removed.
-   If any version of a name is pending in either snapshot, every
-   version of that name is excluded from both sides until the
-   pending one resolves. Per-side counts are still surfaced in the
-   incomplete-snapshot banner so the reader knows which snapshot is
-   still settling. *)
-let pending_pkg_names pkgs =
-  List.fold_left (fun acc ((n, _), (st, _)) ->
-    if st = "pending" then n :: acc else acc) [] pkgs
-
 (* [(repo_path, commit)] recorded in a snapshot's repos.json. *)
 let snapshot_repo_commits dir =
   match Day11_batch.Snapshot.load dir with
@@ -1509,23 +1351,7 @@ let snapshot_diff ~ctx name key_old key_new =
     method! private get web_ctx =
       let dir_old = Fpath.(snapshots_base ctx name / key_old) in
       let dir_new = Fpath.(snapshots_base ctx name / key_new) in
-      let os_dir = os_dir_for ~ctx name in
       let html_dir = html_dir_for ~ctx name in
-      let load = make_load_snapshot_pkgs_memo ~os_dir in
-      let m_old_raw = load dir_old and m_new_raw = load dir_new in
-      let p_old = pending_pkg_names m_old_raw
-      and p_new = pending_pkg_names m_new_raw in
-      let pending_old = List.length p_old
-      and pending_new = List.length p_new in
-      let drop =
-        let t = Hashtbl.create (pending_old + pending_new) in
-        List.iter (fun n -> Hashtbl.replace t n ()) p_old;
-        List.iter (fun n -> Hashtbl.replace t n ()) p_new;
-        t
-      in
-      let strip = List.filter (fun ((n, _), _) -> not (Hashtbl.mem drop n)) in
-      let m_old = strip m_old_raw and m_new = strip m_new_raw in
-      let changes = compute_diff_changes m_old m_new in
       let crumbs = Templates.breadcrumbs [
         Some "/profiles", "Profiles";
         Some ("/profiles/" ^ name), name;
@@ -1534,28 +1360,34 @@ let snapshot_diff ~ctx name key_old key_new =
           Templates.short_sha key_old;
         None, "diff " ^ Templates.short_sha key_new;
       ] in
-      let incomplete_notice =
-        let mk label key n =
-          Printf.sprintf "%s snapshot %s is incomplete: %d package%s still pending"
-            label (Templates.short_sha key) n (if n = 1 then "" else "s")
-        in
-        match pending_old, pending_new with
-        | 0, 0 -> []
-        | _, 0 -> [ p ~a:[ a_class [ "warn" ] ]
-                     [ txt (mk "Old" key_old pending_old) ] ]
-        | 0, _ -> [ p ~a:[ a_class [ "warn" ] ]
-                     [ txt (mk "New" key_new pending_new) ] ]
-        | _, _ ->
-          [ p ~a:[ a_class [ "warn" ] ]
-              [ txt (mk "Old" key_old pending_old) ];
-            p ~a:[ a_class [ "warn" ] ]
-              [ txt (mk "New" key_new pending_new) ] ]
+      (* Only completed snapshots have authoritative per-package
+         statuses ([final_status.json]); refuse to diff anything else
+         rather than compare against a partial or differently-sourced
+         view. The repo-commit section below is still shown — it only
+         needs repos.json. *)
+      let incomplete =
+        List.filter (fun (_key, dir) -> not (snapshot_completed dir))
+          [ (key_old, dir_old); (key_new, dir_new) ]
       in
       let body =
-        if changes = [] then [ p [ em [ txt "No differences." ] ] ]
-        else [ table ~a:[ a_class [ "data" ] ]
-                 ~thead:diff_table_thead
-                 (List.map (render_change_row ~profile_name:name ~html_dir) changes) ]
+        match incomplete with
+        | _ :: _ ->
+          List.map (fun (key, _) ->
+            p ~a:[ a_class [ "warn" ] ]
+              [ txt "Snapshot "; Templates.sha_span key;
+                txt " is incomplete — its run hasn't finished (or was \
+                     superseded before finishing), so no final package \
+                     statuses were recorded. Package diffs are only \
+                     available between completed snapshots." ])
+            incomplete
+        | [] ->
+          let load = make_load_diff_pkgs_memo () in
+          let changes = compute_diff_changes (load dir_old) (load dir_new) in
+          if changes = [] then [ p [ em [ txt "No differences." ] ] ]
+          else [ table ~a:[ a_class [ "data" ] ]
+                   ~thead:diff_table_thead
+                   (List.map (render_change_row ~profile_name:name ~html_dir)
+                      changes) ]
       in
       (* opam-repository commits between the two snapshots' recorded HEADs. *)
       let repo_section =
@@ -1567,8 +1399,7 @@ let snapshot_diff ~ctx name key_old key_new =
         h2 [ txt (Printf.sprintf "%s — diff" name) ];
         p [ txt "From "; Templates.sha_span key_old;
             txt " to "; Templates.sha_span key_new ];
-      ] @ incomplete_notice
-        @ (h2 [ txt "Package changes" ] :: body)
+      ] @ (h2 [ txt "Package changes" ] :: body)
         @ repo_section)
   end
 
@@ -1602,7 +1433,13 @@ let recent_changes ~ctx name =
         | Some "fail" -> `Fail
         | _ -> `Change
       in
-      let snaps = list_snapshots_newest_first ctx name in
+      (* Diffs only work between completed snapshots (see
+         {!snapshot_completed}), so incomplete ones are skipped over —
+         each pair diffs adjacent {e completed} snapshots. *)
+      let snaps =
+        list_snapshots_newest_first ctx name
+        |> List.filter snapshot_completed
+      in
       let total_pairs = max 0 (List.length snaps - 1) in
       let n_pages = max 1 ((total_pairs + n - 1) / n) in
       let page = min page n_pages in
@@ -1615,9 +1452,8 @@ let recent_changes ~ctx name =
         |> List.filteri (fun i _ ->
           i >= start_pair && i <= start_pair + n)
       in
-      let os_dir = os_dir_for ~ctx name in
       let html_dir = html_dir_for ~ctx name in
-      let load = make_load_snapshot_pkgs_memo ~os_dir in
+      let load = make_load_diff_pkgs_memo () in
       let mtime_str dir =
         try
           let s = Unix.stat (Fpath.to_string dir) in
