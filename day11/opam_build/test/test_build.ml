@@ -68,6 +68,45 @@ let test_hash_cache_layer () =
     ~base_hash:"base2" [ pkg "astring.0.8.5" ] in
   Alcotest.(check bool) "varies with base" true (h1 <> h3)
 
+(* Two distinct packages whose version dirs are byte-identical in
+   opam-repository share a version-dir tree OID — really happens:
+   js_of_ocaml-ppx / js_of_ocaml-ppx_deriving_json since 6.1.0
+   (templated opam files built with the [name] variable),
+   hidapi.1.0-1 / hidapi.1.0, … The digest store must not serve one
+   twin's digest for the other: the parse stamps name/version into the
+   effective part, so their digests — and hence their layer hashes —
+   differ even though the dir content is identical. Keyed by bare OID
+   this collapsed twin layer hashes, and [Dag.build_dag]'s
+   memo-by-hash then dropped one twin from the plan, so its dependents
+   built without it (eliom.12.1.0 without ppx_deriving_json). *)
+let test_hash_cache_twin_dirs () =
+  let opam_str = {|opam-version: "2.0"
+depends: ["ocaml"]|} in
+  let find_opam p = make_find_opam opam_str p in
+  let find_oid _pkg = Some "aabbccdd" in       (* shared tree OID *)
+  let store_path = Filename.temp_file "digests" ".txt" in
+  Fun.protect ~finally:(fun () -> try Sys.remove store_path with _ -> ())
+  @@ fun () ->
+  let digest_store = Hash_cache.Digest_store.load (Fpath.v store_path) in
+  let cache = Hash_cache.create ~find_opam ~find_oid ~digest_store () in
+  let twin_a = pkg "js_of_ocaml-ppx.6.4.1" in
+  let twin_b = pkg "js_of_ocaml-ppx_deriving_json.6.4.1" in
+  let ha = Hash_cache.pkg_opam_hash cache twin_a in
+  let hb = Hash_cache.pkg_opam_hash cache twin_b in
+  Alcotest.(check bool) "twin dirs get distinct digests" true (ha <> hb);
+  let la = Hash_cache.layer_hash cache ~base_hash:"b" [ twin_a ] in
+  let lb = Hash_cache.layer_hash cache ~base_hash:"b" [ twin_b ] in
+  Alcotest.(check bool) "twin layer hashes differ" true (la <> lb);
+  (* A reloaded store must serve the same digests it persisted (and
+     still distinguish the twins). *)
+  let store2 = Hash_cache.Digest_store.load (Fpath.v store_path) in
+  let cache2 = Hash_cache.create ~find_opam ~find_oid
+    ~digest_store:store2 () in
+  Alcotest.(check string) "twin a digest stable across reload"
+    ha (Hash_cache.pkg_opam_hash cache2 twin_a);
+  Alcotest.(check string) "twin b digest stable across reload"
+    hb (Hash_cache.pkg_opam_hash cache2 twin_b)
+
 (* ── Base tests ──────────────────────────────────────────────────── *)
 
 let test_base_hash_deterministic () =
@@ -200,6 +239,7 @@ let () =
         [
           Alcotest.test_case "pkg_opam_hash" `Quick test_hash_cache_pkg;
           Alcotest.test_case "layer_hash" `Quick test_hash_cache_layer;
+          Alcotest.test_case "twin dirs" `Quick test_hash_cache_twin_dirs;
         ] );
       ( "Base",
         [

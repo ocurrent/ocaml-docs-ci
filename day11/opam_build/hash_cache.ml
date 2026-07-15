@@ -1,18 +1,31 @@
-(* Persistent [version-dir tree OID → effective-part digest] store.
+(* Persistent [version-dir tree OID + package → effective-part digest]
+   store.
 
    The effective-part digest of an opam file is a pure function of the
-   file's content, and the version-directory tree OID changes whenever
-   that content does — so the pair can be cached {e forever}, across
-   processes and commits. This is what lets a warm daemon compute layer
-   hashes for ~18k packages without parsing a single unchanged opam
-   file: only versions whose tree OID is new get parsed (a handful per
-   upstream commit).
+   file's content {e and the package name/version} — the loader stamps
+   both into the parsed opam from the directory name, and
+   [OpamFile.OPAM.effective_part] keeps them. The version-directory
+   tree OID changes whenever the content does, so [(OID, name.version)]
+   → digest can be cached {e forever}, across processes and commits.
+   This is what lets a warm daemon compute layer hashes for ~18k
+   packages without parsing a single unchanged opam file: only versions
+   whose tree OID is new get parsed (a handful per upstream commit).
 
-   On-disk format: one "<oid> <digest>\n" line per entry, append-only
-   (O_APPEND writes of short lines are atomic enough; a torn final line
-   is skipped on load). The file is shared by every profile — entries
-   are content-addressed, so collisions are impossible by
-   construction. *)
+   The store key MUST include the package identity, not just the OID:
+   two different packages can share a version-dir tree OID when their
+   dirs are byte-identical, which really happens — multi-package
+   releases with templated opam files (js_of_ocaml-ppx /
+   js_of_ocaml-ppx_deriving_json since 6.1.0), re-releases like
+   hidapi.1.0-1 / hidapi.1.0. Keyed by bare OID, the first twin's
+   digest was served for both; identical per-package digests collapse
+   twin layer hashes (layer_hash digests only the per-package digests,
+   not names), and [Dag.build_dag]'s memo-by-hash then silently drops
+   one twin from the plan — its dependents build without it.
+
+   On-disk format: one "<oid>:<name.version> <digest>\n" line per
+   entry, append-only (O_APPEND writes of short lines are atomic
+   enough; a torn final line is skipped on load). The file is shared
+   by every profile. *)
 module Digest_store = struct
   type t = {
     path : string;
@@ -98,11 +111,15 @@ let pkg_opam_hash t pkg =
             (match find_oid pkg with
              | None -> None
              | Some oid ->
-               (match Digest_store.find store oid with
+               (* [key] (name.version) must be part of the store key —
+                  see the {!Digest_store} comment: byte-identical twin
+                  dirs share an OID but not a digest. *)
+               let store_key = oid ^ ":" ^ key in
+               (match Digest_store.find store store_key with
                 | Some d -> Some d
                 | None ->
                   (match parse () with
-                   | Some d -> Digest_store.add store oid d; Some d
+                   | Some d -> Digest_store.add store store_key d; Some d
                    | None -> None)))
           | _ -> None
         in

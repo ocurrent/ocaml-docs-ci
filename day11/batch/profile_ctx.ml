@@ -90,8 +90,12 @@ let finalise_load (profile : Profile.t) ~cache_dir ?oid_index
   let digest_store = match oid_index with
     | None -> None
     | Some _ ->
+      (* .v2: keyed by (tree OID, name.version), not bare OID — twin
+         package dirs share an OID but not a digest (see Hash_cache).
+         The v1 file's bare-OID entries are unusable; a fresh file
+         repopulates on first load (~one full parse). *)
       Some (Day11_opam_build.Hash_cache.Digest_store.load
-              Fpath.(cache_dir / "opam-effective-digests"))
+              Fpath.(cache_dir / "opam-effective-digests.v2"))
   in
   let hash_cache = Day11_opam_build.Hash_cache.create
     ~find_opam ?find_oid ?digest_store ?patches () in
