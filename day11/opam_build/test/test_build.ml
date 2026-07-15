@@ -72,23 +72,20 @@ let test_hash_cache_layer () =
    opam-repository share a version-dir tree OID — really happens:
    js_of_ocaml-ppx / js_of_ocaml-ppx_deriving_json since 6.1.0
    (templated opam files built with the [name] variable),
-   hidapi.1.0-1 / hidapi.1.0, … The digest store must not serve one
-   twin's digest for the other: the parse stamps name/version into the
-   effective part, so their digests — and hence their layer hashes —
-   differ even though the dir content is identical. Keyed by bare OID
-   this collapsed twin layer hashes, and [Dag.build_dag]'s
-   memo-by-hash then dropped one twin from the plan, so its dependents
-   built without it (eliom.12.1.0 without ppx_deriving_json). *)
+   hidapi.1.0-1 / hidapi.1.0, … The global digest cache must not serve
+   one twin's digest for the other: the parse stamps name/version into
+   the effective part, so their digests — and hence their layer
+   hashes — differ even though the dir content is identical. A
+   predecessor keyed by bare OID collapsed twin layer hashes, and
+   [Dag.build_dag]'s memo-by-hash then dropped one twin from the plan,
+   so its dependents built without it (eliom.12.1.0 without
+   ppx_deriving_json). *)
 let test_hash_cache_twin_dirs () =
   let opam_str = {|opam-version: "2.0"
 depends: ["ocaml"]|} in
   let find_opam p = make_find_opam opam_str p in
   let find_oid _pkg = Some "aabbccdd" in       (* shared tree OID *)
-  let store_path = Filename.temp_file "digests" ".txt" in
-  Fun.protect ~finally:(fun () -> try Sys.remove store_path with _ -> ())
-  @@ fun () ->
-  let digest_store = Hash_cache.Digest_store.load (Fpath.v store_path) in
-  let cache = Hash_cache.create ~find_opam ~find_oid ~digest_store () in
+  let cache = Hash_cache.create ~find_opam ~find_oid () in
   let twin_a = pkg "js_of_ocaml-ppx.6.4.1" in
   let twin_b = pkg "js_of_ocaml-ppx_deriving_json.6.4.1" in
   let ha = Hash_cache.pkg_opam_hash cache twin_a in
@@ -97,15 +94,44 @@ depends: ["ocaml"]|} in
   let la = Hash_cache.layer_hash cache ~base_hash:"b" [ twin_a ] in
   let lb = Hash_cache.layer_hash cache ~base_hash:"b" [ twin_b ] in
   Alcotest.(check bool) "twin layer hashes differ" true (la <> lb);
-  (* A reloaded store must serve the same digests it persisted (and
-     still distinguish the twins). *)
-  let store2 = Hash_cache.Digest_store.load (Fpath.v store_path) in
-  let cache2 = Hash_cache.create ~find_opam ~find_oid
-    ~digest_store:store2 () in
-  Alcotest.(check string) "twin a digest stable across reload"
+  (* The global cache outlives cache instances (it's what makes
+     Profile_ctx reloads cheap) and must keep the twins distinct. *)
+  let cache2 = Hash_cache.create ~find_opam ~find_oid () in
+  Alcotest.(check string) "twin a digest stable across instances"
     ha (Hash_cache.pkg_opam_hash cache2 twin_a);
-  Alcotest.(check string) "twin b digest stable across reload"
+  Alcotest.(check string) "twin b digest stable across instances"
     hb (Hash_cache.pkg_opam_hash cache2 twin_b)
+
+(* The global digest cache is validated by tree OID: a fresh cache
+   instance must serve cached digests without re-parsing while the
+   package's OID is unchanged, and re-parse when it moves. *)
+let test_hash_cache_oid_validator () =
+  let parses = ref 0 in
+  let find_opam_counting opam_str p = incr parses; make_find_opam opam_str p in
+  let p1 = pkg "hashcache-validator-test.1.0" in
+  let v1 = {|opam-version: "2.0"
+depends: ["ocaml"]|} in
+  let oid = ref "oid-1" in
+  let find_oid _ = Some !oid in
+  let cache = Hash_cache.create
+    ~find_opam:(find_opam_counting v1) ~find_oid () in
+  let h1 = Hash_cache.pkg_opam_hash cache p1 in
+  Alcotest.(check int) "first lookup parses" 1 !parses;
+  (* New instance, same OID: served from the global cache, no parse. *)
+  let cache2 = Hash_cache.create
+    ~find_opam:(find_opam_counting v1) ~find_oid () in
+  let h2 = Hash_cache.pkg_opam_hash cache2 p1 in
+  Alcotest.(check int) "unchanged OID served without parse" 1 !parses;
+  Alcotest.(check string) "same digest" h1 h2;
+  (* OID moved (content changed): must re-parse and see the new digest. *)
+  oid := "oid-2";
+  let v2 = {|opam-version: "2.0"
+depends: ["ocaml" "fmt"]|} in
+  let cache3 = Hash_cache.create
+    ~find_opam:(find_opam_counting v2) ~find_oid () in
+  let h3 = Hash_cache.pkg_opam_hash cache3 p1 in
+  Alcotest.(check int) "moved OID re-parses" 2 !parses;
+  Alcotest.(check bool) "digest follows content" true (h1 <> h3)
 
 (* ── Base tests ──────────────────────────────────────────────────── *)
 
@@ -240,6 +266,8 @@ let () =
           Alcotest.test_case "pkg_opam_hash" `Quick test_hash_cache_pkg;
           Alcotest.test_case "layer_hash" `Quick test_hash_cache_layer;
           Alcotest.test_case "twin dirs" `Quick test_hash_cache_twin_dirs;
+          Alcotest.test_case "oid validator" `Quick
+            test_hash_cache_oid_validator;
         ] );
       ( "Base",
         [

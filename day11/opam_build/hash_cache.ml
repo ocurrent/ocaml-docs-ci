@@ -1,89 +1,52 @@
-(* Persistent [version-dir tree OID + package → effective-part digest]
-   store.
+(* Process-global [name.version → (version-dir tree OID, effective-part
+   digest)] cache.
 
    The effective-part digest of an opam file is a pure function of the
-   file's content {e and the package name/version} — the loader stamps
-   both into the parsed opam from the directory name, and
-   [OpamFile.OPAM.effective_part] keeps them. The version-directory
-   tree OID changes whenever the content does, so [(OID, name.version)]
-   → digest can be cached {e forever}, across processes and commits.
-   This is what lets a warm daemon compute layer hashes for ~18k
-   packages without parsing a single unchanged opam file: only versions
-   whose tree OID is new get parsed (a handful per upstream commit).
+   version dir's content {e and the package name/version} — the loader
+   stamps both into the parsed opam from the directory name, and
+   [OpamFile.OPAM.effective_part] keeps them. The version-dir tree OID
+   fingerprints the content, so an entry is valid for as long as the
+   package's OID is unchanged. Living outside {!t}, the cache survives
+   Profile_ctx reloads: a warm daemon computes layer hashes for ~18k
+   packages without parsing a single unchanged opam file — only
+   versions whose tree OID moved get re-parsed (a handful per upstream
+   commit). Same pattern as [Profile_ctx.name_caches]; process
+   lifetime only, so a fresh daemon or a one-shot CLI run pays one
+   full digest sweep (a few seconds) and is warm thereafter.
 
-   The store key MUST include the package identity, not just the OID:
-   two different packages can share a version-dir tree OID when their
-   dirs are byte-identical, which really happens — multi-package
-   releases with templated opam files (js_of_ocaml-ppx /
-   js_of_ocaml-ppx_deriving_json since 6.1.0), re-releases like
-   hidapi.1.0-1 / hidapi.1.0. Keyed by bare OID, the first twin's
-   digest was served for both; identical per-package digests collapse
-   twin layer hashes (layer_hash digests only the per-package digests,
-   not names), and [Dag.build_dag]'s memo-by-hash then silently drops
-   one twin from the plan — its dependents build without it.
+   The cache is keyed by the {e package}, with the OID as a freshness
+   validator — never by the OID alone. Two different packages can
+   share a version-dir tree OID when their dirs are byte-identical,
+   which really happens: multi-package releases with templated opam
+   files (js_of_ocaml-ppx / js_of_ocaml-ppx_deriving_json since
+   6.1.0), re-releases like hidapi.1.0-1 / hidapi.1.0. A predecessor
+   of this cache (an on-disk store keyed by bare OID) served the first
+   twin's digest for both; identical per-package digests collapse the
+   twins' layer hashes ([layer_hash] digests only the per-package
+   digests, not names), and [Dag.build_dag]'s memo-by-hash then
+   silently dropped one twin from the plan — its dependents built
+   without it. Keying by package makes that collision impossible.
 
-   On-disk format: one "<oid>:<name.version> <digest>\n" line per
-   entry, append-only (O_APPEND writes of short lines are atomic
-   enough; a torn final line is skipped on load). The file is shared
-   by every profile. *)
-module Digest_store = struct
-  type t = {
-    path : string;
-    tbl : (string, string) Hashtbl.t;
-    mutable oc : out_channel option;
-  }
-
-  let load path =
-    let path = Fpath.to_string path in
-    let tbl = Hashtbl.create 65536 in
-    (try
-       let ic = open_in path in
-       Fun.protect ~finally:(fun () -> close_in ic) (fun () ->
-         try
-           while true do
-             let line = input_line ic in
-             match String.index_opt line ' ' with
-             | Some i when i > 0 && i < String.length line - 1 ->
-               Hashtbl.replace tbl
-                 (String.sub line 0 i)
-                 (String.sub line (i + 1) (String.length line - i - 1))
-             | _ -> ()
-           done
-         with End_of_file -> ())
-     with Sys_error _ -> ());
-    { path; tbl; oc = None }
-
-  let find t oid = Hashtbl.find_opt t.tbl oid
-
-  let add t oid digest =
-    if not (Hashtbl.mem t.tbl oid) then begin
-      Hashtbl.replace t.tbl oid digest;
-      let oc = match t.oc with
-        | Some oc -> oc
-        | None ->
-          let oc = open_out_gen [ Open_append; Open_creat ] 0o644 t.path in
-          t.oc <- Some oc;
-          oc
-      in
-      output_string oc (oid ^ " " ^ digest ^ "\n");
-      flush oc
-    end
-end
+   Shared across profiles; when profiles resolve the same package to
+   different OIDs (overlay repos) they displace each other's entry,
+   which is correct (the validator mismatches) and merely costs the
+   occasional re-parse. *)
+let global_digests : (string, string * string) Hashtbl.t =
+  Hashtbl.create 65536
 
 type t = {
   find_opam : OpamPackage.t -> OpamFile.OPAM.t option;
   find_oid : (OpamPackage.t -> string option) option;
   (* Package → its version-dir tree OID at the current repo state
      (from {!Day11_opam.Git_packages.list_package_versions_lwt});
-     keys {!digest_store} lookups. *)
-  digest_store : Digest_store.t option;
+     validates {!global_digests} entries. *)
   patches : Patches.t option;
   per_pkg : (string, string) Hashtbl.t;
   per_layer : (string, string) Hashtbl.t;
 }
 
-let create ~find_opam ?find_oid ?digest_store ?patches () =
-  { find_opam; find_oid; digest_store; patches;
+let create ~find_opam ?find_oid ?patches () =
+  { find_opam; find_oid; patches;
     per_pkg = Hashtbl.create 256;
     per_layer = Hashtbl.create 256; }
 
@@ -105,25 +68,23 @@ let pkg_opam_hash t pkg =
         | None -> None
       in
       let opam_h =
-        let via_store =
-          match t.find_oid, t.digest_store with
-          | Some find_oid, Some store ->
+        let via_global =
+          match t.find_oid with
+          | None -> None
+          | Some find_oid ->
             (match find_oid pkg with
              | None -> None
              | Some oid ->
-               (* [key] (name.version) must be part of the store key —
-                  see the {!Digest_store} comment: byte-identical twin
-                  dirs share an OID but not a digest. *)
-               let store_key = oid ^ ":" ^ key in
-               (match Digest_store.find store store_key with
-                | Some d -> Some d
-                | None ->
+               (match Hashtbl.find_opt global_digests key with
+                | Some (o, d) when String.equal o oid -> Some d
+                | _ ->
                   (match parse () with
-                   | Some d -> Digest_store.add store store_key d; Some d
+                   | Some d ->
+                     Hashtbl.replace global_digests key (oid, d);
+                     Some d
                    | None -> None)))
-          | _ -> None
         in
-        match via_store with
+        match via_global with
         | Some d -> d
         | None ->
           (match parse () with Some d -> d | None -> "missing-" ^ key)
