@@ -164,12 +164,17 @@ let solve_internal ~packages:pkgs ~env ?(constraints = OpamPackage.Name.Map.empt
             OpamPackage.Name.Set.union dep_names depopt_names
           in
           (* When computing doc deps, also include per-package
-             x-extra-doc-deps (intersected with the solved set). *)
+             x-extra-doc-deps (intersected with the solved set).
+             Tool-only names are NOT filtered here: if a tool made it
+             into the solution (e.g. odoc's own extras when odoc is a
+             real dep of the target), it is a genuine link-graph dep —
+             dropping it would collapse the build/doc dep distinction
+             that {!Day11_doc.Doc_deps.needs_separate_link} keys on.
+             Tool universes are kept small by dropping tool-only names
+             from the solve ROOTS above, not from dep edges. *)
           let all_dep_names =
             if extra_doc then
               let extra = get_extra_doc_deps opam in
-              let extra = OpamPackage.Name.Set.filter (fun n ->
-                not (Day11_solution.Tool_names.is_tool_only n)) extra in
               let extra_in_solution =
                 OpamPackage.Name.Set.inter extra solved_names in
               OpamPackage.Name.Set.union all_dep_names extra_in_solution

@@ -193,6 +193,63 @@ let test_doc_deps_superset () =
        Alcotest.(check bool) "extra includes odig"
          true (List.mem "odig" extra_names))
 
+(* ── Extras-vs-conflicts regression (pins only, no repo needed) ──── *)
+
+(* Regression: x-extra-doc-deps must augment [depends:] only.
+   Augmenting inside [Context.filter_deps] also rewrote the
+   [conflicts:] formula (opam-0install routes both through
+   filter_deps), turning each extra into "conflicts with all
+   versions" and making any package with the field unsolvable —
+   unless it had a real conflicts field providing an escape branch
+   in the negated formula, which is why only some packages failed
+   (eio.1.3 did, odig didn't). *)
+let test_extras_not_conflicts () =
+  let opam_of_string s = OpamFile.OPAM.read_from_string s in
+  let pins =
+    List.fold_left (fun acc (name, version, body) ->
+      OpamPackage.Name.Map.add
+        (OpamPackage.Name.of_string name)
+        (OpamPackage.Version.of_string version, opam_of_string body)
+        acc)
+      OpamPackage.Name.Map.empty
+      [ ("ocaml-base-compiler", "5.0.0", {|opam-version: "2.0"|});
+        ("extra1", "1", {|opam-version: "2.0"|});
+        ("extra2", "1", {|opam-version: "2.0"|});
+        (* No conflicts: field — the shape that used to fail. *)
+        ("tgt", "1", {|
+opam-version: "2.0"
+x-extra-doc-deps: [ "extra1" {= version} "extra2" ]
+|}) ]
+  in
+  let env = Day11_opam.Opam_env.std_env
+    ~arch:"x86_64" ~os:"linux" ~os_distribution:"debian"
+    ~os_family:"debian" ~os_version:"12" () in
+  match Solve.solve ~packages:Day11_opam.Git_packages.empty
+          ~env ~pins ~doc:true (pkg "tgt.1") with
+  | Error (diag, _) ->
+    Alcotest.fail (Printf.sprintf "Solve failed: %s" diag)
+  | Ok result ->
+    let solved =
+      OpamPackage.Set.fold (fun p acc ->
+        OpamPackage.Name.to_string (OpamPackage.name p) :: acc)
+        result.Day11_solution.Solve_result.packages []
+    in
+    List.iter (fun n ->
+      Alcotest.(check bool) (n ^ " in solution")
+        true (List.mem n solved))
+      [ "tgt"; "extra1"; "extra2" ];
+    (* Extras are doc deps of the target, not build deps. *)
+    let target = OpamPackage.of_string "tgt.1" in
+    let doc_set = OpamPackage.Map.find target result.doc_deps in
+    let build_set = OpamPackage.Map.find target result.build_deps in
+    let mem name set =
+      OpamPackage.Set.exists (fun p ->
+        OpamPackage.Name.to_string (OpamPackage.name p) = name) set in
+    Alcotest.(check bool) "extra1 in doc deps" true (mem "extra1" doc_set);
+    Alcotest.(check bool) "extra2 in doc deps" true (mem "extra2" doc_set);
+    Alcotest.(check bool) "extra1 not in build deps"
+      false (mem "extra1" build_set)
+
 (* ── Test registration ───────────────────────────────────────────── *)
 
 let () =
@@ -211,6 +268,8 @@ let () =
         ] );
 ( "Solve",
         [
+          Alcotest.test_case "extras not conflicts" `Quick
+            test_extras_not_conflicts;
           Alcotest.test_case "solve astring" `Slow test_solve_astring;
           Alcotest.test_case "solve nonexistent" `Slow test_solve_nonexistent;
           Alcotest.test_case "odig: odoc needs separate link" `Slow

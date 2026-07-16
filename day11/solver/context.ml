@@ -42,11 +42,12 @@ let env t pkg v =
     The intent of the field is "pull these in when generating my
     full doc-driver-rendered docs" — semantically equivalent to
     declaring each one in [depends:] guarded by [{with-doc & post}].
-    {!augment_with_extra_doc_deps} below realises that equivalence
-    by synthesising those formula atoms inside [filter_deps], so
-    the standard opam pipeline (solver + post-solve dep computation)
-    handles them transitively without any other code path needing
-    to consult the extension field directly. *)
+    {!augment_depends} below realises that equivalence by rewriting
+    the opam file's [depends:] before it is handed to opam-0install
+    (see {!candidates}), so the standard opam pipeline (solver +
+    post-solve dep computation) handles them transitively without
+    any other code path needing to consult the extension field
+    directly. *)
 let get_extra_doc_deps opamfile =
   let open OpamParserTypes.FullPos in
   let extensions = OpamFile.OPAM.extensions opamfile in
@@ -76,26 +77,24 @@ let get_extra_doc_deps opamfile =
     in
     extract_names OpamPackage.Name.Set.empty value
 
-(** Look up [pkg]'s opam file via pins or the in-memory git_packages. *)
-let opam_of_pkg t pkg =
-  let name = OpamPackage.name pkg in
-  match OpamPackage.Name.Map.find_opt name t.pins with
-  | Some (_ver, opam) -> opam
-  | None ->
-    try Day11_opam.Git_packages.get_package t.packages pkg
-    with Not_found -> OpamFile.OPAM.empty
-
-(** Augment a depends formula with synthetic [{with-doc & post}]
+(** Rewrite [opam]'s [depends:] with synthetic [{with-doc & post}]
     atoms for every entry in [x-extra-doc-deps]. The result is what
     the package would have looked like if those entries had been
     declared in [depends:] under that filter — making them
     standards-compliant opam, evaluated transitively by the solver
     and by post-solve dep computation, instead of only being
-    consulted as roots for the target package. *)
-let augment_with_extra_doc_deps t pkg formula =
-  let opam = opam_of_pkg t pkg in
+    consulted as roots for the target package.
+
+    This must rewrite the opam file itself (in {!candidates}) rather
+    than augment formulas passing through {!filter_deps}: opam-0install
+    routes both [depends:] and [conflicts:] through [filter_deps], so
+    augmenting there also appends the extras to the conflicts formula —
+    an unconstrained conflict atom excludes every version of the extra,
+    making any package with [x-extra-doc-deps] (and no pre-existing
+    [conflicts:] escape branch) unsolvable. *)
+let augment_depends opam =
   let extras = get_extra_doc_deps opam in
-  if OpamPackage.Name.Set.is_empty extras then formula
+  if OpamPackage.Name.Set.is_empty extras then opam
   else
     let with_doc =
       OpamTypes.FIdent ([], OpamVariable.of_string "with-doc", None) in
@@ -111,7 +110,9 @@ let augment_with_extra_doc_deps t pkg formula =
       |> List.map mk_atom
       |> OpamFormula.ands
     in
-    OpamFormula.And (formula, extras_formula)
+    OpamFile.OPAM.with_depends
+      (OpamFormula.And (OpamFile.OPAM.depends opam, extras_formula))
+      opam
 
 (** Rewrite OxCaml patch-or-guard disjunctions to put the patches
     side first. opam-0install processes a disjunction's left
@@ -181,7 +182,7 @@ let filter_deps t pkg f =
     OpamPackage.Version.compare (OpamPackage.version pkg) dev = 0 in
   let test =
     OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
-  augment_with_extra_doc_deps t pkg f
+  f
   |> drop_odoc_with_doc
   |> OpamFilter.partial_filter_formula (env t pkg)
   |> OpamFilter.filter_deps ~build:true ~post:t.post ~test
@@ -206,7 +207,7 @@ let candidates t name =
       let pkg = OpamPackage.create name version in
       let available = OpamFile.OPAM.available opam in
       (match OpamFilter.eval ~default:(B false) (env t pkg) available with
-       | B true -> [ (version, Ok opam) ]
+       | B true -> [ (version, Ok (augment_depends opam)) ]
        | _ -> [ (version, Error Unavailable) ])
   | None ->
       let versions = Day11_opam.Git_packages.get_versions t.packages name in
@@ -230,7 +231,7 @@ let candidates t name =
                  not (OpamFormula.check_version_formula
                         (OpamFormula.Atom test) v) ->
                  (v, Error (UserConstraint (name, Some test)))
-             | _ -> (v, Ok opam))
+             | _ -> (v, Ok (augment_depends opam)))
 
 let pp_rejection f = function
   | UserConstraint x ->
