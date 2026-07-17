@@ -12,8 +12,9 @@
 #
 # The daemon resolves everything under /home/app (the image's app-user
 # HOME). The whole [.day11] tree lives on a single named volume mounted
-# at /home/app/.day11. The two profiles it runs are baked into the image
-# at /home/app/.day11/profiles by the Dockerfile
+# at /home/app/.day11. The profiles it can run are baked into the image
+# at /home/app/.day11/profiles by the Dockerfile; --profiles selects
+# which of them actually run.
 # Everything under .day11 — cache,
 # snapshots, overlays, and scratch (TMPDIR=/home/app/.day11/cache/tmp) —
 # shares one volume/filesystem, so the daemon's hardlinks (cp --link
@@ -52,7 +53,14 @@ services:
       # environment with e.g.:
       #   docker compose run --rm daemon day11 batch --profile=full ...
       - ocaml-docs-ci
-      - --profiles=quick,full
+      # Single profile: running quick+full concurrently split the doc
+      # HTML between the two profiles' epoch trees — doc layers are
+      # shared (content-addressed) across profiles, but the HTML lands
+      # in the epoch of whichever profile dispatched the layer first,
+      # leaving permanent holes in the other's site (dangling
+      # cross-package links). Until cache-hit publication reconciles
+      # epochs, run full only.
+      - --profiles=full
       - --remote=https://github.com/ocaml/opam-repository.git=repo/opam-repository
       - --jobs=40
       - --cores-per-build=4
