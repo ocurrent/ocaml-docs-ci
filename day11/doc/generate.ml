@@ -1244,13 +1244,21 @@ let plan_doc_dag ~sw env (ctx : Day11_batch.Profile_ctx.t)
      dispatch don't reach this point, which is the right semantics:
      cascade attribution is derivable from the DAG, not stored. *)
   let dispatch_with_callbacks ~sw env (node : build) =
-    let success = dispatch ~sw env node in
-    (match kind_of node with
-     | Build | Tool -> on_pkg_complete node ~success
-     | Compile | Doc_all | Link ->
-       on_doc_complete node ~blessed:(node_blessed_of_plan plan node)
-         ~universe:(node_universe_of_plan plan node) ~success);
-    success
+    let record success =
+      match kind_of node with
+      | Build | Tool -> on_pkg_complete node ~success
+      | Compile | Doc_all | Link ->
+        on_doc_complete node ~blessed:(node_blessed_of_plan plan node)
+          ~universe:(node_universe_of_plan plan node) ~success
+    in
+    (* Record on the exception path too, then re-raise. A dispatch that
+       raises has still consumed its turn, and skipping the callback
+       leaves the node with no [history.jsonl] entry at all — readers
+       then fall back to the package's last successful build and report
+       it as the current state. *)
+    match dispatch ~sw env node with
+    | success -> record success; success
+    | exception e -> record false; raise e
   in
   let t_writes = Unix.gettimeofday () in
   write_dag_if_requested ~snapshot_dir plan;

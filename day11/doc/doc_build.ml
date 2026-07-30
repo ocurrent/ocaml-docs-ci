@@ -50,39 +50,67 @@ let is_ocaml_package (node : Build.t) =
     reaches node
   end
 
-(** Create tool binary mounts from driver and odoc tools. *)
-let make_tool_mounts ~os_dir ~(driver_tool : Day11_opam_layer.Tool.t)
+(** Create tool binary mounts from driver and odoc tools.
+
+    [Error names] when a binary can't be found in the tool layers —
+    which in practice means the layer dir has been reclaimed out from
+    under a cache that still records it as built. Returning it rather
+    than raising matters: a raise escapes the dispatch callbacks in
+    {!Day11_doc.Generate}, so the node's failure never reaches
+    [history.jsonl] or [layer_status.jsonl] and the web UI goes on
+    showing the package's last {e build} as its status. *)
+let make_tool_mounts env ~os_dir ~(driver_tool : Day11_opam_layer.Tool.t)
     ~(odoc_tool : Day11_opam_layer.Tool.t) =
+  let missing = ref [] in
   let find name builds =
     let switch = Day11_opam_build.Types.switch in
     match List.find_map (fun (bl : Build.t) ->
-      let bin = Fpath.(Build.dir ~os_dir bl / "fs" / "home" / "opam"
+      let layer_dir = Build.dir ~os_dir bl in
+      let bin = Fpath.(layer_dir / "fs" / "home" / "opam"
         / ".opam" / switch / "bin" / name) in
-      if Bos.OS.File.exists bin |> Result.get_ok then Some bin
+      if Bos.OS.File.exists bin |> Result.get_ok then Some (layer_dir, bin)
       else None
     ) builds with
-    | Some p -> p
-    | None -> failwith (Printf.sprintf "Doc tool binary %s not found" name)
+    | Some (layer_dir, p) ->
+      (* Bind-mounting a tool layer is a use of it, but it never becomes
+         an overlay lower, so nothing else marks it. Touch it here or the
+         LRU sweep sees the tools as untouched and reclaims them. *)
+      Day11_layer.Last_used.touch env layer_dir;
+      Some p
+    | None -> missing := name :: !missing; None
   in
   let mount src dst = Day11_container.Mount.bind_ro
     ~src:(Fpath.to_string src) dst in
-  [ mount (find "odoc" odoc_tool.builds) "/home/opam/doc-tools/bin/odoc";
-    mount (find "odoc-md" driver_tool.builds) "/home/opam/doc-tools/bin/odoc-md";
-    mount (find "odoc_driver_voodoo" driver_tool.builds)
-      "/home/opam/doc-tools/bin/odoc_driver_voodoo";
-    mount (find "sherlodoc" driver_tool.builds)
-      "/home/opam/doc-tools/bin/sherlodoc";
-    (* [ocamlobjinfo] is what voodoo invokes via [Eio.Process] to
-       extract source-file references from [.cmt] files. Comes from
-       the same compiler that built the per-target [odoc], so it
-       lives somewhere in [odoc_tool.builds] (any layer that
-       installed [ocaml-compiler.X.Y]). For most packages the
-       binary is also reachable via the build_deps closure putting
-       the compiler on PATH; for self-documenting [ocaml-compiler]
-       it isn't (build_deps is empty), so this dedicated mount is
-       the uniform fix. *)
-    mount (find "ocamlobjinfo" odoc_tool.builds)
-      "/home/opam/doc-tools/bin/ocamlobjinfo" ]
+  let wanted =
+    [ ("odoc", odoc_tool.builds, "/home/opam/doc-tools/bin/odoc");
+      ("odoc-md", driver_tool.builds, "/home/opam/doc-tools/bin/odoc-md");
+      ("odoc_driver_voodoo", driver_tool.builds,
+       "/home/opam/doc-tools/bin/odoc_driver_voodoo");
+      ("sherlodoc", driver_tool.builds,
+       "/home/opam/doc-tools/bin/sherlodoc");
+      (* [ocamlobjinfo] is what voodoo invokes via [Eio.Process] to
+         extract source-file references from [.cmt] files. Comes from
+         the same compiler that built the per-target [odoc], so it
+         lives somewhere in [odoc_tool.builds] (any layer that
+         installed [ocaml-compiler.X.Y]). For most packages the
+         binary is also reachable via the build_deps closure putting
+         the compiler on PATH; for self-documenting [ocaml-compiler]
+         it isn't (build_deps is empty), so this dedicated mount is
+         the uniform fix. *)
+      ("ocamlobjinfo", odoc_tool.builds,
+       "/home/opam/doc-tools/bin/ocamlobjinfo") ]
+  in
+  (* Resolve every binary before deciding, so one report names all of
+     them rather than only whichever the evaluation order hit first. *)
+  let mounts = List.filter_map (fun (name, builds, dst) ->
+    Option.map (fun src -> mount src dst) (find name builds)) wanted in
+  match List.rev !missing with
+  | [] -> Ok mounts
+  | names ->
+    Error (Printf.sprintf
+      "doc tool binaries not found in the tool layers (%s) — \
+       the tool layers are missing or incomplete on disk"
+      (String.concat ", " names))
 
 (** Pre-mount prep for doc containers: create /home/opam/odoc-out and
     /home/opam/html mount points, chown to build user. *)
@@ -100,8 +128,9 @@ let doc_cleanup ~sw env upper =
     Fpath.(upper / "home" / "opam" / "doc-tools"))
 
 (** Set up the prep structure and mounts for a doc container.
-    Returns [(universe, mounts, prep_dir)] or [None] only on a hard
-    [Prep.create_with_mounts] failure. Packages with no installed
+    Returns [Ok (universe, mounts, prep_dir)], or [Error] when the tool
+    layers can't supply the doc binaries (see {!make_tool_mounts}) or on
+    a hard [Prep.create_with_mounts] failure. Packages with no installed
     libs and no [.mld] files still go through, with [Prep] dropping
     a stub [index.mld] so [odoc_driver_voodoo] has something to
     process — that produces a real (almost-empty) layer instead of
@@ -109,7 +138,7 @@ let doc_cleanup ~sw env upper =
     [inspect_layer]'s [Layer.is_ok] disagreeing with the
     [layer_status.jsonl] truth source. Caller must clean up
     [prep_dir]. *)
-let prepare ~(config : doc_config) ~build_layer ~universe pkg =
+let prepare env ~(config : doc_config) ~build_layer ~universe pkg =
   let installed_libs = Installed_files.scan_libs ~layer_dir:build_layer in
   let installed_docs = Installed_files.scan_docs ~layer_dir:build_layer in
   (* [universe] is the package's doc-deps universe ([Universe.of_deps] of
@@ -119,19 +148,21 @@ let prepare ~(config : doc_config) ~build_layer ~universe pkg =
      two different universes produces two distinct, correctly-namespaced
      outputs. Must NOT be recomputed from the build-layer hash: that
      would collapse every doc-universe of a shared build onto one id. *)
-  let tool_mounts = make_tool_mounts ~os_dir:config.os_dir
-    ~driver_tool:config.driver_tool ~odoc_tool:config.odoc_tool in
-  let prep_dir = Bos.OS.Dir.tmp "day11_doc_%s" |> Result.get_ok in
-  match Prep.create_with_mounts ~source_layer_dir:build_layer
-    ~dest_layer_dir:prep_dir ~universe ~pkg
-    ~installed_libs ~installed_docs with
-  | Ok (_prep_root, lib_mounts) ->
-    let prep_mount = Day11_container.Mount.bind_ro
-      ~src:(Fpath.to_string Fpath.(prep_dir / "prep"))
-      "/home/opam/prep" in
-    let mounts = tool_mounts @ [ prep_mount ] @ lib_mounts in
-    Some (universe, mounts, prep_dir)
-  | Error _ -> None
+  match make_tool_mounts env ~os_dir:config.os_dir
+    ~driver_tool:config.driver_tool ~odoc_tool:config.odoc_tool with
+  | Error msg -> Error msg
+  | Ok tool_mounts ->
+    let prep_dir = Bos.OS.Dir.tmp "day11_doc_%s" |> Result.get_ok in
+    match Prep.create_with_mounts ~source_layer_dir:build_layer
+      ~dest_layer_dir:prep_dir ~universe ~pkg
+      ~installed_libs ~installed_docs with
+    | Ok (_prep_root, lib_mounts) ->
+      let prep_mount = Day11_container.Mount.bind_ro
+        ~src:(Fpath.to_string Fpath.(prep_dir / "prep"))
+        "/home/opam/prep" in
+      let mounts = tool_mounts @ [ prep_mount ] @ lib_mounts in
+      Ok (universe, mounts, prep_dir)
+    | Error _ -> Error "no documentable libraries"
 
 (* Pre-voodoo inventory of what's visible inside the container:
     - existing pkg/lib markers in /home/opam/odoc-out (from mounted dep
@@ -159,9 +190,9 @@ let debug_inspect_image =
 let run_doc_phase ~sw env benv ~(config : doc_config) ~build_layer ~universe
     ~actions ~phase ~meta_deps ~html_dir ~build_dirs ~label ~hash pkg
     : (Build.t, string) result =
-  match prepare ~config ~build_layer ~universe pkg with
-  | None -> Error "no documentable libraries"
-  | Some (universe, mounts, prep_dir) ->
+  match prepare env ~config ~build_layer ~universe pkg with
+  | Error _ as e -> e
+  | Ok (universe, mounts, prep_dir) ->
     (* The HTML output dir is a bind-mount source; runc won't start if it
        doesn't exist, so ensure it (top-level callers usually do too). *)
     let mounts = match html_dir with
