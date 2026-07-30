@@ -2026,6 +2026,26 @@ let package_version ~ctx name pkg ver =
         | Some h -> docs_exist ~html_dir:h pkg ver
         | None -> false
       in
+      (* The verdict the last completed run recorded for this version in
+         [final_status.json] — the same table the snapshot diffs read, and
+         derived from the plan's node results rather than from
+         history.jsonl. It's the tie-breaker when the per-package history
+         is silent: a doc node that dies before its container runs (a
+         reclaimed tool layer is the case in point) leaves no history
+         entry at all, and reading history alone the page sees only the
+         package's successful *build* and reports that as the state. *)
+      let final_status_category () =
+        List.find_map (fun snap ->
+          match Bos.OS.File.read Fpath.(snap / "final_status.json") with
+          | Error _ -> None
+          | Ok s ->
+            match (try Some (Yojson.Safe.from_string s) with _ -> None) with
+            | Some (`Assoc entries) ->
+              (match List.assoc_opt pkg_str entries with
+               | Some (`String c) -> Some c
+               | _ -> None)
+            | _ -> None) snaps
+      in
       let status_block =
         if docs_present then
           [ p [ a ~a:[ a_href (Printf.sprintf
@@ -2083,9 +2103,31 @@ let package_version ~ctx name pkg ver =
                       "If you believe %s's documentation should build, please \
                        comment on the ocaml/odoc issues:" pkg_str) ] ]
           | Some bb, _ when bb.status = "success" ->
-            [ p [ em [ txt "No rendered docs found on disk, though the latest \
-                            blessed build succeeded — the output may still be \
-                            syncing." ] ] ]
+            (* The build succeeded and the history has no doc node to show.
+               Only "still syncing" if the last completed run also thinks
+               the docs are fine — otherwise say what it recorded. *)
+            (match final_status_category () with
+             | Some "doc_failure" ->
+               [ div ~a:[ a_class [ "warn" ] ]
+                   [ p [ span ~a:[ a_class [ "fail" ] ] [ txt "⚠ Docs failed" ];
+                         txt " — the package built, but the last completed \
+                              run recorded a documentation failure for this \
+                              version." ];
+                     p [ txt "No doc job was logged for it, so the node \
+                              failed before it ran — usually a missing tool \
+                              or dependency layer rather than a problem with ";
+                         txt pkg; txt " itself." ] ] ]
+             | Some "dependency_failure" ->
+               (match latest_cascade_dep () with
+                | Some dep -> cascade_blurb dep
+                | None ->
+                  [ p [ em [ txt "Not documented in the last completed run: \
+                                  a dependency failed, so this package's doc \
+                                  node was skipped." ] ] ])
+             | _ ->
+               [ p [ em [ txt "No rendered docs found on disk, though the \
+                               latest blessed build succeeded — the output \
+                               may still be syncing." ] ] ])
           | _ ->
             (* Neither the blessed build nor the blessed doc is a hard
                failure, yet no docs exist — the node never ran. The usual
