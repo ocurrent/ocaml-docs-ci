@@ -221,6 +221,45 @@ let reconcile_cache () =
         end
   ) 0 entries
 
+(* Reconcile the OCurrent cache against the on-disk layers of one plan.
+
+   [reconcile_cache] above runs once at startup and can only see what the
+   cache db records. This is the per-run counterpart: it walks the plan's
+   nodes, so it has each node's hash and package to hand and can act on
+   cached {e failures} too — [Current_cache.Db.entry] carries no key, so
+   a db-driven pass can't invalidate those.
+
+   The judgement is "does the cache believe something the disk has never
+   witnessed?", and [layer_status.jsonl] is the record of what the disk
+   witnessed. For a node with no layer dir:
+
+   - [exit_status <> 0] recorded — a real build/doc failure. Left alone,
+     so a genuinely broken package isn't re-attempted every run.
+   - [exit_status = 0] recorded — the layer was built and has since been
+     removed (LRU sweep, migration, manual cleanup). Invalidate: the
+     cached success would otherwise suppress the rebuild forever.
+   - nothing recorded — the node never got as far as running a container,
+     so any cached failure describes the infrastructure rather than the
+     package. That is what a missing tool layer produces: the doc nodes
+     behind it fail before dispatch and stay failed even once the tools
+     come back. Invalidate so they re-attempt.
+
+   Nodes OCurrent has no row for (cold cache, or cascade-skipped) fall in
+   the last bucket; invalidating them is a no-op UPDATE. Returns the
+   number invalidated. *)
+let reconcile_plan ~env ~os_dir (nodes : Day11_opam_layer.Build.t list) =
+  let status = Day11_layer.Layer_status.load ~os_dir in
+  List.fold_left (fun n (node : Day11_opam_layer.Build.t) ->
+    let layer = Day11_layer.Layer.of_hash ~os_dir node.hash in
+    if Day11_layer.Layer.exists env layer then n
+    else
+      match Hashtbl.find_opt status (Day11_layer.Dir.name node.hash) with
+      | Some e when e.Day11_layer.Layer_status.exit_status <> 0 -> n
+      | _ ->
+        Cache.invalidate Op.Key.{ hash = node.hash; pkg = node.pkg; label = "" };
+        n + 1
+  ) 0 nodes
+
 (* ── Public interface ──────────────────────────────────────────── *)
 
 (** Run a DAG node as an OCurrent component with job logs.

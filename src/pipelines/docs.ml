@@ -287,6 +287,18 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       plan.all_nodes
     | None -> nodes
   in
+  (* Re-check the cache against the disk now that the plan is known. The
+     startup pass ([Day11_prep.reconcile_cache]) can't see layers removed
+     while the daemon runs, and a stale entry is silent: a cached success
+     for a layer that no longer exists suppresses its rebuild, and every
+     node behind it fails before dispatch — a missing odoc/odoc-driver
+     tool layer strands the whole doc side that way. Once per run (this
+     is inside the solutions bind), not per evaluation. *)
+  (let n = Day11_prep.reconcile_plan ~env ~os_dir:ctx.os_dir all_dag_nodes in
+   if n > 0 then
+     Log.info (fun f -> f "[%s] cache reconcile: invalidated %d node(s) \
+                           whose layer the disk has no record of"
+       profile.name n));
   let dispatch : Eio_unix.Stdenv.base -> Day11_opam_layer.Build.t -> bool =
     match doc_plan with
     | Some plan ->
