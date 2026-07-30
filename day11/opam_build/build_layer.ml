@@ -236,6 +236,10 @@ let record_attempt env ~layer ~node ~benv ~timing ?patches
        }
      in
      let _ = Day11_opam_layer.Build_meta.save layer_dir bm in
+     (* Start the LRU clock at build time. Without this a layer carries
+        no [last_used] sentinel until something re-uses it, and a sweep
+        in between has nothing to date it by. *)
+     Day11_layer.Last_used.touch env layer_dir;
      ());
   let os_dir = Fpath.parent (Layer.dir layer) in
   Day11_layer.Layer_status.append ~os_dir ~hash:(Layer.hash layer)

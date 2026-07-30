@@ -125,6 +125,13 @@ module Op = struct
       | Error _ -> false
     in
     if cached_ok then begin
+      (* Keep the LRU clock ticking on layers this profile still plans.
+         [Day11_opam_build.Build_layer] touches on its own cache-hit
+         path, but the daemon short-circuits before reaching it, so
+         without this a layer that is planned every run yet never
+         rebuilt or stacked as an overlay lower (tool layers, notably)
+         looks untouched to the GC. *)
+      Day11_layer.Last_used.touch ctx.env (Day11_layer.Layer.dir layer);
       (* Hits are high-volume on large profiles — debug level keeps
          the default log focused on genuine work. Bump via
          [--verbosity debug] to see them. *)

@@ -84,7 +84,12 @@ let run profile_dir before_days delete show_du =
     total_layers := !total_layers + n;
     List.iteri (fun idx name ->
       let layer_dir = Fpath.(os_dir / name) in
-      let last_used = match Day11_layer.Last_used.get env layer_dir with
+      (* [effective], not [get]: a layer with no [last_used] sentinel
+         falls back to its own [layer.json] mtime rather than epoch 0,
+         so a freshly built layer that nothing has touched yet isn't
+         read as infinitely old and deleted on the spot. Only residue
+         with neither sentinel nor metadata scores 0.0. *)
+      let last_used = match Day11_layer.Last_used.effective env layer_dir with
         | Some t -> t | None -> 0.0 in
       if last_used < cutoff then begin
         incr old_layers;

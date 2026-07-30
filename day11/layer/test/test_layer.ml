@@ -292,6 +292,44 @@ let test_relocations_roundtrip () = with_eio @@ fun ~sw:_ env ->
        Alcotest.(check (list string)) "hits" [ "/tmp/build_xyz" ] v
      | _ -> Alcotest.fail "mismatch")
 
+(* ── Last_used tests ───────────────────────────────────────── *)
+
+(* A layer that has been touched dates from its sentinel. *)
+let test_last_used_sentinel () = with_eio @@ fun ~sw:_ env ->
+  with_tmp_dir @@ fun dir ->
+  Last_used.touch env dir;
+  match Last_used.effective env dir with
+  | None -> Alcotest.fail "no timestamp for a touched layer"
+  | Some t ->
+    Alcotest.(check bool) "sentinel mtime is recent"
+      true (Unix.gettimeofday () -. t < 60.)
+
+(* The regression that emptied the odoc/odoc-driver tool layers out of a
+   live cache: [touch] only fires when a layer is re-used, so a freshly
+   built layer has no sentinel. Dating it from epoch 0 made every LRU
+   sweep eligible to delete it, however new it was. *)
+let test_last_used_falls_back_to_layer_json () = with_eio @@ fun ~sw:_ env ->
+  with_tmp_dir @@ fun dir ->
+  let meta : Meta.t = {
+    exit_status = 0; parent_hashes = []; uid = 0; gid = 0;
+    base_hash = "test"; disk_usage = 0; timing = Meta.empty_timing;
+    created_at = "2024-01-01T00:00:00Z"; failed_dep = None;
+  } in
+  Meta.save env Fpath.(dir / "layer.json") meta |> is_ok "save";
+  Alcotest.(check bool) "no sentinel yet"
+    true (Last_used.get env dir = None);
+  match Last_used.effective env dir with
+  | None -> Alcotest.fail "untouched layer with layer.json dated as unknown"
+  | Some t ->
+    Alcotest.(check bool) "dated from layer.json, not the epoch"
+      true (Unix.gettimeofday () -. t < 60.)
+
+(* Residue with neither sentinel nor metadata stays freely evictable. *)
+let test_last_used_none_without_metadata () = with_eio @@ fun ~sw:_ env ->
+  with_tmp_dir @@ fun dir ->
+  Alcotest.(check bool) "no timestamp"
+    true (Last_used.effective env dir = None)
+
 (* ── Test registration ───────────────────────────────────────────── *)
 
 let () =
@@ -304,6 +342,14 @@ let () =
       ( "Dir",
         [
           Alcotest.test_case "name" `Quick test_layer_dir_name;
+        ] );
+      ( "Last_used",
+        [
+          Alcotest.test_case "sentinel" `Quick test_last_used_sentinel;
+          Alcotest.test_case "falls back to layer.json" `Quick
+            test_last_used_falls_back_to_layer_json;
+          Alcotest.test_case "none without metadata" `Quick
+            test_last_used_none_without_metadata;
         ] );
       ( "Symlinks",
         [

@@ -18,3 +18,13 @@ let get env layer_dir =
   let ep = eio_path env Fpath.(layer_dir / sentinel) in
   try Some (Eio.Path.stat ~follow:true ep).mtime
   with _ -> None
+
+let effective env layer_dir =
+  match get env layer_dir with
+  | Some _ as t -> t
+  | None ->
+    (* No sentinel: fall back to when the layer itself was written.
+       [layer.json] is created at finalisation and only rewritten by
+       the same build, so its mtime is the layer's own age. *)
+    let ep = eio_path env Fpath.(layer_dir / "layer.json") in
+    (try Some (Eio.Path.stat ~follow:true ep).mtime with _ -> None)
