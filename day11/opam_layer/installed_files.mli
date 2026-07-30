@@ -12,6 +12,9 @@ val scan_libs : layer_dir:Fpath.t -> string list
 
 val scan_docs : layer_dir:Fpath.t -> string list
 (** [scan_docs ~layer_dir] scans
-    [layer_dir/fs/home/opam/.opam/default/doc/] for [.mld] and
-    [odoc-config.sexp] files. Returns sorted relative paths within
-    [doc/]. *)
+    [layer_dir/fs/home/opam/.opam/default/doc/] for the files
+    [odoc_driver_voodoo] consumes: everything under a package's
+    [odoc-pages/] and [odoc-assets/] directories, top-level [.md] files
+    (i.e. the [README.md]/[CHANGES.md]/[LICENSE.md] that dune installs as
+    [doc:] files), any [.mld], and [odoc-config.sexp]. Returns sorted
+    relative paths within [doc/]. *)

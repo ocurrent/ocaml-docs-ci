@@ -152,6 +152,53 @@ let test_prep_create () = with_tmp_dir @@ fun dir ->
   Alcotest.(check bool) "prep dir exists"
     true (Bos.OS.Dir.exists prep_root |> Result.get_ok)
 
+(* [voodoo-prep] used to copy the switch's whole [doc/] tree, which is how
+   [README.md]/[CHANGES.md] reached [odoc_driver_voodoo]. Check they make it
+   into the prep tree at the path the driver classifies them from,
+   [doc/<pkg>/<file>]. *)
+let test_prep_copies_doc_files () = with_tmp_dir @@ fun dir ->
+  let source = Fpath.(dir / "build-layer") in
+  let dest = Fpath.(dir / "doc-layer") in
+  let doc_dir = Fpath.(source / "fs" / "home" / "opam" / ".opam" / "default"
+                       / "doc" / "astring") in
+  mkdir Fpath.(doc_dir / "odoc-pages");
+  write_file Fpath.(doc_dir / "README.md") "# astring";
+  write_file Fpath.(doc_dir / "CHANGES.md") "## v0.8.5";
+  write_file Fpath.(doc_dir / "odoc-config.sexp") "()";
+  write_file Fpath.(doc_dir / "odoc-pages" / "tutorial.mld") "{0 Tutorial}";
+  let prep_root, _mounts =
+    Prep.create_with_mounts
+      ~source_layer_dir:source
+      ~dest_layer_dir:dest
+      ~universe:"abc123"
+      ~pkg:(OpamPackage.of_string "astring.0.8.5")
+      ~installed_libs:[]
+      ~installed_docs:[ "astring/README.md"; "astring/CHANGES.md";
+                        "astring/odoc-config.sexp";
+                        "astring/odoc-pages/tutorial.mld" ]
+    |> ok_or_fail "prep"
+  in
+  let pkg_doc =
+    Fpath.(prep_root / "universes" / "abc123" / "astring" / "0.8.5" / "doc")
+  in
+  let copied rel =
+    Alcotest.(check bool) ("copied " ^ rel)
+      true (Bos.OS.File.exists Fpath.(pkg_doc // v rel) |> Result.get_ok)
+  in
+  copied "astring/README.md";
+  copied "astring/CHANGES.md";
+  copied "astring/odoc-config.sexp";
+  copied "astring/odoc-pages/tutorial.mld";
+  Alcotest.(check string) "README contents"
+    "# astring"
+    (Bos.OS.File.read Fpath.(pkg_doc / "astring" / "README.md")
+     |> Result.get_ok);
+  (* the package is discoverable via its own doc files, so no stub needed *)
+  Alcotest.(check bool) "no stub index.mld"
+    false
+    (Bos.OS.File.exists Fpath.(pkg_doc / "astring" / "index.mld")
+     |> Result.get_ok)
+
 let test_prep_empty_libs () = with_tmp_dir @@ fun dir ->
   let source = Fpath.(dir / "build-layer") in
   let dest = Fpath.(dir / "doc-layer") in
@@ -492,6 +539,8 @@ let () =
       ( "Prep",
         [
           Alcotest.test_case "create" `Quick test_prep_create;
+          Alcotest.test_case "copies doc files" `Quick
+            test_prep_copies_doc_files;
           Alcotest.test_case "empty libs" `Quick test_prep_empty_libs;
         ] );
       ( "Combine",

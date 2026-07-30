@@ -1,9 +1,3 @@
-let doc_relevant_doc_extensions =
-  [ ".mld" ]
-
-let doc_relevant_doc_files =
-  [ "odoc-config.sexp" ]
-
 (** Create prep directory structure and return bind mounts that map
     build layer lib/doc dirs into the prep layout.
     No file copying — the container sees files directly from cached layers. *)
@@ -48,35 +42,32 @@ let create_with_mounts ~source_layer_dir ~dest_layer_dir ~universe ~pkg
       Fpath.(source_layer_dir / "fs" / "home" / "opam" / ".opam"
              / switch / "doc")
     in
-    (* For doc files: only a few .mld files, copy them directly
-       (too few to justify per-file mounts) *)
-    let any_mld_copied = ref false in
+    (* Doc files: [.mld] pages, the [odoc-pages]/[odoc-assets] trees, the
+       top-level [.md] files ([README.md], [CHANGES.md], [LICENSE.md] — which
+       [odoc-md] turns into pages) and [odoc-config.sexp]. Which files are
+       relevant is decided by {!Day11_opam_layer.Installed_files.scan_docs};
+       here we copy the lot. There are only a handful per package, too few to
+       justify a bind mount each. *)
+    let any_doc_copied = ref false in
     List.iter (fun rel_path ->
-      let ext = Filename.extension rel_path in
-      let name = Filename.basename rel_path in
-      if List.mem ext doc_relevant_doc_extensions
-         || List.mem name doc_relevant_doc_files then begin
-        let src = Fpath.(doc_src // v rel_path) in
-        let dst = Fpath.(doc_dest // v rel_path) in
+      let src = Fpath.(doc_src // v rel_path) in
+      let dst = Fpath.(doc_dest // v rel_path) in
+      if Bos.OS.File.exists src |> Result.get_ok then begin
         Bos.OS.Dir.create ~path:true (Fpath.parent dst) |> ignore;
-        if Bos.OS.File.exists src |> Result.get_ok then begin
-          Bos.OS.File.read src |> Result.get_ok
-          |> Bos.OS.File.write dst |> ignore;
-          if ext = ".mld" then any_mld_copied := true
-        end
+        Bos.OS.File.read src |> Result.get_ok
+        |> Bos.OS.File.write dst |> ignore;
+        any_doc_copied := true
       end
     ) installed_docs;
-    (* odoc_driver_voodoo crashes ("nothing to compile") when the prep
-       tree contains neither a findlib lib nor any [.mld]. For packages
-       that install nothing documentable — ocaml wrappers, [conf-*]
-       binding stubs, etc. — we still want voodoo to run and produce
-       a real layer (so Layer.is_ok / inspect_layer agree with
-       Layer_status). Drop in a one-line stub [.mld] so voodoo always
-       has something to chew on. The stub is overwritten by any real
-       package-supplied [.mld] (we only write it when none was copied).
-       Voodoo's mld discovery walks [doc/<pkg>/], so the file goes
-       there. *)
-    if not !any_mld_copied && lib_mounts = [] then begin
+    (* odoc_driver_voodoo exits non-zero when [Voodoo.find_pkg] finds no
+       file at all under [prep/universes/<u>/<pkg>/<version>/]. For packages
+       that install nothing documentable — ocaml wrappers, [conf-*] binding
+       stubs, etc. — we still want voodoo to run and produce a real layer
+       (so Layer.is_ok / inspect_layer agree with Layer_status). Drop in a
+       one-line stub [.mld] so the package is discoverable. Only needed when
+       we copied nothing: a real [.mld], a [README.md] &c. already makes
+       [find_pkg] succeed. *)
+    if (not !any_doc_copied) && lib_mounts = [] then begin
       let stub_dir = Fpath.(doc_dest / pkg_name) in
       Bos.OS.Dir.create ~path:true stub_dir |> ignore;
       let stub = Fpath.(stub_dir / "index.mld") in

@@ -442,8 +442,15 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
         let split = not (OpamPackage.Set.equal
           (deps_or_empty g.g_build pkg) (deps_or_empty g.g_doc pkg)) in
         let phase = if split then "compile" else "doc-all" in
+        (* The salt is what invalidates existing doc layers when the prep
+           tree changes shape: the hash covers the build layer, universe and
+           tools, but not the prep contents we synthesise from them.
+           v4 → v5: {!Prep.create_with_mounts} now copies the [README.md] /
+           [CHANGES.md] / [odoc-assets] doc files that voodoo-prep used to
+           provide, so every doc layer must be rebuilt to pick up the pages.
+           The link hash below feeds on [dn.layer.hash], so it cascades. *)
         let hash = Day11_layer.Hash.of_strings
-          ([ phase; "v4"; n.hash; u_s; composite_tool_hash;
+          ([ phase; "v5"; n.hash; u_s; composite_tool_hash;
              (if blessed then "blessed" else "unblessed") ]
            @ List.sort String.compare
                (List.map (fun (h, _, _) -> h) dep_results))

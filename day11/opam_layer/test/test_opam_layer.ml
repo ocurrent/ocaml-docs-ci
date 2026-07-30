@@ -93,13 +93,31 @@ let test_scan_docs () = with_tmp_dir @@ fun dir ->
   write_file Fpath.(doc_dir / "index.mld") "";
   write_file Fpath.(doc_dir / "odoc-config.sexp") "";
   write_file Fpath.(doc_dir / "README") "";
+  (* dune installs these as [doc:] files; [odoc-md] renders them as pages *)
+  write_file Fpath.(doc_dir / "README.md") "";
+  write_file Fpath.(doc_dir / "CHANGES.md") "";
+  write_file Fpath.(doc_dir / "LICENSE.md") "";
+  mkdir Fpath.(doc_dir / "odoc-pages");
+  write_file Fpath.(doc_dir / "odoc-pages" / "tutorial.mld") "";
+  write_file Fpath.(doc_dir / "odoc-pages" / "diagram.png") "";
+  mkdir Fpath.(doc_dir / "odoc-assets");
+  write_file Fpath.(doc_dir / "odoc-assets" / "style.css") "";
   let files = Installed_files.scan_docs ~layer_dir:dir in
-  Alcotest.(check bool) "has mld"
-    true (List.mem "yojson/index.mld" files);
-  Alcotest.(check bool) "has sexp"
-    true (List.mem "yojson/odoc-config.sexp" files);
-  Alcotest.(check bool) "no README"
-    false (List.mem "yojson/README" files)
+  let has what = Alcotest.(check bool) ("has " ^ what) true (List.mem what files) in
+  let lacks what =
+    Alcotest.(check bool) ("no " ^ what) false (List.mem what files)
+  in
+  has "yojson/index.mld";
+  has "yojson/odoc-config.sexp";
+  has "yojson/README.md";
+  has "yojson/CHANGES.md";
+  has "yojson/LICENSE.md";
+  has "yojson/odoc-pages/tutorial.mld";
+  (* assets alongside [.mld] pages, and in [odoc-assets/], are used too *)
+  has "yojson/odoc-pages/diagram.png";
+  has "yojson/odoc-assets/style.css";
+  (* extension-less top-level files are dropped by the driver *)
+  lacks "yojson/README"
 
 let test_scan_empty_layer () = with_tmp_dir @@ fun dir ->
   let files = Installed_files.scan_libs ~layer_dir:dir in
