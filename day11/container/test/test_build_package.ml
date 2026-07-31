@@ -125,6 +125,7 @@ let build_package ~sw env ~cache_dir ~base_dir ~dep_layers ~pkg =
       package = pkg;
       deps = [];
       stack = [];
+      build_deps = [];
       installed_libs = [];
       installed_docs = [];
       patches = [];
