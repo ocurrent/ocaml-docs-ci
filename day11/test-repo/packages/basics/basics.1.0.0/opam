@@ -1,0 +1,23 @@
+opam-version: "2.0"
+maintainer: "testlab@example.com"
+authors: ["testlab"]
+license: "ISC"
+synopsis: "Test-lab baseline package"
+description: """
+Minimal package used as the baseline for test-repo scenarios.
+Compiles cleanly and has docstrings, so its rendered HTML is a
+fixed reference point for doc-pipeline tests.
+"""
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "odoc" {with-doc}
+]
+build: [
+  ["dune" "subst"] {dev}
+  ["dune" "build" "-p" name "-j" jobs]
+]
+url {
+  src: "http://127.0.0.1:@@PORT@@/basics-1.0.0.tar.gz"
+  checksum: "sha256=@@SHA256_BASICS_1_0_0@@"
+}

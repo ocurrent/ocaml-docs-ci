@@ -1,0 +1,18 @@
+(library
+ (name day11_batch)
+ (public_name day11.batch)
+ (libraries
+  bos
+  day11_opam
+  day11_opam_build
+  day11_sys
+  day11_solution
+  day11_layer
+  day11_lib
+  day11_solver
+  eio
+  fpath
+  opam-format
+  rresult
+  yojson
+  unix))

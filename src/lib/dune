@@ -8,24 +8,28 @@
   current_git
   current_web
   current_docker
-  astring
-  dockerfile
   cmdliner
-  digestif
   fmt.tty
   logs.fmt
   git-unix
   lwt
   lwt.unix
-  obuilder-spec
+  prometheus
   opam-file-format
-  capnp-rpc-lwt
-  capnp-rpc-unix
-  current_ocluster
-  opam-0install
-  solver_api
   ocaml-version
-  omigrate
-  omigrate.sqlite3)
+  day11.solution
+  day11.solver-pool
+  day11.opam-helpers
+  day11.opam-build
+  day11.opam-layer
+  day11.layer
+  day11.container
+  day11.runner
+  day11.sys
+  day11.doc
+  day11.batch
+  lwt_eio
+  eio_main
+  yojson)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving.std)))

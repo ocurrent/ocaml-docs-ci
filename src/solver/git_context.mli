@@ -7,9 +7,14 @@ val read_packages :
 (** [read_packages store commit] is an index of the opam files in [store] at
     [commit]. *)
 
+val extend_packages :
+  OpamFile.OPAM.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t ->
+  OpamFile.OPAM.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t
+
 val create :
   ?test:OpamPackage.Name.Set.t ->
   ?pins:(OpamPackage.Version.t * OpamFile.OPAM.t) OpamPackage.Name.Map.t ->
+  ?doc:bool ->
   constraints:OpamFormula.version_constraint OpamPackage.Name.Map.t ->
   env:(string -> OpamVariable.variable_contents option) ->
   packages:OpamFile.OPAM.t OpamPackage.Version.Map.t OpamPackage.Name.Map.t ->

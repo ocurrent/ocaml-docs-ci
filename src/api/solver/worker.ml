@@ -12,11 +12,17 @@ module Vars = struct
   [@@deriving yojson]
 end
 
+type solve_result = {
+  compile_universes : (string * string * string list) list;
+  link_universes : (string * string * string list) list;
+}
+[@@deriving yojson, ord]
+
 (** A set of packages for a single build. *)
 module Selection = struct
   type t = {
     id : string;  (** The platform ID from the request. *)
-    packages : (string * string list) list;
+    packages : solve_result;
         (** The selected packages ("name.version") and their universes. *)
     commit : string;  (** A commit in opam-repository to use. *)
   }
@@ -34,6 +40,17 @@ module Solve_request = struct
     platforms : (string * Vars.t) list;  (** Possible build platforms, by ID. *)
   }
   [@@deriving yojson]
+
+  let pp_constraint ppf (pkg, rel, vsn) =
+    Format.fprintf ppf "%s%s%s" pkg
+      (match rel with
+      | `Eq -> "="
+      | `Geq -> ">="
+      | `Gt -> ">"
+      | `Leq -> "<="
+      | `Lt -> "<"
+      | `Neq -> "<>")
+      vsn
 end
 
 (** The response from the solver. *)

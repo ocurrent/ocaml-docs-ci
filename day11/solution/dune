@@ -1,0 +1,4 @@
+(library
+ (name day11_solution)
+ (public_name day11.solution)
+ (libraries bos fpath opam-format rresult yojson))

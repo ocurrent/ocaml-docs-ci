@@ -1,0 +1,23 @@
+{0 day11-container}
+
+OCI container runtime primitives. {!Day11_container.Overlay} wraps Linux overlayfs
+mount/umount via sudo, assembling read-only lowers and a writable
+upper into a single merged rootfs. {!Day11_container.Runc} drives the [runc] OCI
+runtime to execute containers, with stdout/stderr capture and
+container lifecycle management. {!Day11_container.Oci_spec} generates [config.json]
+templates with sensible defaults (namespaces, capabilities, seccomp
+sync-masking, standard system mounts) parameterized by the rootfs
+path. {!Day11_container.Mount} describes bind-mount specifications for the OCI spec.
+
+Depends on {!page-exec} for subprocess execution. Has no knowledge of
+opam, layers, or build orchestration — callers compose these
+primitives with the layer and runner libraries.
+
+{1 Modules}
+
+{!modules:
+Day11_container.Overlay
+Day11_container.Runc
+Day11_container.Oci_spec
+Day11_container.Mount
+}

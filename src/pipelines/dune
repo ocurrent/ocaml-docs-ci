@@ -1,27 +1,20 @@
-;;
-
 (library
  (name docs_ci_pipelines)
  (package ocaml-docs-ci)
  (libraries
   docs_ci_lib
   current
-  current.cache
-  current_github
   current_git
   current_web
-  current_docker
-  current_rpc
-  capnp-rpc-unix
-  pipeline_api
-  astring
-  dockerfile
-  cmdliner
-  fmt.tty
-  logs.fmt
   lwt
   lwt.unix
-  obuilder-spec
-  opam-file-format)
+  day11.batch
+  day11.lib
+  day11.doc
+  day11.opam-build
+  day11.opam-layer
+  day11.layer
+  day11.container
+  day11.solution)
  (preprocess
   (pps ppx_deriving_yojson)))

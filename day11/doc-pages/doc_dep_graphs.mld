@@ -1,0 +1,172 @@
+{0 Doc dependency graphs and per-step closures}
+
+Reference for {b which dependency closure each step of the doc
+pipeline consumes.} The two-graph distinction (build_deps vs
+doc_deps) and the four step kinds (build, doc compile, doc link,
+doc-all) are easy to confuse. This page is the source of truth;
+functions in the doc pipeline cite specific sections of this page
+in their docstrings.
+
+{1 Two dependency graphs}
+
+The solver emits {!Day11_solution.Solve_result.t} containing two
+related graphs over the same package set:
+
+{ul
+{- [build_deps] — what each package needs at {b build time}.
+   {b Acyclic.} Excludes [{post}] deps because [{post}] deps are
+   installed {e after} the package builds, not before. Used for
+   build-DAG topological ordering.}
+{- [doc_deps] — what each package's docs need at {b link time}.
+   Equals [build_deps ∪ {post} ∪ x-extra-doc-deps].
+   {b May contain cycles} (e.g. compiler ↔ ocaml virtual). Do not
+   topologically sort. Used for odoc cross-reference resolution.}
+}
+
+{!Day11_doc.Doc_deps.needs_separate_link} compares a single
+package's direct entries in the two graphs. When they differ, the
+package needs separate compile and link phases; when they agree,
+the two phases can be fused into a single doc-all phase.
+
+{1 The four step kinds}
+
+{2 1. Build — the package's own dune/make/etc.}
+
+The actual package compile + install. Not part of odoc; produces
+the build layer that doc steps consume.
+
+{ul
+{- {b Inputs:} this package's source + transitive build_deps'
+   build layers (binaries: [ocamlobjinfo], [.cma], [.cmti], etc.).}
+{- {b Output:} build layer with installed package files.}
+{- {b Closure walked:} [build_deps] transitively. Never doc_deps.}
+{- {b Code:} {!Day11_opam_build.Build_layer.build}.}
+}
+
+{2 2. Doc compile — odoc compile (.cmti → .odoc)}
+
+odoc reads each compiled interface and emits a [.odoc] file
+containing the typed AST plus references to other packages' types.
+Cross-package type references (e.g. [type t = Other_pkg.X.t]) are
+recorded but not yet resolved.
+
+{ul
+{- {b Inputs:} this package's build layer + transitive build_deps'
+   compile layers (other packages' [.odoc] files for any type the
+   [.cmti] mentions).}
+{- {b Output:} compile layer with [.odoc] files.}
+{- {b Closure walked:} [build_deps] transitively. {b Must match
+   what the OCaml compile saw} — adding doc-only edges here would
+   introduce dependencies the [.cmti] doesn't reference.}
+{- {b Code:} {!Day11_doc.Generate.compile_package},
+   {!Day11_doc.Doc_build.compile}.}
+{- {b Layer-assembly fn:}
+   {!Day11_doc.Generate.find_dep_compile_layers}, which walks
+   [node.deps] (= build_deps) transitively.}
+}
+
+{2 3. Doc link — odoc link (.odoc → .odocl + HTML)}
+
+odoc resolves cross-references and produces final [.odocl] files
+plus HTML. {b This is where docstring [\{!Foo.t\}] markup is
+resolved.} References may target packages that the build itself
+didn't see — e.g. compiler types reached only through a [{post}]
+edge, or extras declared via [x-extra-doc-deps].
+
+{ul
+{- {b Inputs:} this package's compile layer + transitive doc_deps'
+   compile layers.}
+{- {b Output:} link layer with HTML, rendered into [html_dir].}
+{- {b Closure walked:} [doc_deps] transitively. {b Must include
+   [{post}] and [x-extra-doc-deps]} because xrefs are resolved
+   here, not at compile.}
+{- {b Code:} {!Day11_doc.Generate.link_package},
+   {!Day11_doc.Doc_build.link}.}
+{- {b Layer-assembly fn:} should walk [doc_dep_hashes]
+   transitively from [node.hash]. The graph already incorporates
+   [{post}] and [x-extra-doc-deps] edges by construction in the
+   solver.}
+}
+
+{2 4. Doc-all — fused compile + link}
+
+An optimisation for packages where [build_deps == doc_deps] (i.e.
+no [{post}] deps and no [x-extra-doc-deps] beyond build deps).
+A single container start does both phases.
+
+{ul
+{- {b Valid when:}
+   [not (Day11_doc.Doc_deps.needs_separate_link result pkg)].}
+{- {b Inputs and output:} same as compile, plus the link's HTML
+   output mounted.}
+{- {b Closure walked:} [build_deps] transitively. Equivalent to
+   walking [doc_deps] by precondition.}
+{- {b Code:} {!Day11_doc.Generate.doc_all_package},
+   {!Day11_doc.Doc_build.doc_all}.}
+{- {b Layer-assembly fn:}
+   {!Day11_doc.Generate.find_dep_compile_layers} (same as compile —
+   correct because closures are equal).}
+}
+
+{1 Layer-mount conventions}
+
+Each doc step mounts two stacks of layers as overlayfs build_dirs:
+
+{ul
+{- {b Build deps' BUILD layers} — for binaries on PATH
+   ([ocamlobjinfo], compiler binaries). Always walked transitively
+   from [build_deps] regardless of step. Code:
+   {!Day11_doc.Generate.find_build_deps_layers}.}
+{- {b Doc deps' COMPILE layers} — for [.odoc] files. Compile and
+   doc-all walk [build_deps]; link walks [doc_deps]. The shared
+   table {!Day11_doc.Generate.t.build_to_doc_hash} maps each
+   build_hash to either a compile_node hash (for split packages)
+   or a doc_all_node hash (for merged packages).}
+}
+
+{1 How a missing edge looks}
+
+If a doc step's layer assembly omits a dep that should be there,
+odoc cannot find that dep's [.odoc] file at xref-resolution time.
+The HTML renders the reference as an [xref-unresolved] span instead
+of a live link. {b The build does not fail.}
+
+Two distinct hazards:
+
+{ul
+{- {b Wrong closure walked.} Walking [build_deps] at link instead
+   of [doc_deps] means [{post}] deps are missed. Walking only the
+   direct [doc_deps] (no transitive expansion) means anything two
+   hops away is missed.}
+{- {b Silent layer drop.}
+   {!Day11_doc.Generate.find_dep_compile_layers} skips deps whose
+   compile layer is not [Layer.is_ok]. A layer that built but
+   produced an empty output (e.g. a "compiler" package whose build
+   didn't install [stdlib.cmti]) will pass [is_ok] but contribute
+   nothing — so xrefs to its types still don't resolve.
+   {!Day11_opam_build.Compiler_pkg.check_stdlib_installed} is the
+   defence against this for the compiler case.}
+}
+
+The test-repo package {b stdlib_ref} (T06 in the testlab timeline)
+is a single-package canary: its docstrings reference
+[\{!Stdlib.Format.formatter\}] and [\{!Stdlib.out_channel\}], so
+unresolved spans there mean the compiler's compile layer didn't
+make it into the link inputs.
+
+{1 Pitfalls when adding new code}
+
+{ul
+{- {b Don't reuse [find_dep_compile_layers] in link.} It walks
+   build_deps. Link needs a doc_deps walker.}
+{- {b Don't conflate "is a compiler package" with "produces a
+   compile node".} A package gets a compile_node iff
+   {!Day11_doc.Doc_build.is_ocaml_package} returns true (depends
+   on [ocaml] OR is one of the named compilers). Packages that
+   don't satisfy this never appear in [build_to_doc_hash], and
+   transitive walks silently skip them.}
+{- {b Don't expect the runtime to fail loudly} when a declared
+   compile-layer dep is missing — the silent-drop in
+   [find_dep_compile_layers] is a known hazard. Add an explicit
+   warning if you change the code path.}
+}

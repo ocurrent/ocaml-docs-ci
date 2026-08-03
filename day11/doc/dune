@@ -1,0 +1,21 @@
+(library
+ (name day11_doc)
+ (public_name day11.doc)
+ (libraries
+  astring
+  day11_batch
+  day11_opam_build
+  day11_container
+  day11_sys
+  day11_solution
+  day11_layer
+  day11_lib
+  day11_opam_layer
+  bos
+  fpath
+  opam-format
+  rresult
+  yojson
+  unix)
+ (preprocess
+  (pps ppx_deriving_yojson)))

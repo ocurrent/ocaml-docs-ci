@@ -1,0 +1,7 @@
+opam-version: "2.0"
+synopsis: "Compiles but depends on a broken package"
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "broken" {= "1.0.0"}
+]

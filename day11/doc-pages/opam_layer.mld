@@ -1,0 +1,30 @@
+{0 day11-opam-layer}
+
+Opam-flavoured layer types that give domain meaning to the generic
+{!day11-layer} storage. {!Day11_opam_layer.Build} is the recursive DAG node type: each
+node carries a content-addressed hash, a package, direct dependency
+nodes, and a universe identifier. {!Day11_opam_layer.Tool} aggregates multiple build
+nodes into a single tool layer (e.g. odoc + deps). {!Day11_opam_layer.Build_meta}
+reads and writes the [build.json] sidecar that marks a layer as an
+opam package build and records installed libraries, docs, and patches.
+{!Day11_opam_layer.Installed_files} scans a layer's overlay for [.cmi], [.cmti],
+[.mld], and other documentation-relevant files. {!Day11_opam_layer.Opam_repo}
+assembles an [opam-repository/] directory for container builds by
+copying opam files from source repositories. {!Day11_opam_layer.Opamh} writes
+synthetic opam switch-state files so the container sees stacked deps
+as installed.
+
+Depends on {!day11-layer}, {!day11-sys}, and {!page-solution}. This
+library defines the types that {!day11-opam-build} and {!day11-doc}
+operate on.
+
+{1 Modules}
+
+{!modules:
+Day11_opam_layer.Build
+Day11_opam_layer.Tool
+Day11_opam_layer.Build_meta
+Day11_opam_layer.Installed_files
+Day11_opam_layer.Opam_repo
+Day11_opam_layer.Opamh
+}

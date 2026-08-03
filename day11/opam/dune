@@ -1,0 +1,4 @@
+(library
+ (name day11_opam)
+ (public_name day11.opam-helpers)
+ (libraries fmt fpath git-unix lwt lwt.unix opam-format))

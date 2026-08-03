@@ -92,40 +92,53 @@ end = struct
         | _ -> Fmt.failwith "BUG: bad output: %s" results)
 
   let handle ~log request t =
-    let { Worker.Solve_request.opam_repository_commit; platforms; pkgs; _ } =
+    let {
+      Worker.Solve_request.opam_repository_commit;
+      platforms;
+      pkgs;
+      constraints;
+    } =
       request
     in
-    Log.info log "Solving for %a using opam_repository_commit %s"
+    Log.info log
+      "Solving for %a, constraints %a using opam_repository_commit %s"
       Fmt.(list ~sep:comma string)
-      pkgs opam_repository_commit;
+      pkgs
+      Fmt.(list ~sep:comma Worker.Solve_request.pp_constraint)
+      constraints opam_repository_commit;
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
     platforms
     |> Lwt_list.map_p (fun p ->
-           let id = fst p in
-           let slice = { request with platforms = [ p ] } in
-           Lwt_pool.use t (process ~log ~id slice) >>= function
-           | Error _ as e -> Lwt.return (id, e)
-           | Ok packages ->
-               let repo_packages =
-                 List.map (fun (pkg, _) -> OpamPackage.of_string pkg) packages
-               in
-               Opam_repository.oldest_commit_with repo_packages
-                 ~from:opam_repository_commit ~log
-               >|= fun commit ->
-               (id, Ok { Worker.Selection.id; packages; commit }))
+        let id = fst p in
+        let slice = { request with platforms = [ p ] } in
+        Lwt_pool.use t (process ~log ~id slice) >>= function
+        | Error _ as e -> Lwt.return (id, e)
+        | Ok packages ->
+            let repo_packages =
+              List.map
+                (fun (pkg, _opam, _) -> OpamPackage.of_string pkg)
+                packages.link_universes
+            in
+            Opam_repository.oldest_commit_with repo_packages
+              ~from:opam_repository_commit ~log
+            >|= fun commit -> (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
-            Log.info log "= %s =" id;
-            match result with
-            | Ok result ->
-                Log.info log "-> @[<hov>%a@]"
-                  Fmt.(list ~sep:sp string)
-                  (List.map fst result.Selection.packages);
-                Log.info log "(valid since opam-repository commit %s)"
-                  result.Selection.commit;
-                Some result
-            | Error msg ->
-                Log.info log "%s" msg;
-                None)
+        Log.info log "= %s =" id;
+        match result with
+        | Ok result ->
+            let log_u name u =
+              Log.info log "-> %s @[<hov>%a@]" name
+                Fmt.(list ~sep:sp string)
+                (List.map (fun (p, _, _) -> p) u)
+            in
+            log_u "compile" result.Selection.packages.compile_universes;
+            log_u "link" result.Selection.packages.link_universes;
+            Log.info log "(valid since opam-repository commit %s)"
+              result.Selection.commit;
+            Some result
+        | Error msg ->
+            Log.info log "%s" msg;
+            None)
 end
 
 (* Handle a request by distributing it among the worker processes and then aggregating their responses. *)
@@ -165,7 +178,7 @@ let v ~n_workers ~create_worker =
                    (* TODO Pass in a switch here to handle Cancellation.
                       handle t ~switch:(Lwt_switch.create ()) ~log request
                    *)
-                     (fun () -> handle t ~log request >|= Result.ok)
+                   (fun () -> handle t ~log request >|= Result.ok)
                    (function
                      | Failure msg -> Lwt_result.fail (`Msg msg)
                      | ex -> Lwt.return (Fmt.error_msg "%a" Fmt.exn ex))

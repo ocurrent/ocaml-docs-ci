@@ -1,0 +1,9 @@
+; The test-repo's source/ subdirectory contains synthetic opam
+; packages used as inputs for the test opam-repository (built by
+; build-timeline.sh and consumed by day11 batch via the testlab
+; profile). They are NOT part of the day11 dune build itself, so
+; we mark this directory tree as data_only — dune won't scan into
+; it for .opam files (which would otherwise produce duplicate
+; package errors, e.g. xref_forward at versions 1.0.0 and 1.0.1).
+
+(data_only_dirs sources packages base cache)

@@ -11,6 +11,5 @@ CREATE TABLE IF NOT EXISTS docs_ci_pipeline_index (
     epoch_linked    TEXT,
     epoch_html      TEXT,
     voodoo_do       TEXT,
-    voodoo_gen      TEXT,
     voodoo_prep     TEXT
 );

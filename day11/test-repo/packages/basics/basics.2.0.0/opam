@@ -1,0 +1,17 @@
+opam-version: "2.0"
+maintainer: "testlab@example.com"
+authors: ["testlab"]
+license: "ISC"
+synopsis: "Basics 2.0 (deliberately broken)"
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "odoc" {with-doc}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+url {
+  src: "http://127.0.0.1:@@PORT@@/basics-2.0.0.tar.gz"
+  checksum: "sha256=@@SHA256_BASICS_2_0_0@@"
+}

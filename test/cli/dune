@@ -1,6 +1,0 @@
-(mdx
- (files run.md)
- (deps
-  %{bin:epoch}
-  (file run))
- (package ocaml-docs-ci-client))

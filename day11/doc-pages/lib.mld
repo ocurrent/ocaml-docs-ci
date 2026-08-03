@@ -1,0 +1,38 @@
+{0 day11-lib}
+
+Shared utilities used across day11 libraries and binaries. {!Day11_lib.Run_log}
+tracks the lifecycle of a batch run with structured JSONL logging,
+phase files for mid-run status checks, and a final summary.
+{!Day11_lib.Progress} maintains immutable progress state written as
+[progress.json] for web dashboard polling. {!Day11_lib.History} provides
+append-only per-package build history in JSONL format with file locking
+for concurrent access. {!Day11_lib.Status_index} aggregates all packages' current
+build status into a single snapshot, detecting changes between runs.
+{!Day11_lib.Notify} sends messages to Slack, Zulip, Telegram, Email, or stdout.
+{!Day11_lib.Disk_usage} reports cache disk consumption by category. {!Day11_lib.Gc}
+garbage-collects unreferenced build layers and stale odoc store
+entries. {!Day11_lib.Classify} scans build logs to categorize failures as
+transient, missing depext, or genuine build errors. {!Day11_lib.Epoch} manages
+atomic documentation deployment via versioned epoch directories and a
+live symlink. {!Day11_lib.Build_config} persists batch run parameters so
+rerun/cascade commands need no CLI arguments. {!Day11_lib.Build_lock} tracks
+in-progress builds via file locks for dashboard and status reporting.
+{!Day11_lib.Package_list} generates the list of successfully-built packages for
+publishing.
+
+{1 Modules}
+
+{!modules:
+Day11_lib.Run_log
+Day11_lib.Progress
+Day11_lib.History
+Day11_lib.Status_index
+Day11_lib.Notify
+Day11_lib.Disk_usage
+Day11_lib.Gc
+Day11_lib.Classify
+Day11_lib.Epoch
+Day11_lib.Build_config
+Day11_lib.Build_lock
+Day11_lib.Package_list
+}

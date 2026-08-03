@@ -1,0 +1,91 @@
+(test
+ (name test_doc)
+ (modules test_doc)
+ (libraries day11_doc day11_test_util alcotest bos fpath opam-format yojson))
+
+(test
+ (name test_generate_plan)
+ (modules test_generate_plan)
+ (libraries
+  day11_doc
+  day11_opam_build
+  day11_opam_layer
+  day11_solution
+  day11_layer
+  alcotest
+  fpath
+  opam-format))
+
+(executable
+ (name test_doc_integration)
+ (modules test_doc_integration)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_sys
+  day11_solution
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format
+  yojson))
+
+(executable
+ (name test_generate_docs)
+ (modules test_generate_docs)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_sys
+  day11_layer
+  day11_opam_layer
+  day11_runner
+  day11_solver
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_doc_compile_link)
+ (modules test_doc_compile_link)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_sys
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_doc_pipeline)
+ (modules test_doc_pipeline)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_sys
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format))

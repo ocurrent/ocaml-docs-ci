@@ -1,0 +1,8 @@
+opam-version: "2.0"
+synopsis: "Test-lab synthetic: xref_intra"
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "odoc" {with-doc}
+
+]

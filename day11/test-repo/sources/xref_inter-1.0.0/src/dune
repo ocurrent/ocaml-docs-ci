@@ -1,0 +1,4 @@
+(library
+ (name xref_inter)
+ (public_name xref_inter)
+ (libraries basics))

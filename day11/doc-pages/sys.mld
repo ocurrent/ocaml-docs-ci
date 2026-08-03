@@ -1,0 +1,27 @@
+{0 day11-sys}
+
+Process execution primitives and filesystem utilities. {!Day11_sys.Run} launches
+subprocesses via Eio with captured stdout/stderr. {!Day11_sys.Sudo} wraps
+commands with privilege escalation for root-owned container artifacts.
+{!Day11_sys.Dir_lock} provides dual-layer (in-process Eio mutex + cross-process
+POSIX lockf) directory locking. {!Day11_sys.Fork_client} avoids the cost of
+forking a large process by delegating to a small helper daemon.
+{!Day11_sys.Atomic_swap} implements staging/commit/rollback for atomic directory
+replacement. {!Day11_sys.Tree} provides recursive hardlink, copy, and diff-based
+cleansing of directory trees. {!Day11_sys.Util} has miscellaneous helpers
+(nproc, dir_size).
+
+No domain knowledge — this library provides generic OS-level building
+blocks used by every layer above it in the hierarchy.
+
+{1 Modules}
+
+{!modules:
+Day11_sys.Run
+Day11_sys.Sudo
+Day11_sys.Dir_lock
+Day11_sys.Fork_client
+Day11_sys.Atomic_swap
+Day11_sys.Tree
+Day11_sys.Util
+}

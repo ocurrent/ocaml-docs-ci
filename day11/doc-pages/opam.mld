@@ -1,0 +1,20 @@
+{0 day11-opam}
+
+Pure opam metadata helpers with no solver dependency.
+{!Day11_opam.Git_packages} reads opam packages directly from git tree objects
+without a working tree checkout, supporting both lazy and eager
+loading, multi-repository layering, and inter-commit diffing.
+{!Day11_opam.Git_utils} opens git stores and resolves commits and refs.
+{!Day11_opam.Opam_env} provides the environment function for evaluating opam
+filter expressions (arch, os, os-distribution, etc.).
+This library has no dependency on the solver or the build system. It
+sits near the bottom of the hierarchy, providing the package index
+that the solver and build orchestration consume.
+
+{1 Modules}
+
+{!modules:
+Day11_opam.Git_packages
+Day11_opam.Git_utils
+Day11_opam.Opam_env
+}

@@ -1,0 +1,71 @@
+(test
+ (name test_solver_pool)
+ (modules test_solver_pool)
+ (libraries
+  alcotest
+  bos
+  day11_solver_pool
+  day11_solution
+  day11_test_util
+  eio
+  eio.unix
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_driver_solve)
+ (modules test_driver_solve)
+ (libraries
+  bos
+  day11_solver_pool
+  day11_solution
+  eio
+  eio.unix
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_ox_variants)
+ (modules test_ox_variants)
+ (libraries
+  bos
+  day11_batch
+  day11_opam_build
+  day11_opam_layer
+  day11_container
+  day11_opam
+  eio
+  eio.unix
+  eio_main
+  fpath
+  opam-format
+  rresult))
+
+(executable
+ (name test_who_wants_odoc_310)
+ (modules test_who_wants_odoc_310)
+ (libraries
+  bos
+  day11_solver_pool
+  day11_solution
+  day11_opam
+  eio
+  eio.unix
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_why_not_odoc_320)
+ (modules test_why_not_odoc_320)
+ (libraries
+  bos
+  day11_solver_pool
+  day11_solution
+  eio
+  eio.unix
+  eio_main
+  fpath
+  opam-format))

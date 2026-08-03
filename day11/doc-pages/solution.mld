@@ -1,0 +1,23 @@
+{0 day11-solution}
+
+Pure dependency graph types and operations. {!Day11_solution.Deps.t} is the
+fundamental type — a map from packages to their direct dependencies —
+used throughout the system. {!Day11_solution.Solve_result} carries both the build
+dependency graph (acyclic) and the doc dependency graph (may have
+cycles) returned by the solver. {!Day11_solution.Json} handles serialization
+for caching and inter-process communication. {!Day11_solution.Universe} computes a
+hash of a package's transitive dependency set, used to distinguish
+build contexts. {!Day11_solution.Rdeps} provides reverse dependency lookup.
+
+No I/O, no solver, no opam-format dependency beyond types. This
+library sits at the bottom of the dependency hierarchy.
+
+{1 Modules}
+
+{!modules:
+Day11_solution.Deps
+Day11_solution.Solve_result
+Day11_solution.Json
+Day11_solution.Universe
+Day11_solution.Rdeps
+}

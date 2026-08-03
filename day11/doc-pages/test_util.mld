@@ -1,0 +1,15 @@
+{0 day11-test-util}
+
+Shared test helpers for day11 test suites. {!Day11_test_util.Test_util} provides
+conveniences used across all day11 Alcotest tests: temporary directory
+creation with automatic cleanup, Eio event loop setup, result
+unwrapping that integrates with Alcotest failure reporting, filesystem
+helpers for directory and file creation, and environment-variable
+guards for skipping integration tests when external resources (such as
+an opam-repository checkout) are not available.
+
+{1 Modules}
+
+{!modules:
+Day11_test_util.Test_util
+}

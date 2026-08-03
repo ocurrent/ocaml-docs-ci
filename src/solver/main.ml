@@ -76,6 +76,11 @@ let () =
          export service ~on:Lwt_unix.stdin)
   | [| _prog; "--worker"; hash |] ->
       Solver.main (Git_unix.Store.Hash.of_hex hash)
+  | [| _prog; "test" |] ->
+      Solver.test
+        (Git_unix.Store.Hash.of_hex "ac01ad6037c0bdcca9f67fe49cd54475b585f9b2")
+  | [| _prog; "test-fake" |] -> Solver.test_fake ()
+  | [| _prog; "test-real"; repo_path |] -> Solver.test_real repo_path
   | args ->
       Fmt.failwith "Usage: ocaml-ci-solver (got %a)"
         Fmt.(array (quote string))

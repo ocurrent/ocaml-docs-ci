@@ -10,3 +10,6 @@ key.ml
 opam-repository/
 run.sh
 /capnp-secrets
+
+# local docker-compose env (UID/GID/DOCKER_GID)
+.env

@@ -1,0 +1,16 @@
+(library
+ (name day11_jtw)
+ (public_name day11.jtw)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_layer
+  day11_solver
+  bos
+  fpath
+  opam-format
+  rresult
+  str
+  yojson
+  unix))

@@ -1,0 +1,16 @@
+(executable
+ (name test_sys)
+ (libraries day11_sys day11_test_util alcotest eio_main bos))
+
+; Run under @runtest with DAY11_FORK_HELPER pointed at the built fork
+; helper. dune runtest (unlike dune exec) doesn't put the project's
+; public binaries on PATH, so Day11_sys.Fork_client couldn't otherwise
+; find day11-fork-helper and the Run tests would ENOENT.
+
+(rule
+ (alias runtest)
+ (action
+  (setenv
+   DAY11_FORK_HELPER
+   %{exe:../helper/fork_helper.exe}
+   (run %{exe:test_sys.exe}))))

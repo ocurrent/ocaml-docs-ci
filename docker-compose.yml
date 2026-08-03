@@ -1,146 +1,193 @@
-version: "3.8"
+# ocaml-docs-ci, post-day11.
+#
+# Two services:
+#   - daemon — runs the ocaml-docs-ci binary. Drives runc directly
+#     to build each opam package in a sandboxed container, so it
+#     needs --privileged plus access to the host's runc (the
+#     debian-12 runc shipped in the image is enough on most kernels;
+#     swap to a bind-mount of /usr/bin/runc if the host's is newer).
+#   - web — Caddy, serving rendered HTML from the day11 cache
+#     directly and reverse-proxying everything else (dashboard, job
+#     logs, snapshot pages) to the daemon at :8080.
+#
+# The daemon resolves everything under /home/app (the image's app-user
+# HOME). The whole [.day11] tree lives on a single named volume mounted
+# at /home/app/.day11. The profiles it can run are baked into the image
+# at /home/app/.day11/profiles by the Dockerfile; --profiles selects
+# which of them actually run.
+# Everything under .day11 — cache,
+# snapshots, overlays, and scratch (TMPDIR=/home/app/.day11/cache/tmp) —
+# shares one volume/filesystem, so the daemon's hardlinks (cp --link
+# of dep layers from cache into scratch on Stack.merge) and its cross-dir
+# rename()s all stay within a single mount and just work.
+
 services:
-
-  scheduler:
-    image: ocurrent/ocluster-scheduler:live
+  daemon:
+    # ocurrent-deployer pins this to a name@sha256 digest before deploying.
+    image: ocurrent/ocaml-docs-ci:live
+    restart: unless-stopped
+    privileged: true
+    # The daemon builds (and imports) its base image via the host
+    # Docker daemon — [docker build] / [docker create] over the mounted
+    # socket below. The socket is group-owned by [docker]; since the
+    # daemon runs as the non-root app user, add that group so it can
+    # talk to the socket. This must match the docker group's gid *on the
+    # host*: dill's docker.io install put it at 107 (999 was already taken
+    # by systemd-journal). Update this if the host's docker gid differs.
+    group_add:
+      - "107"
+    # The default soft nofile limit (1024) is far too low for hundreds
+    # of concurrent builds — each holds open logs, overlay dirs, and
+    # pipes to sudo/runc, and exhaustion (EMFILE) cascades into mass
+    # build failures.
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    init: false   # dumb-init already in the image
+    ports:
+      - "8080:8080"
     command:
-      - --secrets-dir=/capnp-secrets
-      - --capnp-secret-key-file=/capnp-secrets/key.pem
-      - --capnp-listen-address=tcp:0.0.0.0:9000
-      - --capnp-public-address=tcp:scheduler:9000
-      - --pools=linux-x86_64
-      - --state-dir=/var/lib/ocluster-scheduler
-      - --default-clients=ocaml-docs-ci
-    init: true
-    ports:
-      - "9000:9000"
+      # The image entrypoint is generic (it only preps TMPDIR), so the
+      # command names the binary. Run one-off CLI tools in the same
+      # environment with e.g.:
+      #   docker compose run --rm daemon day11 batch --profile=full ...
+      - ocaml-docs-ci
+      # Single profile: running quick+full concurrently split the doc
+      # HTML between the two profiles' epoch trees — doc layers are
+      # shared (content-addressed) across profiles, but the HTML lands
+      # in the epoch of whichever profile dispatched the layer first,
+      # leaving permanent holes in the other's site (dangling
+      # cross-package links). Until cache-hit publication reconciles
+      # epochs, run full only.
+      - --profiles=full
+      - --remote=https://github.com/ocaml/opam-repository.git=repo/opam-repository
+      - --jobs=40
+      - --cores-per-build=4
+      - --overcommit=2.5
+      - --port=8080
     volumes:
-      - 'scheduler-data:/var/lib/ocluster-scheduler'
-      - 'capnp-secrets:/capnp-secrets'
-
-  worker:
-    # image: ocurrent/ocluster-worker:live
-    build:
-      dockerfile: docker/worker/Dockerfile
-      context: .
-    command:
-      - --connect=/capnp-secrets/pool-linux-x86_64.cap
-      - --name=ocluster-worker
-      - --allow-push=ocurrentbuilder/staging,ocurrent/opam-staging
-      - --capacity=1
-      - --state-dir=/var/lib/ocluster
-      - --obuilder-store=rsync:/var/cache/obuilder
-      - --rsync-mode=hardlink
-      - --obuilder-healthcheck=0
-      - --verbose
-    init: true
-    privileged: true            # required for the Docker in Docker container to work
-    restart: on-failure         # (wait for the scheduler to write the pool cap)
-    volumes:
-      - 'worker-data:/var/lib/ocluster'
-      - '/var/run/docker.sock:/var/run/docker.sock'
-      - 'capnp-secrets:/capnp-secrets:ro'
+      # All of .day11 on a single named volume: cache (built layers +
+      # rendered HTML), snapshots, overlays, the opam-repository mirrors
+      # (repo/, git-cloned by --remote on first run), and scratch (TMPDIR=
+      # /home/app/.day11/cache/tmp). The image-baked profiles at
+      # /home/app/.day11/profiles are preserved — an empty named volume
+      # is seeded from the image's directory on first creation, so unlike
+      # a bind-mount it doesn't shadow them.
+      - day11:/home/app/.day11
+      # OCurrent state (sqlite + per-job logs). Mounted under
+      # /var/lib/ocurrent matching the image's WORKDIR.
+      - ocurrent-data:/var/lib/ocurrent
+      # Build/import the base image via the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - DOCKER_BUILDKIT=1
-      - DOCKER_CLI_EXPERIMENTAL=enabled
-
-  init:
-    build:
-      dockerfile: docker/init/Dockerfile
-      context: .
-    environment:
-      - KEYFILE=/ssh/id_ed25519
-      - KEYTYPE=ed25519
-    volumes:
-      - 'ssh-credentials:/ssh/'
-
-  storage-server:
-    build:
-      dockerfile: docker/storage/Dockerfile
-      context: .
-    depends_on:
-      - "init"
-    ports:
-      - "2222:22"
-    volumes:
-      - 'ssh-credentials:/root/.ssh/'
-      - 'docs-data:/data'
-
-  http-raw-live-website:
-    restart: on-failure
-    image: nginx
-    command: >
-      bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/html-live/html-raw /usr/share/nginx/html
-      && nginx -g 'daemon off;'"
-    ports:
-        - "8002:8000"
-    volumes:
-      - 'docs-data:/data/'
-
-  http-raw-current-website:
-    restart: on-failure
-    image: nginx
-    command: >
-      bash -c "rm -rf /usr/share/nginx/html
-      && ln -s /data/html-current/html-raw /usr/share/nginx/html
-      && nginx -g 'daemon off;'"
-    ports:
-        - "8003:8000"
-    volumes:
-      - 'docs-data:/data/'
-
-  ocaml-docs-ci:
-    # Use published docker container
-    # image: ocurrent/docs-ci:live
-    # Build from local sources
-    build:
-      dockerfile: Dockerfile
-      context: .
-    depends_on:
-      - "storage-server"
-      - "scheduler"
-      - "worker"
-    command:
-      - --confirm=above-average
-      - --ocluster-submission=/capnp-secrets/submit-ocaml-docs-ci.cap
-      - --ssh-host=172.17.0.1 # ocluster jobs are spawned by the host's docker, so they don't have
-                              # access to this docker-compose's network. therefore we have to get
-                              # to the storage server through the host network.
-      - --ssh-port=2222
-      - --ssh-user=root
-      - --ssh-privkey=/ssh/id_ed25519
-      - --ssh-pubkey=/ssh/id_ed25519.pub
-      - --ssh-folder=/data
-      # - --voodoo-repo=""      # Voodoo repository to use
-      # - --voodoo-branch=""    # Git branch from the voodoo repository
-      - --jobs=6
-      - --limit=1               # Only build the most recent version of each package
-      - --filter=capnp-rpc      # NOTE Only build capnp-rpc documentation.
-      - --capnp-listen-address=tcp:0.0.0.0:9080
-      - --capnp-public-address=tcp:localhost:9080
-      - --migration-path=/migrations
-    init: true
-    restart: on-failure         # (wait for the scheduler to write the submission cap)
-    ports:
-      - 9080:9080
-      - 8080:8080 # HTTP UI
-    volumes:
-      - 'ocaml-docs-ci-data:/var/lib/ocurrent'
-      - "capnp-secrets:/capnp-secrets"
-      - 'ssh-credentials:/ssh/'
-    environment:
+      # HOME stays /home/app (set in the image); the daemon derives
+      # ~/.day11/{profiles,cache} from it.
       - OCAMLRUNPARAM=b
-      - CI_PROFILE=dev
-    x-develop:
-      watch:
-        - action: rebuild
-          path: ./src
+
+  web:
+    image: caddy:alpine
+    restart: unless-stopped
+    depends_on:
+      - daemon
+    ports:
+      # 80 for the ACME HTTP-01 challenge + HTTP->HTTPS redirect, 443 for
+      # TLS (and 443/udp for HTTP/3). Caddy auto-provisions a Let's Encrypt
+      # cert for the domain named in the Caddyfile; both must be reachable
+      # from the internet for issuance to succeed.
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    # The Caddyfile is shipped to the remote daemon as an inline Compose
+    # config (see the top-level `configs:` block below) rather than bind-
+    # mounting /etc/caddy. ocurrent-deployer runs `docker --context
+    # dill.caelum.ci.dev compose up`, so any bind source would resolve on
+    # the remote host's filesystem, not in the deployer's checkout — only
+    # an inline config ships the file's bytes to the remote daemon.
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      # Serve rendered HTML straight from the shared day11 volume,
+      # mounted read-only at /srv. The per-arch cache root is a subdir
+      # of it (/srv/cache/debian-bookworm-x86_64); the Caddyfile prepends
+      # that prefix. NB: not /data — that's Caddy's own state dir.
+      - day11:/srv:ro
+      # Caddy's data (instance id, any future certs) and autosaved
+      # config. Named so they survive container recreation rather than
+      # piling up as anonymous volumes.
+      - caddy-data:/data
+      - caddy-config:/config
 
 volumes:
-  ocaml-docs-ci-data:
-  worker-data:
-  scheduler-data:
-  capnp-secrets:
-  docs-data:
-  ssh-credentials:
+  day11:
+  caddy-data:
+  caddy-config:
+  ocurrent-data:
+
+# Caddy front-end config, inlined so the deployment is self-contained and
+# needs nothing pre-placed on the host. Compose ships this content to the
+# remote daemon and mounts it at /etc/caddy/Caddyfile in the web service.
+configs:
+  caddyfile:
+    content: |
+      # Caddy front-end for ocaml-docs-ci.
+      #
+      # Two responsibilities:
+      #   1. Serve rendered HTML straight from the day11 cache.
+      #      Each profile's docs are built into a per-toolchain epoch dir and
+      #      exposed through a [html-live] symlink that's swapped manually on
+      #      promotion. day11 lays a profile's live docs out at
+      #      [<cache>/html-<profile>/html-live/p/<pkg>/<ver>/doc/index.html]
+      #      (html-live -> epoch-<hash>/html), and the daemon links to
+      #      [/profiles/<NAME>/docs/p/<pkg>/<ver>/...].
+      #      The .day11 volume is mounted read-only at /srv (Caddy keeps its
+      #      own state on /data, so we can't reuse that path). Rendered HTML
+      #      is arch-independent, so it lives under a flat per-profile dir —
+      #      live docs are under [/srv/cache/html/<profile>/html-live/].
+      #      The html-live symlink is *relative* (epoch-<hash>/html), so it
+      #      resolves within /srv. Until the first promote, html-live is absent
+      #      and these routes 404 (the rest of the site still proxies fine).
+      #   2. Reverse-proxy everything else to the daemon's web UI on :8080 —
+      #      the dashboard, snapshot pages, /job/ log viewer, diff pages, etc.
+      #
+      # TLS: naming a real domain (not :80) turns on Caddy's automatic HTTPS —
+      # it provisions and renews a Let's Encrypt cert over ACME and redirects
+      # plain HTTP to HTTPS. Needs ports 80 + 443 reachable from the internet
+      # and a DNS record for the domain pointing here. Certs/account key persist
+      # on the /data volume so restarts don't re-request.
+      dill.caelum.ci.dev {
+        # gzip-compress the static .css/.js/.json odoc emits (and HTML).
+        encode gzip
+
+        # Allow large request bodies for anything the daemon surfaces
+        # (e.g. snapshot uploads via the API).
+        request_body {
+          max_size 100MB
+        }
+
+        # /profiles/<name>/docs/<rest> → serve from the day11 cache.
+        # Capture 1 is the profile, capture 2 the path within its html tree.
+        @docs path_regexp docs ^/profiles/([^/]+)/docs/(.*)$
+        handle @docs {
+          root * /srv/cache/html/{re.docs.1}/html-live
+          rewrite * /{re.docs.2}
+          # odoc trees carry an index.html in every directory; serve it for
+          # bare-directory requests. Missing files 404 (file_server default).
+          file_server {
+            index index.html
+          }
+        }
+
+        # Everything else → the daemon. Caddy forwards the Host header and
+        # sets the X-Forwarded-* headers automatically.
+        handle {
+          reverse_proxy daemon:8080 {
+            # Don't buffer responses: the /job/ log viewer streams
+            # (SSE-style) and must flush as data arrives. Caddy applies
+            # no upstream read timeout by default, so long-lived streams
+            # stay open (nginx needed an explicit 1d bump for this).
+            flush_interval -1
+          }
+        }
+      }

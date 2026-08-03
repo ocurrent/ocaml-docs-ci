@@ -1,0 +1,5 @@
+(executable
+ (name layer_cli)
+ (public_name day11-layer-cli)
+ (package day11)
+ (libraries day11_layer cmdliner bos eio eio_main fpath str))

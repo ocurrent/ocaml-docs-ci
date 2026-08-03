@@ -1,0 +1,13 @@
+(library
+ (name day11_solver_pool)
+ (public_name day11.solver-pool)
+ (libraries
+  bos
+  day11_solution
+  day11_sys
+  eio
+  eio.unix
+  logs
+  opam-format
+  unix
+  yojson))

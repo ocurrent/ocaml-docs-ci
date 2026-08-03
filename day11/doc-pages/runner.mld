@@ -1,0 +1,22 @@
+{0 day11-runner}
+
+Intersection of layered storage and container execution. {!Day11_runner.Run_in_layers}
+handles the complete container lifecycle: stacking a base layer plus
+dependency layers as an overlayfs, optionally seeding the upper
+directory via a caller-supplied [prep_upper] callback, mounting,
+running the container described by an OCI spec, and cleaning up.
+
+This module knows nothing about opam, doc generation, or any specific
+build domain. All domain-specific concerns — switch state, environment
+variables, bind mounts, commands — are injected by the caller through
+the [prep_upper] callback and the {!Day11_container.Oci_spec.t}.
+
+Depends on {!day11-layer} for storage and stacking, {!day11-container}
+for overlayfs mounts and runc execution, and {!day11-sys} for
+subprocess primitives.
+
+{1 Modules}
+
+{!modules:
+Day11_runner.Run_in_layers
+}

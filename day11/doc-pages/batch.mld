@@ -1,0 +1,40 @@
+{0 day11-batch}
+
+Batch orchestration for documentation builds. {!Day11_batch.Targets} resolves CLI
+arguments into a list of packages to process, supporting explicit
+targets, JSON file input, small-universe mode, and all-versions mode.
+{!Day11_batch.Incremental_solver} caches solver results keyed by opam-repo commit
+SHA and reuses solutions whose examined package set does not overlap
+with changed packages, avoiding redundant re-solving across runs.
+{!Day11_batch.Blessing} selects the canonical documentation universe for each
+package when it appears in multiple solutions, using a heuristic that
+maximizes dependency count for richer docs. {!Day11_batch.Rerun} rebuilds failed
+layers and cascades recovery to dependents whose failing dependency has
+since succeeded. {!Day11_batch.Summary} aggregates build and doc outcomes, records
+per-package history, generates the status index, and prints a
+human-readable summary. {!Day11_batch.Profile} manages named analysis
+configurations (repositories, targets, platform settings) stored as
+JSON files. {!Day11_batch.Profile_ctx} is the resolved context that
+pairs a profile with everything derived from it — loaded git package
+index, resolved repo SHAs, opam env, base layer, build env, shared
+hash cache — so downstream build/doc APIs take one value instead of
+a long list of profile-shaped arguments. {!Day11_batch.Snapshot}
+captures point-in-time state of all opam repositories within a
+profile, keyed by commit SHAs.
+
+Sits near the top of the dependency hierarchy, depending on
+{!day11-opam-build}, {!page-solution}, {!day11-lib}, {!day11-layer},
+and {!day11-sys}.
+
+{1 Modules}
+
+{!modules:
+Day11_batch.Targets
+Day11_batch.Incremental_solver
+Day11_batch.Blessing
+Day11_batch.Rerun
+Day11_batch.Summary
+Day11_batch.Profile
+Day11_batch.Profile_ctx
+Day11_batch.Snapshot
+}

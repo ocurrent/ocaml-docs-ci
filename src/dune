@@ -3,14 +3,17 @@
  (package ocaml-docs-ci)
  (name ocaml_docs_ci)
  (libraries
+  bos
+  fpath
+  day11.batch
+  day11.lib
+  day11.opam-helpers
   current
   current.cache
   current_git
   current_github
   current_web
   current_docker
-  astring
-  dockerfile
   cmdliner
   fmt.tty
   logs.fmt
@@ -18,12 +21,15 @@
   lwt
   lwt.unix
   memtrace
-  obuilder-spec
   opam-file-format
   docs_ci_pipelines
   docs_ci_lib
+  docs_ci_web
   dune-build-info
   mirage-crypto-rng.unix
-  prometheus-app.unix)
+  prometheus-app.unix
+  eio_main
+  lwt_eio
+  unix)
  (preprocess
   (pps ppx_deriving_yojson)))

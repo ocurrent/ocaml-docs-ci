@@ -1,0 +1,20 @@
+(library
+ (name docs_ci_web)
+ (public_name ocaml-docs-ci.web)
+ (libraries
+  cohttp
+  cohttp-lwt
+  cohttp-lwt-unix
+  current
+  current_web
+  day11.batch
+  day11.lib
+  fpath
+  lwt
+  prometheus
+  prometheus-app
+  routes
+  sqlite3
+  tyxml
+  unix
+  yojson))

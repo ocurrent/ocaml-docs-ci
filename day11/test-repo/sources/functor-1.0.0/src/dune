@@ -1,0 +1,3 @@
+(library
+ (name functor)
+ (public_name functor))

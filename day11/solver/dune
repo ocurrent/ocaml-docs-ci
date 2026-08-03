@@ -1,0 +1,20 @@
+(library
+ (name day11_solver)
+ (public_name day11.solver)
+ (modules :standard \ solver_worker)
+ (libraries
+  bos
+  day11_solution
+  day11_opam
+  fmt
+  fpath
+  opam-0install
+  opam-format
+  rresult))
+
+(executable
+ (name solver_worker)
+ (modules solver_worker)
+ (public_name day11-solver-worker)
+ (package day11)
+ (libraries cmdliner day11_solver day11_solution opam-format yojson))

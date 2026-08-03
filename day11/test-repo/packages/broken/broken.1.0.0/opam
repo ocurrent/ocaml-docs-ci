@@ -1,0 +1,22 @@
+opam-version: "2.0"
+maintainer: "testlab@example.com"
+authors: ["testlab"]
+license: "ISC"
+synopsis: "Intentionally uncompilable test-lab package"
+description: """
+Contains a deliberate type error in broken.ml. Used as a canary
+for the GUI's failure-display path: every snapshot that includes
+this package should show a failure with the corresponding ocamlc
+error message in the history's Error column.
+"""
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+url {
+  src: "http://127.0.0.1:@@PORT@@/broken-1.0.0.tar.gz"
+  checksum: "sha256=@@SHA256_BROKEN_1_0_0@@"
+}

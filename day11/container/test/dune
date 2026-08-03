@@ -1,0 +1,34 @@
+(test
+ (name test_container)
+ (modules test_container)
+ (libraries day11_container day11_test_util alcotest bos fpath yojson))
+
+(executable
+ (name test_integration)
+ (modules test_integration)
+ (libraries
+  day11_container
+  day11_layer
+  day11_sys
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  yojson))
+
+(executable
+ (name test_build_package)
+ (modules test_build_package)
+ (libraries
+  day11_container
+  day11_layer
+  day11_opam_layer
+  day11_sys
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  yojson))

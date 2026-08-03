@@ -1,1 +1,1 @@
-available: [ arch != "x86_32" ]
+available: [ arch != "x86_32" & os = "linux" ]

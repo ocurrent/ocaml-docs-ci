@@ -1,0 +1,119 @@
+{0 day11-layer}
+
+Generic, domain-agnostic primitives for input-addressed build layers
+stored on disk. A layer is a directory containing an [fs/] tree (the
+filesystem delta, i.e. the overlayfs upper) plus metadata files. The
+library knows about layer directories, generic JSON metadata, file
+scanning, hardlink merging, and overlay-mount planning — and nothing
+about opam, packages, or doc generation. Domain-flavoured layers live
+in the sister library {!page-opam_layer}.
+
+{1 Naming: input-addressed, not content-addressed}
+
+Each layer is named by the first 12 hex characters of its {e layer
+hash} — an MD5 ({!Stdlib.Digest}) of the build {b inputs} (base image,
+package name, and dependency layer hashes), {b not} a digest of the
+produced [fs/] bytes. This is a Nix-style derivation key: identical
+recipes collide and reuse the cache, even before either build has
+produced a file. {!Day11_layer.Hash} computes these keys and
+{!Day11_layer.Dir} owns the naming convention that places each layer at
+its first-12-hex-character hash prefix under the [os_dir] (there is no
+[build-] prefix — the basename is the bare hash prefix).
+
+The flip side: because the key is the recipe and never the output, a
+non-deterministic build silently reuses whichever [fs/] landed in the
+cache first. Fine for deterministic builds; a footgun otherwise.
+
+{1 On-disk layout}
+
+Every layer is a self-contained directory under the [os_dir]:
+
+{tree@text[
+{hash[:12]}/
+  layer.json      generic metadata (Day11_layer.Meta.t)
+  layer.log       captured stdout/stderr from the build
+  last_used       sentinel file; mtime is the LRU timestamp
+  fs/             overlay upper: new/changed files from the build
+
+  build.json      opam-package-build sidecar (Day11_opam_layer.Build_meta)
+  doc.json        odoc layer sidecar         (Day11_opam_layer.Doc_meta)
+  ...             future domains add their own sidecars
+
+layer_status.jsonl   append-only finalisation log (Day11_layer.Layer_status)
+
+packages/{id}/
+  {hash[:12]}     symlink registry (Day11_layer.Symlinks)
+]tree}
+
+The {e kind} of a layer is determined by which sidecar files exist in
+its directory, not by a field inside [layer.json]. The generic library
+never enumerates the possible kinds; each domain library owns its own
+sidecar format and filename convention. {b Sidecar files must be valid
+JSON} — unenforced here (no part of [day11_layer] reads sidecars) but
+relied on by cache-walking tools that pretty-print contents without
+linking any domain library.
+
+{1 Modules}
+
+The core type {!Day11_layer.Layer} represents a layer on disk via its
+hash and directory path, with helpers for the [fs/] and metadata paths
+and existence/status checks; it is re-exported as [Day11_layer.t].
+{!Day11_layer.Base} represents the foundational rootfs image at the
+bottom of every overlay stack. {!Day11_layer.Meta} serializes the
+generic per-layer metadata ([layer.json]) covering exit status, parent
+hashes, build uid/gid, timing, and disk usage. {!Day11_layer.Last_used}
+maintains a cheap mtime-based sentinel for LRU eviction, split off from
+{!Day11_layer.Meta} so a touch doesn't rewrite JSON.
+
+{!Day11_layer.Stack} merges multiple layers' [fs/] trees into one
+directory via [sudo cp --archive --link] hardlinked copies (with a
+[merge_no_sudo] variant for user-owned layers), and plans overlayfs
+lowerdir layouts that fit the kernel's mount-options byte budget.
+{!Day11_layer.Symlinks} maintains per-identifier tracking symlinks for
+layer discovery, and {!Day11_layer.Scan} enumerates layers and those
+symlinks from the on-disk cache. {!Day11_layer.Import} bootstraps a
+base layer by exporting a Docker image into the layer's [fs/].
+
+{!Day11_layer.Layer_status} keeps a durable append-only log
+([layer_status.jsonl]) of layer finalisation outcomes, last entry per
+hash winning. {!Day11_layer.Relocations} scans an [fs/] tree for
+non-relocatable absolute paths that would stop a layer being portable
+between backends or machines. {!Day11_layer.Snapshot} provides
+lightweight before/after filesystem comparison (size, mtime, inode per
+file) for the native build backend, diffing a prefix to recover the
+list of files a build produced.
+
+{1 Error-handling convention}
+
+- Read, maybe-exists lookup: returns an [option].
+- Read that must exist or parse: returns a [result] whose error is an
+  [Rresult.R.msg].
+- Write / create / mutate: returns a [result] whose error is an
+  [Rresult.R.msg].
+- Best-effort bookkeeping (LRU touch, status append): returns [unit],
+  errors silently ignored — they must never fail a build.
+
+{1 Dependencies}
+
+Depends on {!page-sys} for subprocess and sudo access, and on Eio for
+filesystem and process effects (most functions take an
+[Eio_unix.Stdenv.base]). Has no opam or package-domain knowledge —
+that lives in sidecar files owned by higher libraries.
+
+{1 Module index}
+
+{!modules:
+Day11_layer.Layer
+Day11_layer.Base
+Day11_layer.Hash
+Day11_layer.Dir
+Day11_layer.Meta
+Day11_layer.Last_used
+Day11_layer.Stack
+Day11_layer.Symlinks
+Day11_layer.Scan
+Day11_layer.Import
+Day11_layer.Layer_status
+Day11_layer.Relocations
+Day11_layer.Snapshot
+}

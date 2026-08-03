@@ -1,0 +1,17 @@
+opam-version: "2.0"
+maintainer: "testlab@example.com"
+authors: ["testlab"]
+license: "ISC"
+synopsis: "Stdlib xref canary"
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "odoc" {with-doc}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+url {
+  src: "http://127.0.0.1:@@PORT@@/stdlib_ref-1.0.0.tar.gz"
+  checksum: "sha256=@@SHA256_STDLIB_REF_1_0_0@@"
+}

@@ -1,0 +1,69 @@
+(executable
+ (name benchmark)
+ (modules benchmark)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_solution
+  day11_layer
+  day11_solver
+  eio_main
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name benchmark_day10)
+ (modules benchmark_day10)
+ (libraries day11_solver fpath opam-format unix))
+
+(executable
+ (name benchmark_builds)
+ (modules benchmark_builds)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_sys
+  day11_layer
+  day11_solver
+  bos
+  eio_main
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name benchmark_docs)
+ (modules benchmark_docs)
+ (libraries
+  day11_opam_build
+  day11_container
+  day11_doc
+  day11_sys
+  day11_layer
+  day11_solver
+  bos
+  eio_main
+  fmt
+  logs
+  logs.fmt
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name trial_run)
+ (modules trial_run)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_sys
+  day11_layer
+  day11_solver
+  day11_solver_pool
+  bos
+  eio_main
+  fpath
+  git-unix
+  opam-format
+  unix))

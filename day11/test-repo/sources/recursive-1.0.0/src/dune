@@ -1,0 +1,3 @@
+(library
+ (name recursive)
+ (public_name recursive))

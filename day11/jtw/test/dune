@@ -1,0 +1,28 @@
+(test
+ (name test_jtw)
+ (modules test_jtw)
+ (libraries
+  day11_jtw
+  day11_test_util
+  alcotest
+  astring
+  bos
+  fpath
+  opam-format
+  yojson))
+
+(executable
+ (name test_jtw_integration)
+ (modules test_jtw_integration)
+ (libraries
+  day11_opam_build
+  day11_jtw
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format))

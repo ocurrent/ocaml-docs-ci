@@ -1,0 +1,3 @@
+(library
+ (name broken)
+ (public_name broken))

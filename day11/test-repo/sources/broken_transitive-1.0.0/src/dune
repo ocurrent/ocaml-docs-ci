@@ -1,0 +1,4 @@
+(library
+ (name broken_transitive)
+ (public_name broken_transitive)
+ (libraries broken))

@@ -108,6 +108,54 @@ $ docker-compose -f docker-compose.yml up
 
 You should then be able to watch the pipeline in action at `http://localhost:8080`.
 
+### Overriding the odoc toolchain
+
+By default a profile documents the world with the mainline `odoc` /
+`odoc-driver` / `sherlodoc` from opam-repository. To instead build the docs
+with an odoc toolchain from a **git branch** (e.g. to test an unreleased odoc
+fix across the whole opamverse), use a *github pin overlay*.
+
+Pass one or more overlays on the command line (see the `daemon` service in
+[docker-compose.yml](docker-compose.yml)):
+
+```
+--github-pin-overlay=https://github.com/jonludlam/odoc#eliom-fix=overlays/eliom-fix
+```
+
+The argument is `URL[#BRANCH]=PATH`:
+
+- `URL` — the odoc fork to track (omit `#BRANCH` to track the default branch).
+- `PATH` — where, under `.day11/`, to materialise the overlay.
+
+On a schedule the daemon then:
+
+1. clones/fetches the branch into `‹PATH›/upstream`;
+2. reads the branch HEAD sha, the latest git **tag** (e.g. `3.2.1`), and the
+   commit's committer **epoch** (`git show -s --format=%ct`);
+3. regenerates a small opam-repository at `‹PATH›/repo` containing `odoc`,
+   `odoc-driver`, `odoc-parser`, `odoc-md` and `sherlodoc`, each at a
+   synthesised version `‹tag›+‹branch›.‹epoch›.‹sha7›`
+   (e.g. `3.2.1+eliom-fix.1782817535.116707b`) whose `url.src` points at the
+   exact branch commit.
+
+Because the `+‹branch›.…` suffix sorts **higher** than the plain mainline
+version, and the epoch is monotonic, the solver always prefers the newest
+commit on the branch — so each push to the branch is automatically picked up,
+rebuilds the doc toolchain, and re-links the world against it.
+
+A profile opts in by listing the overlay in its `opam_repositories`, *after*
+mainline, in its `‹profile›.json`:
+
+```json
+"opam_repositories": ["repo/opam-repository", "overlays/eliom-fix/repo"]
+```
+
+The overlay is visible both to the doc-toolchain resolver (so `odoc`/
+`odoc-driver` are built from the branch) and to every package's `with-doc`
+closure. The bundled `eliom-fix` profile is a worked example; its
+`eliom-baseline` twin is identical but *without* the overlay, so diffing the
+two isolates exactly what the odoc changes did to the output.
+
 ### Migrations
 
 Migrations are managed using [omigrate](https://github.com/tmattio/omigrate). If you are using an opam switch for ocaml-docs-ci then omigrate should be installed and you can create a new migration by doing this from the project root:

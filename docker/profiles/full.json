@@ -1,0 +1,26 @@
+{
+  "name": "full",
+  "opam_repositories": [
+    "repo/opam-repository"
+  ],
+  "odoc_repo": null,
+  "opam_build_repo": null,
+  "compiler": null,
+  "target_mode": {
+    "versions": "all",
+    "names": "all"
+  },
+  "with_doc": true,
+  "with_jtw": false,
+  "jtw_repo": null,
+  "arch": "x86_64",
+  "os_distribution": "debian",
+  "os_version": "trixie",
+  "driver_compiler": "",
+  "extra_pins": [],
+  "pinned_versions": [],
+  "patches_dir": null,
+  "base_image_digest": null,
+  "base_image_updated": null,
+  "html_dir": "cache/html/full"
+}

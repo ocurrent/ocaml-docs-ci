@@ -1,0 +1,8 @@
+opam-version: "2.0"
+synopsis: "Test-lab synthetic: stdlib_ref"
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "odoc" {with-doc}
+
+]

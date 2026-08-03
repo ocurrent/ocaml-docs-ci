@@ -11,6 +11,7 @@ type t = {
   constraints : OpamFormula.version_constraint OpamTypes.name_map;
   (* User-provided constraints *)
   test : OpamPackage.Name.Set.t;
+  doc : bool;
 }
 
 let user_restrictions t name = OpamPackage.Name.Map.find_opt name t.constraints
@@ -28,7 +29,9 @@ let filter_deps t pkg f =
   let test = OpamPackage.Name.Set.mem (OpamPackage.name pkg) t.test in
   f
   |> OpamFilter.partial_filter_formula (env t pkg)
-  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:false ~dev
+  (* Note: ~post:true is needed because ocaml-compiler uses {post} on critical
+     deps like base-unix for non-Windows. The t.doc flag controls {with-doc}. *)
+  |> OpamFilter.filter_deps ~build:true ~post:true ~test ~doc:t.doc ~dev
        ~dev_setup:false ~default:false
 
 let candidates t name =
@@ -44,25 +47,24 @@ let candidates t name =
           let user_constraints = user_restrictions t name in
           OpamPackage.Version.Map.bindings versions
           |> List.rev_map (fun (v, opam) ->
-                 match user_constraints with
-                 | Some test
-                   when not
-                          (OpamFormula.check_version_formula
-                             (OpamFormula.Atom test) v) ->
-                     (v, Error (UserConstraint (name, Some test)))
-                 | _ -> (
-                     let pkg = OpamPackage.create name v in
-                     let available = OpamFile.OPAM.available opam in
-                     match
-                       OpamFilter.eval ~default:(B false) (env t pkg) available
-                     with
-                     | B true -> (v, Ok opam)
-                     | B false -> (v, Error Unavailable)
-                     | _ ->
-                         OpamConsole.error
-                           "Available expression not a boolean: %s"
-                           (OpamFilter.to_string available);
-                         (v, Error Unavailable))))
+              match user_constraints with
+              | Some test
+                when not
+                       (OpamFormula.check_version_formula
+                          (OpamFormula.Atom test) v) ->
+                  (v, Error (UserConstraint (name, Some test)))
+              | _ -> (
+                  let pkg = OpamPackage.create name v in
+                  let available = OpamFile.OPAM.available opam in
+                  match
+                    OpamFilter.eval ~default:(B false) (env t pkg) available
+                  with
+                  | B true -> (v, Ok opam)
+                  | B false -> (v, Error Unavailable)
+                  | _ ->
+                      OpamConsole.error "Available expression not a boolean: %s"
+                        (OpamFilter.to_string available);
+                      (v, Error Unavailable))))
 
 let pp_rejection f = function
   | UserConstraint x ->
@@ -87,6 +89,32 @@ let read_package store pkg hash =
       | _ ->
           Fmt.failwith "Bad Git object type for %s!" (OpamPackage.to_string pkg)
       )
+
+let extend_packages packages =
+  OpamPackage.Name.Map.map
+    (fun versions ->
+      OpamPackage.Version.Map.map
+        (fun opam ->
+          let extensions = OpamFile.OPAM.extensions opam in
+          let pp =
+            OpamFormat.V.(
+              package_formula `Conj (filtered_constraints ext_version))
+          in
+          try
+            let extra_doc_deps =
+              OpamStd.String.Map.find "x-extra-doc-deps" extensions
+            in
+            let raw =
+              OpamPp.parse pp ~pos:OpamTypesBase.pos_null extra_doc_deps
+            in
+            let deps = OpamFile.OPAM.depends opam in
+            let x = OpamFormula.ands_to_list raw in
+            let y = OpamFormula.ands_to_list deps in
+            let deps = x @ y |> OpamFormula.ands in
+            OpamFile.OPAM.with_depends deps opam
+          with Not_found -> opam)
+        versions)
+    packages
 
 (* Get a map of the versions inside [entry] (an entry under "packages") *)
 let read_versions store (entry : Store.Value.Tree.entry) =
@@ -131,5 +159,6 @@ let read_packages store commit =
                OpamPackage.Name.Map.empty)
 
 let create ?(test = OpamPackage.Name.Set.empty)
-    ?(pins = OpamPackage.Name.Map.empty) ~constraints ~env ~packages () =
-  { env; packages; pins; constraints; test }
+    ?(pins = OpamPackage.Name.Map.empty) ?(doc = false) ~constraints ~env
+    ~packages () =
+  { env; packages; pins; constraints; test; doc }

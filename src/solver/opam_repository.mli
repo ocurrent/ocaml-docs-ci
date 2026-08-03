@@ -4,6 +4,9 @@ val open_store : unit -> Git_unix.Store.t Lwt.t
 (** [open_store()] opens "./opam-repository" if it exists. If not fails an
     exception. *)
 
+val open_store_at : string -> Git_unix.Store.t Lwt.t
+(** [open_store_at path] opens the git store at [path]. *)
+
 val clone : unit -> unit Lwt.t
 (** [clone ()] ensures that "./opam-repository" exists. If not, it clones it. *)
 

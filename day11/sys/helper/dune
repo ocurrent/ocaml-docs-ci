@@ -1,0 +1,5 @@
+(executable
+ (name fork_helper)
+ (public_name day11-fork-helper)
+ (package day11)
+ (libraries unix))

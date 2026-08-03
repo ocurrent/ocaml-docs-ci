@@ -1,0 +1,35 @@
+# Timeline: one line per (tag, package-version). Build-timeline.sh
+# walks this top to bottom, grouping consecutive rows by tag, and
+# commits each group onto the running repo state. Tags get git
+# tags of the same name.
+#
+# T00 is reserved for the base layer (no synthetic packages).
+# Blank lines and '#' comments are ignored.
+
+T00 base
+
+T01 basics-1.0.0
+T01 broken-1.0.0
+T01 broken_transitive-1.0.0
+
+T02 xref_intra-1.0.0
+
+T03 xref_inter-1.0.0
+
+T04 xref_forward-1.0.0
+
+T05 xref_forward-1.0.1
+
+T06 stdlib_ref-1.0.0
+
+T07 functor-1.0.0
+
+T08 markup-1.0.0
+
+T09 deprecated-1.0.0
+
+T10 inline_include-1.0.0
+
+T11 recursive-1.0.0
+
+T12 basics-2.0.0

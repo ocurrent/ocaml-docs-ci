@@ -1,0 +1,3 @@
+(library
+ (name inline_include)
+ (public_name inline_include))

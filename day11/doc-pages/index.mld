@@ -1,0 +1,47 @@
+{0 day11}
+
+An OCaml package build and documentation system. Builds opam packages
+in layered overlayfs containers, generates documentation with odoc,
+and manages a content-addressed layer cache.
+
+{1 Architecture}
+
+The libraries are organised in layers of increasing domain specificity.
+
+{2 Foundation}
+
+Generic primitives with no domain knowledge:
+
+- {!page-solution} — Solution types: dependency graphs, solve results
+- {!page-sys} — Process execution: sudo, locking, fork helper
+- {!page-lib} — Shared utilities: logging, progress, GC, notifications
+
+{2 Storage and Runtime}
+
+Layered storage and OCI container execution:
+
+- {!page-layer} — On-disk layer format, overlayfs stacking, LRU, hashing
+- {!page-container} — OCI runtime: overlayfs mounts, runc, spec generation
+- {!page-runner} — Intersection of layer + container: run commands in layered rootfs
+
+{2 Opam Integration}
+
+Package metadata, solver, and build orchestration:
+
+- {!page-opam} — Git-backed opam package index, environment, dep extraction
+- {!page-solver} — Dependency solving via opam-0install
+- {!page-solver_pool} — Parallel out-of-process solving
+- {!page-opam_layer} — Opam-flavoured layer types: build nodes, tools, sidecars
+- {!page-opam_build} — Build orchestration: DAG execution, hash caching, tools
+
+{2 Documentation Pipeline}
+
+Odoc documentation generation:
+
+- {!page-doc} — Full doc pipeline: compile, link, odoc store, metadata, tool management
+
+{2 Batch and Extras}
+
+- {!page-batch} — Batch orchestration: targets, incremental solving, blessing
+- {!page-jtw} — JavaScript-to-Wasm build pipeline
+- {!page-test_util} — Shared test helpers

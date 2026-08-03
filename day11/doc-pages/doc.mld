@@ -1,0 +1,50 @@
+{0 day11-doc}
+
+Documentation generation pipeline using odoc. {!Day11_doc.Generate} orchestrates
+the two-pass process: compile (produce [.odoc] files per package) then
+link (cross-reference and generate HTML), with tool builds integrated
+into the unified DAG for parallel execution. {!Day11_doc.Doc_deps} determines
+whether a package needs separate compile and link phases by comparing
+its dependency graphs with and without [{post}] deps. {!Day11_doc.Phase} defines
+doc phase and result types. {!Day11_doc.Command} generates the shell commands
+for [odoc_driver_voodoo] invocations. {!Day11_doc.Prep} creates the directory
+layout expected by the driver, using bind mounts to avoid copying
+files from cached build layers. {!Day11_doc.Odoc_store} provides per-package
+isolated mounts for odoc output with atomic commit on success.
+{!Day11_doc.Sync} distributes generated HTML via rsync. {!Day11_doc.Combine} aggregates
+doc layers into a single overlayfs for local viewing. {!Day11_doc.Tool_binaries}
+extracts specific tool binaries for bind-mounting into containers.
+{!Day11_doc.Tool_layer} manages driver and per-compiler odoc tool layers.
+{!Day11_doc.Universe} tracks universe directories for documentation GC.
+{!Day11_doc.Doc_meta} is the sidecar metadata for doc layers ([doc.json]),
+recording the package name, phase, and dependencies.
+{!Day11_doc.Doc_build} provides stateless per-package doc build
+primitives (compile, link, doc-all) that take explicit inputs and
+produce results — the building blocks for both the DAG executor and
+external pipeline systems like OCurrent.
+
+Sits near the top of the dependency hierarchy, depending on
+{!page-opam_build}, {!page-opam_layer}, {!page-layer},
+{!page-container}, and {!page-exec}.
+
+See {!page-doc_dep_graphs} for the source-of-truth reference on
+which dependency closure (build_deps vs doc_deps) each step in the
+pipeline consumes, and the per-step layer-mount conventions.
+
+{1 Modules}
+
+{!modules:
+Day11_doc.Generate
+Day11_doc.Doc_build
+Day11_doc.Doc_deps
+Day11_doc.Doc_meta
+Day11_doc.Phase
+Day11_doc.Command
+Day11_doc.Prep
+Day11_doc.Odoc_store
+Day11_doc.Sync
+Day11_doc.Combine
+Day11_doc.Tool_binaries
+Day11_doc.Tool_layer
+Day11_doc.Universe
+}

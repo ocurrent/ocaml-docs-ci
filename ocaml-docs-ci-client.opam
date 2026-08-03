@@ -10,13 +10,14 @@ license: "MIT"
 homepage: "https://github.com/ocurrent/ocaml-docs-ci"
 bug-reports: "https://github.com/ocurrent/ocaml-docs-ci/issues"
 depends: [
-  "dune" {>= "3.6"}
-  "ocaml" {>= "4.14.1"}
+  "dune" {>= "3.20"}
+  "ocaml" {>= "5.3"}
   "logs" {>= "0.7.0"}
   "fmt" {>= "0.8.9"}
   "current_rpc" {>= "0.6.6"}
   "capnp-rpc-unix" {>= "1.2"}
   "dockerfile"
+  "dune-build-info"
   "mdx" {with-test}
   "ocaml-docs-ci"
   "progress" {>= "0.2.2"}
@@ -39,3 +40,5 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/ocurrent/ocaml-docs-ci.git"
+x-maintenance-intent: ["(latest)"]
+available: [ os = "linux" ]

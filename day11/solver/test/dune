@@ -1,0 +1,29 @@
+(test
+ (name test_solver)
+ (modules test_solver)
+ (libraries
+  day11_solver
+  day11_doc
+  day11_solution
+  day11_test_util
+  alcotest
+  astring
+  bos
+  fpath
+  opam-format
+  yojson))
+
+(executable
+ (name test_doc_deps)
+ (modules test_doc_deps)
+ (libraries day11_solver bos fpath opam-format))
+
+(executable
+ (name repro_extras)
+ (modules repro_extras)
+ (libraries day11_solver day11_opam opam-format))
+
+(executable
+ (name solve_one)
+ (modules solve_one)
+ (libraries day11_solver day11_opam day11_solution opam-format))

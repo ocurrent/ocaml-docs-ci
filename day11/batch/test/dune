@@ -1,0 +1,71 @@
+(test
+ (name test_batch)
+ (modules test_batch)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_solution
+  day11_lib
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name test_batch_integration)
+ (modules test_batch_integration)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_solution
+  day11_layer
+  day11_lib
+  day11_solver
+  day11_test_util
+  git-unix
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name test_cmdliner_all)
+ (modules test_cmdliner_all)
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_solution
+  day11_layer
+  day11_lib
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name test_incremental)
+ (modules test_incremental)
+ (libraries
+  day11_batch
+  day11_solution
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  fpath
+  opam-format
+  unix))
+
+(executable
+ (name test_examined_diff)
+ (modules test_examined_diff)
+ (libraries day11_solver day11_test_util bos fpath opam-format unix))

@@ -1,0 +1,4 @@
+(library
+ (name day11_sys)
+ (public_name day11.sys)
+ (libraries astring bos eio eio_main fpath logs rresult unix))

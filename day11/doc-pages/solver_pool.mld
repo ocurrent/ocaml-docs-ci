@@ -1,0 +1,17 @@
+{0 day11-solver-pool}
+
+Parallel solving via solver_worker subprocesses. {!Day11_solver_pool.Solver_pool} spawns
+multiple out-of-process solver workers to solve packages in parallel,
+avoiding any in-process solver dependency. The single entry point
+{!Day11_solver_pool.Solver_pool.solve_many} takes a list of target packages and a
+parallelism level, distributes work across workers, and collects
+results. Supports multi-repository solving, pinned directories, version
+constraints, and optional doc-dependency inclusion.
+
+Depends on {!page-solution} for solution result types.
+
+{1 Modules}
+
+{!modules:
+Day11_solver_pool.Solver_pool
+}

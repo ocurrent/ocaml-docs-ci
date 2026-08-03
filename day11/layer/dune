@@ -1,0 +1,7 @@
+(library
+ (name day11_layer)
+ (public_name day11.layer)
+ (libraries day11_sys bos eio eio.unix fpath rresult yojson unix)
+ (modules_without_implementation)
+ (preprocess
+  (pps ppx_deriving_yojson)))

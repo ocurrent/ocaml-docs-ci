@@ -1,0 +1,23 @@
+opam-version: "2.0"
+maintainer: "testlab@example.com"
+authors: ["testlab"]
+license: "ISC"
+synopsis: "Compiles but depends on a broken package"
+description: """
+This package's own source is valid OCaml, but it declares a hard
+dependency on broken.1.0.0 which fails to compile. Used to probe
+how the GUI distinguishes transitive failures from in-source
+failures.
+"""
+depends: [
+  "ocaml"
+  "dune" {>= "3.0"}
+  "broken" {= "1.0.0"}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+url {
+  src: "http://127.0.0.1:@@PORT@@/broken_transitive-1.0.0.tar.gz"
+  checksum: "sha256=@@SHA256_BROKEN_TRANSITIVE_1_0_0@@"
+}

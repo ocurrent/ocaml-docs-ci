@@ -1,0 +1,26 @@
+{0 day11-jtw}
+
+JavaScript-to-Wasm build pipeline for js_top_worker integration.
+{!Day11_jtw.Build_tools} orchestrates end-to-end JTW processing: building tool
+layers per compiler version, running per-package and per-solution
+generation, and assembling the content-hashed output directory.
+{!Day11_jtw.Generate} drives the three generation phases -- per-package artifact
+extraction (cma.js, cmi, META), per-solution worker.js production, and
+final assembly into a serving-ready directory structure. {!Day11_jtw.Tool_layer}
+manages the JTW tool layer lifecycle: installing js_of_ocaml and
+js_top_worker, building worker.js, and extracting stdlib CMIs per OCaml
+version. {!Day11_jtw.Gen} provides pure utility functions for hashing, findlib
+index generation, dynamic_cmis.json creation, and container script
+generation.
+
+Depends on {!day11-opam-build}, {!day11-container}, {!day11-doc},
+{!day11-layer}, and {!day11-solver}.
+
+{1 Modules}
+
+{!modules:
+Day11_jtw.Build_tools
+Day11_jtw.Generate
+Day11_jtw.Tool_layer
+Day11_jtw.Gen
+}

@@ -1,0 +1,35 @@
+{0 day11-opam-build}
+
+Opam package build orchestration: compiles packages inside layered
+containers and manages the build cache. {!Day11_opam_build.Build_layer} handles the
+single-layer container lifecycle — locking, overlay mounting, runc
+invocation, cleanup, and sidecar writing. {!Day11_opam_build.Dag} constructs
+deduplicated DAGs of build nodes across multiple solver solutions.
+{!Day11_opam_build.Dag_executor} runs the DAG in parallel using Eio fibers with
+promise-based memoization, skipping cached nodes. {!Day11_opam_build.Hash_cache}
+memoizes content-hash computation for layer cache keys. {!Day11_opam_build.Tools}
+solves and builds tool packages (odoc, sherlodoc, etc.) from pinned
+local checkouts or the opam repository. {!Day11_opam_build.Types} defines shared build
+types: {!Day11_opam_build.Types.build_env}, {!Day11_opam_build.Types.build_result}, and
+{!Day11_opam_build.Types.build_strategy}. {!Day11_opam_build.Base} manages base image layers (Docker
+import and caching). {!Day11_opam_build.Debug} provides interactive debug containers
+for investigating failed builds. {!Day11_opam_build.Patches} manages per-package patch
+files that modify builds before execution.
+
+Depends on {!day11-runner}, {!day11-opam-layer}, {!day11-solver} (via
+solver_pool), {!day11-opam}, {!page-solution}, and the lower layer and
+container libraries.
+
+{1 Modules}
+
+{!modules:
+Day11_opam_build.Build_layer
+Day11_opam_build.Dag
+Day11_opam_build.Dag_executor
+Day11_opam_build.Hash_cache
+Day11_opam_build.Tools
+Day11_opam_build.Types
+Day11_opam_build.Base
+Day11_opam_build.Debug
+Day11_opam_build.Patches
+}

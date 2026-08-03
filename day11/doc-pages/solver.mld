@@ -1,0 +1,23 @@
+{0 day11-solver}
+
+Dependency solving via opam-0install. {!Day11_solver.Solve} is the main entry
+point: given a target package and a git-backed package index, it
+returns a {!Day11_solution.Solve_result.t} with both the build dependency
+graph (acyclic, for topological ordering) and the doc dependency graph
+(may have cycles from [{post}] deps and [x-extra-doc-deps], for odoc
+cross-referencing). {!Day11_solver.Context} implements the opam-0install solver
+interface, supporting [prefer_oldest], pinned packages, user
+constraints, and tracking of examined packages for incremental cache
+invalidation. {!Day11_solver.Dot_solution} renders dependency graphs as Graphviz
+DOT files for debugging.
+
+Depends on {!page-solution} for solution types and {!day11-opam} for the
+git-backed package index.
+
+{1 Modules}
+
+{!modules:
+Day11_solver.Solve
+Day11_solver.Context
+Day11_solver.Dot_solution
+}

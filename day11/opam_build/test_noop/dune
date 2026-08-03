@@ -1,0 +1,10 @@
+(executable
+ (name test_executor)
+ (libraries
+  day11_opam_build
+  day11_layer
+  eio
+  eio_main
+  opam-format
+  yojson
+  unix))

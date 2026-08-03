@@ -1,0 +1,87 @@
+(test
+ (name test_build)
+ (modules test_build)
+ (libraries
+  day11_opam_build
+  day11_solution
+  day11_layer
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format
+  yojson))
+
+(executable
+ (name test_build_integration)
+ (modules test_build_integration)
+ (libraries
+  day11_opam_build
+  day11_layer
+  day11_sys
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_layered_build)
+ (modules test_layered_build)
+ (libraries
+  day11_opam_build
+  day11_layer
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_from_scratch)
+ (modules test_from_scratch)
+ (libraries
+  day11_opam_build
+  day11_solution
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_tools)
+ (modules test_tools)
+ (libraries
+  day11_opam_build
+  day11_sys
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio_main
+  fpath
+  opam-format))
+
+(executable
+ (name test_tools_pinned)
+ (modules test_tools_pinned)
+ (libraries
+  day11_opam_build
+  day11_layer
+  day11_solver
+  day11_test_util
+  alcotest
+  bos
+  eio_main
+  fpath
+  opam-format))
