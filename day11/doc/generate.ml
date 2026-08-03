@@ -463,10 +463,10 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
               let seen = Hashtbl.create 16 in
               List.concat_map (fun (_, _, surfaced) -> surfaced) dep_results
               |> List.filter (fun (dn : doc_node) ->
-                     if Hashtbl.mem seen dn.layer.hash then false
-                     else (
-                       Hashtbl.replace seen dn.layer.hash ();
-                       true))
+                  if Hashtbl.mem seen dn.layer.hash then false
+                  else (
+                    Hashtbl.replace seen dn.layer.hash ();
+                    true))
             in
             let composite_tool_hash =
               match Option.bind g.g_compiler odoc_tool_of_compiler with

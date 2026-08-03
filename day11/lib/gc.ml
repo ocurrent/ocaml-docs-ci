@@ -24,7 +24,7 @@ let gc_build_layers ~os_dir ~referenced =
   let all =
     list_dirs os_dir
     |> List.filter (fun name ->
-           String.length name > 6 && String.sub name 0 6 = "build-")
+        String.length name > 6 && String.sub name 0 6 = "build-")
   in
   let total = List.length all in
   let deleted = ref 0 in
@@ -67,7 +67,7 @@ let gc_stale_temp_dirs () =
   let stale =
     list_dirs tmp
     |> List.filter (fun name ->
-           String.length name > 10 && String.sub name 0 10 = "day11_run_")
+        String.length name > 10 && String.sub name 0 10 = "day11_run_")
   in
   List.iter
     (fun name ->

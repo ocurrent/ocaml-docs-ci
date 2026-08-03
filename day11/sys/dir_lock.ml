@@ -19,13 +19,14 @@ let default_lock_file dir_path = Fpath.(dir_path + ".lock")
 let with_lock ?marker_file ?lock_file dir_path body =
   (* Check marker file first — if it exists, skip entirely *)
   (match marker_file with
-  | Some marker ->
-      let marker_path = Fpath.(dir_path // marker) in
-      if Bos.OS.File.exists marker_path |> Result.get_ok then (
-        Log.debug (fun m -> m "Marker %a exists, skipping" Fpath.pp marker_path);
-        Ok () |> fun r -> r)
-      else Error `Continue
-  | None -> Error `Continue)
+    | Some marker ->
+        let marker_path = Fpath.(dir_path // marker) in
+        if Bos.OS.File.exists marker_path |> Result.get_ok then (
+          Log.debug (fun m ->
+              m "Marker %a exists, skipping" Fpath.pp marker_path);
+          Ok () |> fun r -> r)
+        else Error `Continue
+    | None -> Error `Continue)
   |> function
   | Ok () -> Ok ()
   | Error `Continue ->
@@ -42,15 +43,15 @@ let with_lock ?marker_file ?lock_file dir_path body =
           (* Re-check marker after acquiring mutex — another fiber may have
        completed while we waited *)
           (match marker_file with
-          | Some marker ->
-              let marker_path = Fpath.(dir_path // marker) in
-              if Bos.OS.File.exists marker_path |> Result.get_ok then (
-                Log.debug (fun m ->
-                    m "Marker %a appeared while waiting for lock" Fpath.pp
-                      marker_path);
-                Ok () |> fun r -> r)
-              else Error `Continue
-          | None -> Error `Continue)
+            | Some marker ->
+                let marker_path = Fpath.(dir_path // marker) in
+                if Bos.OS.File.exists marker_path |> Result.get_ok then (
+                  Log.debug (fun m ->
+                      m "Marker %a appeared while waiting for lock" Fpath.pp
+                        marker_path);
+                  Ok () |> fun r -> r)
+                else Error `Continue
+            | None -> Error `Continue)
           |> function
           | Ok () -> Ok ()
           | Error `Continue ->

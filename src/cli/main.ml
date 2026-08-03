@@ -50,17 +50,17 @@ let list_versions_status package_name ?(version = None) package =
   Fmt.pr "@[<v>Version/Status: @,";
   Client.Package.versions package
   |> Lwt_result.map (fun list' ->
-         let list =
-           match version with
-           | None -> list'
-           | Some version' ->
-               List.filter
-                 (fun ({ version; _ } : Client.Package.package_status) ->
-                   version = version')
-                 list'
-         in
+      let list =
+        match version with
+        | None -> list'
+        | Some version' ->
+            List.filter
+              (fun ({ version; _ } : Client.Package.package_status) ->
+                version = version')
+              list'
+      in
 
-         Fmt.pr "%a@]@." Fmt.(list package_status) list)
+      Fmt.pr "%a@]@." Fmt.(list package_status) list)
 
 let list_versions_status_by_pipeline latest latest_but_one package_name package
     =

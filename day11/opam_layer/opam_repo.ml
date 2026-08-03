@@ -51,26 +51,24 @@ let populate ~opam_repo ~opam_repositories packages =
             if Bos.OS.Dir.exists src |> Result.get_ok then Some src else None)
           opam_repositories
         |> Option.iter (fun src ->
-               let dst = Fpath.(opam_repo // rel) in
-               Bos.OS.Dir.create ~path:true dst |> ignore;
-               let src_opam = Fpath.(src / "opam") in
-               if Bos.OS.File.exists src_opam |> Result.get_ok then
-                 Bos.OS.File.read src_opam
-                 |> Result.get_ok
-                 |> Bos.OS.File.write Fpath.(dst / "opam")
-                 |> ignore;
-               let src_files = Fpath.(src / "files") in
-               if Bos.OS.Dir.exists src_files |> Result.get_ok then (
-                 let dst_files = Fpath.(dst / "files") in
-                 Bos.OS.Dir.create dst_files |> ignore;
-                 Sys.readdir (Fpath.to_string src_files)
-                 |> Array.iter (fun f ->
-                        let content =
-                          Bos.OS.File.read Fpath.(src_files / f)
-                          |> Result.get_ok
-                        in
-                        Bos.OS.File.write Fpath.(dst_files / f) content
-                        |> ignore))))
+            let dst = Fpath.(opam_repo // rel) in
+            Bos.OS.Dir.create ~path:true dst |> ignore;
+            let src_opam = Fpath.(src / "opam") in
+            if Bos.OS.File.exists src_opam |> Result.get_ok then
+              Bos.OS.File.read src_opam
+              |> Result.get_ok
+              |> Bos.OS.File.write Fpath.(dst / "opam")
+              |> ignore;
+            let src_files = Fpath.(src / "files") in
+            if Bos.OS.Dir.exists src_files |> Result.get_ok then (
+              let dst_files = Fpath.(dst / "files") in
+              Bos.OS.Dir.create dst_files |> ignore;
+              Sys.readdir (Fpath.to_string src_files)
+              |> Array.iter (fun f ->
+                  let content =
+                    Bos.OS.File.read Fpath.(src_files / f) |> Result.get_ok
+                  in
+                  Bos.OS.File.write Fpath.(dst_files / f) content |> ignore))))
       packages;
     Ok ()
   with exn ->
@@ -117,10 +115,10 @@ let snapshot_to_layer ~layer_dir ~opam_repositories ?(patches = []) pkg =
           Bos.OS.Dir.create dst_files |> ignore;
           Sys.readdir (Fpath.to_string src_files)
           |> Array.iter (fun f ->
-                 let content =
-                   Bos.OS.File.read Fpath.(src_files / f) |> Result.get_ok
-                 in
-                 Bos.OS.File.write Fpath.(dst_files / f) content |> ignore));
+              let content =
+                Bos.OS.File.read Fpath.(src_files / f) |> Result.get_ok
+              in
+              Bos.OS.File.write Fpath.(dst_files / f) content |> ignore));
         let patch_basenames =
           if patches = [] then []
           else (

@@ -311,7 +311,7 @@ let build_opam_build ~sw env ~cache_dir ~arch ?opam_build_repo () =
         ignore
           (Bos.OS.File.read build_log
           |> Result.map (fun content ->
-                 ignore (Bos.OS.File.write saved_log content)));
+              ignore (Bos.OS.File.write saved_log content)));
         Day11_sys.Sudo.rm_rf ~sw env temp_dir |> ignore;
         Rresult.R.error_msgf "opam-build Docker build failed (exit %d). Log: %a"
           n Fpath.pp saved_log
@@ -456,11 +456,11 @@ let build ~sw env ~cache_dir ~os_distribution ~os_version ~arch ~uid ~gid
           ignore
             (Bos.OS.File.read build_log
             |> Result.map (fun content ->
-                   ignore (Bos.OS.File.write saved_log content)));
+                ignore (Bos.OS.File.write saved_log content)));
           ignore
             (Bos.OS.File.read dockerfile_path
             |> Result.map (fun content ->
-                   ignore (Bos.OS.File.write saved_df content)));
+                ignore (Bos.OS.File.write saved_df content)));
           Day11_sys.Sudo.rm_rf ~sw env temp_dir |> ignore;
           Rresult.R.error_msgf
             "Docker build failed (exit %d). Log saved to: %a\nSTDERR:\n%s" n

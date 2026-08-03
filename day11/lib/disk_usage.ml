@@ -29,8 +29,8 @@ let sum_matching ~dir prefix =
     Sys.readdir dir_s
     |> Array.to_list
     |> List.filter (fun name ->
-           String.length name >= String.length prefix
-           && String.sub name 0 (String.length prefix) = prefix)
+        String.length name >= String.length prefix
+        && String.sub name 0 (String.length prefix) = prefix)
     |> List.fold_left (fun acc name -> acc + dir_size Fpath.(dir / name)) 0
 
 let is_layer_dir name =

@@ -109,37 +109,36 @@ end = struct
     let opam_repository_commit = Store.Hash.of_hex opam_repository_commit in
     platforms
     |> Lwt_list.map_p (fun p ->
-           let id = fst p in
-           let slice = { request with platforms = [ p ] } in
-           Lwt_pool.use t (process ~log ~id slice) >>= function
-           | Error _ as e -> Lwt.return (id, e)
-           | Ok packages ->
-               let repo_packages =
-                 List.map
-                   (fun (pkg, _opam, _) -> OpamPackage.of_string pkg)
-                   packages.link_universes
-               in
-               Opam_repository.oldest_commit_with repo_packages
-                 ~from:opam_repository_commit ~log
-               >|= fun commit ->
-               (id, Ok { Worker.Selection.id; packages; commit }))
+        let id = fst p in
+        let slice = { request with platforms = [ p ] } in
+        Lwt_pool.use t (process ~log ~id slice) >>= function
+        | Error _ as e -> Lwt.return (id, e)
+        | Ok packages ->
+            let repo_packages =
+              List.map
+                (fun (pkg, _opam, _) -> OpamPackage.of_string pkg)
+                packages.link_universes
+            in
+            Opam_repository.oldest_commit_with repo_packages
+              ~from:opam_repository_commit ~log
+            >|= fun commit -> (id, Ok { Worker.Selection.id; packages; commit }))
     >|= List.filter_map (fun (id, result) ->
-            Log.info log "= %s =" id;
-            match result with
-            | Ok result ->
-                let log_u name u =
-                  Log.info log "-> %s @[<hov>%a@]" name
-                    Fmt.(list ~sep:sp string)
-                    (List.map (fun (p, _, _) -> p) u)
-                in
-                log_u "compile" result.Selection.packages.compile_universes;
-                log_u "link" result.Selection.packages.link_universes;
-                Log.info log "(valid since opam-repository commit %s)"
-                  result.Selection.commit;
-                Some result
-            | Error msg ->
-                Log.info log "%s" msg;
-                None)
+        Log.info log "= %s =" id;
+        match result with
+        | Ok result ->
+            let log_u name u =
+              Log.info log "-> %s @[<hov>%a@]" name
+                Fmt.(list ~sep:sp string)
+                (List.map (fun (p, _, _) -> p) u)
+            in
+            log_u "compile" result.Selection.packages.compile_universes;
+            log_u "link" result.Selection.packages.link_universes;
+            Log.info log "(valid since opam-repository commit %s)"
+              result.Selection.commit;
+            Some result
+        | Error msg ->
+            Log.info log "%s" msg;
+            None)
 end
 
 (* Handle a request by distributing it among the worker processes and then aggregating their responses. *)

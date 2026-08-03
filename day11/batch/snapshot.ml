@@ -49,7 +49,7 @@ let of_json json =
       |> member "repos"
       |> to_list
       |> List.map (fun r ->
-             (r |> member "path" |> to_string, r |> member "commit" |> to_string))
+          (r |> member "path" |> to_string, r |> member "commit" |> to_string))
     in
     let key = json |> member "key" |> to_string in
     let created = json |> member "created" |> to_string in

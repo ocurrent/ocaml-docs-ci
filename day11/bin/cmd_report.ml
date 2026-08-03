@@ -43,7 +43,7 @@ let run profile_name profile_dir =
                 files
                 |> List.filter (fun f -> Fpath.has_ext ".json" f)
                 |> List.sort (fun a b ->
-                       compare (Fpath.to_string b) (Fpath.to_string a))
+                    compare (Fpath.to_string b) (Fpath.to_string a))
             | Error _ -> []
           in
           match runs with

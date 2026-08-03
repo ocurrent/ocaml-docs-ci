@@ -215,25 +215,25 @@ let candidates t name =
       let user_constraints = user_restrictions t name in
       OpamPackage.Version.Map.bindings versions
       |> List.filter_map (fun (v, opam) ->
-             let pkg = OpamPackage.create name v in
-             let avoid = OpamFile.OPAM.has_flag Pkgflag_AvoidVersion opam in
-             let available = OpamFile.OPAM.available opam in
-             match
-               OpamFilter.eval_to_bool ~default:false (env t pkg) available
-             with
-             | true -> Some (v, avoid, opam)
-             | false -> None)
+          let pkg = OpamPackage.create name v in
+          let avoid = OpamFile.OPAM.has_flag Pkgflag_AvoidVersion opam in
+          let available = OpamFile.OPAM.available opam in
+          match
+            OpamFilter.eval_to_bool ~default:false (env t pkg) available
+          with
+          | true -> Some (v, avoid, opam)
+          | false -> None)
       |> (fun l ->
       if List.for_all (fun (_, avoid, _) -> avoid) l then [] else l)
       |> List.sort (version_compare t)
       |> List.map (fun (v, _, opam) ->
-             match user_constraints with
-             | Some test
-               when not
-                      (OpamFormula.check_version_formula (OpamFormula.Atom test)
-                         v) ->
-                 (v, Error (UserConstraint (name, Some test)))
-             | _ -> (v, Ok (augment_depends opam)))
+          match user_constraints with
+          | Some test
+            when not
+                   (OpamFormula.check_version_formula (OpamFormula.Atom test) v)
+            ->
+              (v, Error (UserConstraint (name, Some test)))
+          | _ -> (v, Ok (augment_depends opam)))
 
 let pp_rejection f = function
   | UserConstraint x ->

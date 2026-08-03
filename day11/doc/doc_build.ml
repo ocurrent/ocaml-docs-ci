@@ -279,7 +279,7 @@ let compile ~sw env benv ~(config : doc_config) ~build_layer ~universe
     ~build_dirs:(build_deps_layers @ dep_compile_layers)
     ~label:"compile" ~hash pkg
   |> Result.map (fun node ->
-         Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)
+      Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)
 
 let link ~sw env benv ~(config : doc_config) ~build_layer ~universe
     ~build_deps_layers ~compile_layer ~dep_compile_layers ~html_dir ~hash pkg =
@@ -299,4 +299,4 @@ let doc_all ~sw env benv ~(config : doc_config) ~build_layer ~universe
     ~build_dirs:(build_deps_layers @ dep_compile_layers)
     ~label:"doc-all" ~hash pkg
   |> Result.map (fun node ->
-         Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)
+      Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)

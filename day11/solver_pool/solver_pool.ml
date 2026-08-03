@@ -68,10 +68,10 @@ let parse_output_file path =
   let results = ref [] in
   String.split_on_char '\n' contents
   |> List.iter (fun line ->
-         if line <> "" then
-           match parse_result_line line with
-           | r -> results := r :: !results
-           | exception _ -> ());
+      if line <> "" then
+        match parse_result_line line with
+        | r -> results := r :: !results
+        | exception _ -> ());
   List.rev !results
 
 let solve_many ~sw env ?(pin_dirs = []) ?(constraints = [])

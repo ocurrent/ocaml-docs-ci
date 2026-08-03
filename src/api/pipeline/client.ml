@@ -89,15 +89,15 @@ module Package = struct
     let request = Capability.Request.create_no_args () in
     Capability.call_for_value t method_id request
     |> Lwt_result.map (fun x ->
-           x
-           |> Results.versions_get_list
-           |> List.map (fun x ->
-                  {
-                    version =
-                      Raw.Reader.PackageBuildStatus.version_get x
-                      |> OpamPackage.Version.of_string;
-                    status = Raw.Reader.PackageBuildStatus.status_get x;
-                  }))
+        x
+        |> Results.versions_get_list
+        |> List.map (fun x ->
+            {
+              version =
+                Raw.Reader.PackageBuildStatus.version_get x
+                |> OpamPackage.Version.of_string;
+              status = Raw.Reader.PackageBuildStatus.status_get x;
+            }))
 
   let steps t =
     let open Raw.Client.Package.Steps in
@@ -112,16 +112,16 @@ module Package = struct
           let steps =
             steps_get_list package_slot
             |> List.map (fun x ->
-                   let open Raw.Reader.StepInfo in
-                   let status = status_get x in
-                   let typ = type_get x in
-                   let job_id_t = job_id_get x in
-                   let job_id =
-                     match JobId.get job_id_t with
-                     | JobId.None | JobId.Undefined _ -> None
-                     | JobId.Id s -> Some s
-                   in
-                   { typ; job_id; status })
+                let open Raw.Reader.StepInfo in
+                let status = status_get x in
+                let typ = type_get x in
+                let job_id_t = job_id_get x in
+                let job_id =
+                  match JobId.get job_id_t with
+                  | JobId.None | JobId.Undefined _ -> None
+                  | JobId.Id s -> Some s
+                in
+                { typ; job_id; status })
           in
           (package_version, status, steps)
 
@@ -131,15 +131,15 @@ module Package = struct
     Params.pipeline_id_set params pipeline_id;
     Capability.call_for_value t method_id request
     |> Lwt_result.map (fun x ->
-           x
-           |> Results.versions_get_list
-           |> List.map (fun x ->
-                  {
-                    version =
-                      Raw.Reader.PackageBuildStatus.version_get x
-                      |> OpamPackage.Version.of_string;
-                    status = Raw.Reader.PackageBuildStatus.status_get x;
-                  }))
+        x
+        |> Results.versions_get_list
+        |> List.map (fun x ->
+            {
+              version =
+                Raw.Reader.PackageBuildStatus.version_get x
+                |> OpamPackage.Version.of_string;
+              status = Raw.Reader.PackageBuildStatus.status_get x;
+            }))
 end
 
 module Pipeline = struct
@@ -204,5 +204,5 @@ module Pipeline = struct
     let request, _params = Capability.Request.create Params.init_pointer in
     Capability.call_for_value t method_id request
     |> Lwt_result.map (fun x ->
-           (Results.latest_get x, Results.latest_but_one_get x))
+        (Results.latest_get x, Results.latest_but_one_get x))
 end

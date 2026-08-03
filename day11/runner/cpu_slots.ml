@@ -25,8 +25,8 @@ let expand_cpulist s =
   in
   String.split_on_char ',' s
   |> List.concat_map (fun r ->
-         let r = String.trim r in
-         if r = "" then [] else parse_range r)
+      let r = String.trim r in
+      if r = "" then [] else parse_range r)
   |> List.sort_uniq compare
 
 (* Render an int list back into compact Linux cpuset notation,
@@ -43,7 +43,7 @@ let format_cpuset cpus =
   | x :: xs ->
       go [] x x xs
       |> List.map (fun (a, b) ->
-             if a = b then string_of_int a else Printf.sprintf "%d-%d" a b)
+          if a = b then string_of_int a else Printf.sprintf "%d-%d" a b)
       |> String.concat ","
 
 let read_file path =
@@ -182,13 +182,13 @@ let auto ?(overcommit = 1.0) ~cores_per_build () =
             (fun (node, cpus) ->
               chunk_into cores_per_build cpus
               |> List.map (fun chunk ->
-                     { cpuset = format_cpuset chunk; numa_mems = None; node }))
+                  { cpuset = format_cpuset chunk; numa_mems = None; node }))
             pairs
         in
         let desc =
           pairs
           |> List.map (fun (n, cpus) ->
-                 Printf.sprintf "node%d:%d" n (List.length cpus))
+              Printf.sprintf "node%d:%d" n (List.length cpus))
           |> String.concat " "
         in
         (slots, "numa(" ^ desc ^ ")")
@@ -198,7 +198,7 @@ let auto ?(overcommit = 1.0) ~cores_per_build () =
         let slots =
           chunk_into cores_per_build cpus
           |> List.map (fun chunk ->
-                 { cpuset = format_cpuset chunk; numa_mems = None; node = 0 })
+              { cpuset = format_cpuset chunk; numa_mems = None; node = 0 })
         in
         (slots, Printf.sprintf "flat(%d cpus)" (List.length cpus))
   in

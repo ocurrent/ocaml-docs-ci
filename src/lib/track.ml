@@ -92,7 +92,7 @@ module Track = struct
         let packages =
           entries
           |> List.filter (fun (pkg, _) ->
-                 filter (OpamPackage.Name.to_string (OpamPackage.name pkg)))
+              filter (OpamPackage.Name.to_string (OpamPackage.name pkg)))
           |> List.map (fun (pkg, oid) -> Value.{ package = pkg; digest = oid })
           (* Group by name to apply [limit] (newest N versions per
              name), matching the historical per-name semantics. *)
@@ -103,10 +103,10 @@ module Track = struct
                OpamPackage.Name.Map.empty
           |> OpamPackage.Name.Map.values
           |> List.concat_map (fun es ->
-                 es
-                 |> List.sort (fun (a : Value.package_definition) b ->
-                        -OpamPackage.compare a.package b.package)
-                 |> take limit)
+              es
+              |> List.sort (fun (a : Value.package_definition) b ->
+                  -OpamPackage.compare a.package b.package)
+              |> take limit)
         in
         Lwt.return_ok Value.{ commit = Git.Commit.hash repo; packages })
       (fun exn ->

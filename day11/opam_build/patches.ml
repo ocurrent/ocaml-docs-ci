@@ -21,7 +21,7 @@ let patches_for t pkg =
           | Ok entries ->
               entries
               |> List.filter (fun p ->
-                     Fpath.has_ext ".patch" p || Fpath.has_ext ".diff" p)
+                  Fpath.has_ext ".patch" p || Fpath.has_ext ".diff" p)
               |> List.map Fpath.to_string
               |> List.sort String.compare
           | Error _ -> []

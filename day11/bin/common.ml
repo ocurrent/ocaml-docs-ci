@@ -132,10 +132,10 @@ let latest_snapshot_dir (paths : paths) =
         entries
         |> List.filter (fun p -> Bos.OS.Dir.exists p |> Result.get_ok)
         |> List.filter_map (fun p ->
-               try
-                 let stat = Unix.stat (Fpath.to_string p) in
-                 Some (p, stat.Unix.st_mtime)
-               with Unix.Unix_error _ -> None)
+            try
+              let stat = Unix.stat (Fpath.to_string p) in
+              Some (p, stat.Unix.st_mtime)
+            with Unix.Unix_error _ -> None)
         |> List.sort (fun (_, t1) (_, t2) -> compare t2 t1)
       in
       match dirs with (p, _) :: _ -> Some p | [] -> None)
@@ -147,10 +147,10 @@ let snapshot_dirs_by_recency (paths : paths) =
       entries
       |> List.filter (fun p -> Bos.OS.Dir.exists p |> Result.get_ok)
       |> List.filter_map (fun p ->
-             try
-               let stat = Unix.stat (Fpath.to_string p) in
-               Some (p, stat.Unix.st_mtime)
-             with Unix.Unix_error _ -> None)
+          try
+            let stat = Unix.stat (Fpath.to_string p) in
+            Some (p, stat.Unix.st_mtime)
+          with Unix.Unix_error _ -> None)
       |> List.sort (fun (_, t1) (_, t2) -> compare t2 t1)
       |> List.map fst
 

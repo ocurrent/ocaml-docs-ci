@@ -200,9 +200,9 @@ let list_snapshots_newest_first ctx name =
   | Ok entries ->
       entries
       |> List.filter_map (fun p ->
-             if Bos.OS.Dir.exists p |> Result.value ~default:false then
-               Some (p, snapshot_created p)
-             else None)
+          if Bos.OS.Dir.exists p |> Result.value ~default:false then
+            Some (p, snapshot_created p)
+          else None)
       |> List.sort (fun (_, a) (_, b) -> compare b a)
       |> List.map fst
 
@@ -507,9 +507,9 @@ let snapshot_detail ~ctx name key =
               |> member "repos"
               |> to_list
               |> List.map (fun r ->
-                     let path = r |> member "path" |> to_string in
-                     let commit = r |> member "commit" |> to_string in
-                     (path, commit))
+                  let path = r |> member "path" |> to_string in
+                  let commit = r |> member "commit" |> to_string in
+                  (path, commit))
             with _ -> [])
       in
       (* The ISO-8601 timestamp of when this snapshot was first seen,
@@ -1931,51 +1931,47 @@ let recent_changes ~ctx name =
       let sections =
         pairs [] visible_snaps
         |> List.filter_map (fun (dir_new, dir_old) ->
-               let changes =
-                 compute_diff_changes (load dir_old) (load dir_new)
-               in
-               let changes =
-                 match status_filter with
-                 | `Change -> changes
-                 | `Fail ->
-                     List.filter (fun (_, c) -> is_change_failure c) changes
-               in
-               if changes = [] then None
-               else
-                 let key_new = Fpath.basename dir_new in
-                 let key_old = Fpath.basename dir_old in
-                 let header =
-                   h3
-                     [
-                       a
-                         ~a:
-                           [
-                             a_href
-                               (Printf.sprintf "/profiles/%s/snapshots/%s" name
-                                  key_new);
-                           ]
-                         [ Templates.sha_span key_new ];
-                       txt (" — " ^ mtime_str dir_new ^ " ");
-                       a
-                         ~a:
-                           [
-                             a_href
-                               (Printf.sprintf
-                                  "/profiles/%s/snapshots/%s/diff/%s" name
-                                  key_old key_new);
-                           ]
-                         [ txt "(full diff)" ];
-                     ]
-                 in
-                 let table_el =
-                   table
-                     ~a:[ a_class [ "data" ] ]
-                     ~thead:diff_table_thead
-                     (List.map
-                        (render_change_row ~profile_name:name ~html_dir)
-                        changes)
-                 in
-                 Some [ header; table_el ])
+            let changes = compute_diff_changes (load dir_old) (load dir_new) in
+            let changes =
+              match status_filter with
+              | `Change -> changes
+              | `Fail -> List.filter (fun (_, c) -> is_change_failure c) changes
+            in
+            if changes = [] then None
+            else
+              let key_new = Fpath.basename dir_new in
+              let key_old = Fpath.basename dir_old in
+              let header =
+                h3
+                  [
+                    a
+                      ~a:
+                        [
+                          a_href
+                            (Printf.sprintf "/profiles/%s/snapshots/%s" name
+                               key_new);
+                        ]
+                      [ Templates.sha_span key_new ];
+                    txt (" — " ^ mtime_str dir_new ^ " ");
+                    a
+                      ~a:
+                        [
+                          a_href
+                            (Printf.sprintf "/profiles/%s/snapshots/%s/diff/%s"
+                               name key_old key_new);
+                        ]
+                      [ txt "(full diff)" ];
+                  ]
+              in
+              let table_el =
+                table
+                  ~a:[ a_class [ "data" ] ]
+                  ~thead:diff_table_thead
+                  (List.map
+                     (render_change_row ~profile_name:name ~html_dir)
+                     changes)
+              in
+              Some [ header; table_el ])
         |> List.concat
       in
       let crumbs =
@@ -2640,7 +2636,7 @@ let package_version ~ctx name pkg ver =
               List.map Fpath.to_string entries
               |> List.sort (fun a b -> compare b a)
               |> List.find_map (fun rd ->
-                     scan (Filename.concat rd "build.jsonl"))
+                  scan (Filename.concat rd "build.jsonl"))
         in
         List.find_map snap_dep snaps
       in

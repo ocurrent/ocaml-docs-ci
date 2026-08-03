@@ -113,10 +113,9 @@ let run profile_name profile_dir =
             | Ok entries ->
                 entries
                 |> List.filter (fun d ->
-                       Sys.file_exists
-                         (Fpath.to_string Fpath.(d / "build.jsonl")))
+                    Sys.file_exists (Fpath.to_string Fpath.(d / "build.jsonl")))
                 |> List.sort (fun a b ->
-                       compare (Fpath.to_string b) (Fpath.to_string a))
+                    compare (Fpath.to_string b) (Fpath.to_string a))
             | Error _ -> []
           in
           (* If the latest run has no [summary.json], surface the live

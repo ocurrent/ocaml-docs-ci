@@ -5,13 +5,13 @@ let generate ~packages_dir =
     Sys.readdir dir_s
     |> Array.to_list
     |> List.filter (fun name ->
-           let path = Filename.concat dir_s name in
-           try Sys.is_directory path with Sys_error _ -> false)
+        let path = Filename.concat dir_s name in
+        try Sys.is_directory path with Sys_error _ -> false)
     |> List.filter (fun pkg_str ->
-           let entries = History.read ~packages_dir ~pkg_str in
-           match entries with
-           | [] -> false
-           | latest :: _ -> latest.status = "success")
+        let entries = History.read ~packages_dir ~pkg_str in
+        match entries with
+        | [] -> false
+        | latest :: _ -> latest.status = "success")
 
 let save path packages =
   let json = `List (List.map (fun s -> `String s) packages) in

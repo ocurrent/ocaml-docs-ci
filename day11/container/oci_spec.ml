@@ -185,15 +185,15 @@ let to_yojson ~root (t : t) : Yojson.Safe.t =
         `Assoc
           ((* cgroup cpuset/mems — emitted only when set, so unconfigured
           containers stay identical to the pre-NUMA spec. *)
-           (match (t.cpuset, t.numa_mems) with
-           | None, None -> []
-           | _ ->
-               let cpu_kv =
-                 List.filter_map
-                   (fun (k, v) -> Option.map (fun s -> (k, `String s)) v)
-                   [ ("cpus", t.cpuset); ("mems", t.numa_mems) ]
-               in
-               [ ("resources", `Assoc [ ("cpu", `Assoc cpu_kv) ]) ])
+             (match (t.cpuset, t.numa_mems) with
+             | None, None -> []
+             | _ ->
+                 let cpu_kv =
+                   List.filter_map
+                     (fun (k, v) -> Option.map (fun s -> (k, `String s)) v)
+                     [ ("cpus", t.cpuset); ("mems", t.numa_mems) ]
+                 in
+                 [ ("resources", `Assoc [ ("cpu", `Assoc cpu_kv) ]) ])
           @ [
               ( "namespaces",
                 `List

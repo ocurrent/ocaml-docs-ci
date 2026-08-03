@@ -55,11 +55,11 @@ let read_versions_lwt store (entry : Store.Value.Tree.entry) =
 let read_packages_eager ~store tree =
   Store.Value.Tree.to_list tree
   |> List.filter_map (fun (entry : Store.Value.Tree.entry) ->
-         match OpamPackage.Name.of_string entry.name with
-         | exception _ -> None
-         | name ->
-             let versions = read_versions_lwt store entry in
-             Some (name, versions))
+      match OpamPackage.Name.of_string entry.name with
+      | exception _ -> None
+      | name ->
+          let versions = read_versions_lwt store entry in
+          Some (name, versions))
 
 let overlay v1 v2 =
   lazy
@@ -115,26 +115,26 @@ let of_commit_incremental_lwt ?(super = empty) ?prev store commit :
           let fresh : name_cache = Hashtbl.create 8192 in
           Store.Value.Tree.to_list tree
           |> Lwt_list.filter_map_s (fun (entry : Store.Value.Tree.entry) ->
-                 match OpamPackage.Name.of_string entry.name with
-                 | exception _ -> Lwt.return_none
-                 | name ->
-                     let oid = Store.Hash.to_hex entry.node in
-                     let reuse =
-                       match prev with
-                       | None -> None
-                       | Some prev -> (
-                           match Hashtbl.find_opt prev entry.name with
-                           | Some (prev_oid, versions)
-                             when String.equal prev_oid oid ->
-                               Some versions
-                           | _ -> None)
-                     in
-                     (match reuse with
-                     | Some versions -> Lwt.return versions
-                     | None -> read_versions_lwt store entry)
-                     >|= fun versions ->
-                     Hashtbl.replace fresh entry.name (oid, versions);
-                     Some (name, lazy versions))
+              match OpamPackage.Name.of_string entry.name with
+              | exception _ -> Lwt.return_none
+              | name ->
+                  let oid = Store.Hash.to_hex entry.node in
+                  let reuse =
+                    match prev with
+                    | None -> None
+                    | Some prev -> (
+                        match Hashtbl.find_opt prev entry.name with
+                        | Some (prev_oid, versions)
+                          when String.equal prev_oid oid ->
+                            Some versions
+                        | _ -> None)
+                  in
+                  (match reuse with
+                    | Some versions -> Lwt.return versions
+                    | None -> read_versions_lwt store entry)
+                  >|= fun versions ->
+                  Hashtbl.replace fresh entry.name (oid, versions);
+                  Some (name, lazy versions))
           >|= fun resolved ->
           let packages = OpamPackage.Name.Map.of_list resolved in
           (OpamPackage.Name.Map.union overlay super packages, fresh))
@@ -166,8 +166,8 @@ let of_repositories_lwt repos =
       Git_utils.get_git_repo_store_and_hash_lwt repo_path
       >>= fun (store, head) ->
       (match commit_opt with
-      | Some sha -> Git_utils.resolve_commit_in_store_lwt store (Some sha)
-      | None -> Lwt.return head)
+        | Some sha -> Git_utils.resolve_commit_in_store_lwt store (Some sha)
+        | None -> Lwt.return head)
       >|= fun commit -> (repo_path, store, commit))
     repos
   >>= fun stores_and_commits ->
@@ -195,8 +195,8 @@ let of_repositories_incremental_lwt ~prev repos =
       Git_utils.get_git_repo_store_and_hash_lwt repo_path
       >>= fun (store, head) ->
       (match commit_opt with
-      | Some sha -> Git_utils.resolve_commit_in_store_lwt store (Some sha)
-      | None -> Lwt.return head)
+        | Some sha -> Git_utils.resolve_commit_in_store_lwt store (Some sha)
+        | None -> Lwt.return head)
       >|= fun commit -> (repo_path, store, commit))
     repos
   >>= fun stores_and_commits ->
@@ -251,15 +251,14 @@ let list_package_versions_lwt ~store commit =
       | Some tree ->
           Store.Value.Tree.to_list tree
           |> Lwt_list.map_s (fun (name_entry : Store.Value.Tree.entry) ->
-                 read_dir store name_entry.node >|= function
-                 | None -> [] (* non-directory entry under packages/ *)
-                 | Some versions ->
-                     Store.Value.Tree.to_list versions
-                     |> List.filter_map
-                          (fun (v_entry : Store.Value.Tree.entry) ->
-                            match OpamPackage.of_string v_entry.name with
-                            | exception _ -> None
-                            | pkg -> Some (pkg, Store.Hash.to_hex v_entry.node)))
+              read_dir store name_entry.node >|= function
+              | None -> [] (* non-directory entry under packages/ *)
+              | Some versions ->
+                  Store.Value.Tree.to_list versions
+                  |> List.filter_map (fun (v_entry : Store.Value.Tree.entry) ->
+                      match OpamPackage.of_string v_entry.name with
+                      | exception _ -> None
+                      | pkg -> Some (pkg, Store.Hash.to_hex v_entry.node)))
           >|= List.concat)
 
 let diff_packages_lwt ~store commit1 commit2 =

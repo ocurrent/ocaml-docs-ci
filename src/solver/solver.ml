@@ -51,8 +51,8 @@ let universes ?(post = false) ?(doc = false) ~packages
     let deps =
       resolutions
       |> List.filter (fun res ->
-             let name = OpamPackage.name res in
-             OpamPackage.Name.Set.mem name all_deps)
+          let name = OpamPackage.name res in
+          OpamPackage.Name.Set.mem name all_deps)
     in
     let result = OpamPackage.Set.of_list deps in
     result
@@ -207,20 +207,20 @@ let main commit =
         let constraints =
           constraints
           |> List.rev_map (fun (name, rel, version) ->
-                 ( OpamPackage.Name.of_string name,
-                   (rel, OpamPackage.Version.of_string version) ))
+              ( OpamPackage.Name.of_string name,
+                (rel, OpamPackage.Version.of_string version) ))
           |> OpamPackage.Name.Map.of_list
         in
         platforms
         |> List.iter (fun (_id, platform) ->
-               let msg =
-                 match solve ~packages ~constraints ~root_pkgs platform with
-                 | Ok packages ->
-                     "+"
-                     ^ (solve_result_to_yojson packages |> Yojson.Safe.to_string)
-                 | Error msg -> "-" ^ msg
-               in
-               Printf.printf "%d\n%s%!" (String.length msg) msg);
+            let msg =
+              match solve ~packages ~constraints ~root_pkgs platform with
+              | Ok packages ->
+                  "+"
+                  ^ (solve_result_to_yojson packages |> Yojson.Safe.to_string)
+              | Error msg -> "-" ^ msg
+            in
+            Printf.printf "%d\n%s%!" (String.length msg) msg);
         aux ()
   in
   aux ()
@@ -463,8 +463,8 @@ let test_real repo_path =
   let constraints =
     [ ("odoc", `Eq, "3.1.0"); ("ocaml", `Geq, "5.2.0") ]
     |> List.map (fun (name, rel, version) ->
-           ( OpamPackage.Name.of_string name,
-             (rel, OpamPackage.Version.of_string version) ))
+        ( OpamPackage.Name.of_string name,
+          (rel, OpamPackage.Version.of_string version) ))
     |> OpamPackage.Name.Map.of_list
   in
   let platform =

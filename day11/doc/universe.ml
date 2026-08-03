@@ -44,21 +44,21 @@ let collect_referenced ~html_dir =
       try
         Sys.readdir pkg_dir
         |> Array.iter (fun ver ->
-               let univ_file =
-                 Filename.concat (Filename.concat pkg_dir ver) "universes.json"
-               in
-               if Sys.file_exists univ_file then
-                 try
-                   let data =
-                     In_channel.with_open_text univ_file In_channel.input_all
-                   in
-                   let json = Yojson.Safe.from_string data in
-                   let open Yojson.Safe.Util in
-                   json
-                   |> member "universes"
-                   |> to_list
-                   |> List.iter (fun h -> Hashtbl.replace refs (to_string h) ())
-                 with _ -> ())
+            let univ_file =
+              Filename.concat (Filename.concat pkg_dir ver) "universes.json"
+            in
+            if Sys.file_exists univ_file then
+              try
+                let data =
+                  In_channel.with_open_text univ_file In_channel.input_all
+                in
+                let json = Yojson.Safe.from_string data in
+                let open Yojson.Safe.Util in
+                json
+                |> member "universes"
+                |> to_list
+                |> List.iter (fun h -> Hashtbl.replace refs (to_string h) ())
+              with _ -> ())
       with Sys_error _ -> ()
     in
     (try Sys.readdir p_dir_s |> Array.iter scan_pkg with Sys_error _ -> ());
@@ -76,8 +76,8 @@ let gc ~html_dir =
     (try
        Sys.readdir u_dir_s
        |> Array.iter (fun name ->
-              if not (Hashtbl.mem ref_set name) then (
-                Bos.OS.Dir.delete ~recurse:true Fpath.(u_dir / name) |> ignore;
-                incr deleted))
+           if not (Hashtbl.mem ref_set name) then (
+             Bos.OS.Dir.delete ~recurse:true Fpath.(u_dir / name) |> ignore;
+             incr deleted))
      with Sys_error _ -> ());
     !deleted

@@ -48,8 +48,8 @@ let sync ~sw env ~entries ~destination ?(blessed_only = false)
   let filtered =
     entries
     |> List.filter (fun e ->
-           ((not blessed_only) || e.blessed)
-           && package_filter (OpamPackage.to_string e.pkg))
+        ((not blessed_only) || e.blessed)
+        && package_filter (OpamPackage.to_string e.pkg))
   in
   let total = List.length filtered in
   let done_count = ref 0 in

@@ -30,9 +30,9 @@ let latest_run ~snapshot_dir =
   | Ok entries -> (
       entries
       |> List.filter (fun p ->
-             Bos.OS.Dir.exists p |> Result.value ~default:false)
+          Bos.OS.Dir.exists p |> Result.value ~default:false)
       |> List.filter (fun p ->
-             Sys.file_exists (Fpath.to_string Fpath.(p / "build.jsonl")))
+          Sys.file_exists (Fpath.to_string Fpath.(p / "build.jsonl")))
       |> List.sort (fun a b -> compare (Fpath.to_string b) (Fpath.to_string a))
       |> function
       | [] -> None

@@ -39,7 +39,7 @@ let build_oid_index_lwt repos_with_shas =
           >>= fun (store, commit) ->
           Day11_opam.Git_packages.list_package_versions_lwt ~store commit
           >|= List.iter (fun (pkg, oid) ->
-                  Hashtbl.replace tbl (OpamPackage.to_string pkg) oid))
+              Hashtbl.replace tbl (OpamPackage.to_string pkg) oid))
         (fun exn ->
           (* Best-effort: a repo we cannot walk just means no OID index
            for its packages — the hash cache falls back to parsing. *)

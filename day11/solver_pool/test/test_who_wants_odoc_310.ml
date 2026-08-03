@@ -53,7 +53,7 @@ let () =
         (OpamPackage.Name.of_string name)
       |> OpamPackage.Version.Map.keys
       |> List.map (fun v ->
-             OpamPackage.create (OpamPackage.Name.of_string name) v)
+          OpamPackage.create (OpamPackage.Name.of_string name) v)
     with _ -> []
   in
   let targets = List.concat_map all_versions target_names in
@@ -76,10 +76,10 @@ let () =
                 OpamPackage.Map.bindings
                   sr.Day11_solution.Solve_result.build_deps
                 |> List.filter (fun (p, _) ->
-                       OpamPackage.Name.to_string (OpamPackage.name p)
-                       = "oxcaml-odoc-patches")
+                    OpamPackage.Name.to_string (OpamPackage.name p)
+                    = "oxcaml-odoc-patches")
                 |> List.map (fun (p, _) ->
-                       OpamPackage.version p |> OpamPackage.Version.to_string)
+                    OpamPackage.version p |> OpamPackage.Version.to_string)
                 |> String.concat ","
               in
               Some (OpamPackage.to_string t, patches)

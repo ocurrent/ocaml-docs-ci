@@ -142,16 +142,16 @@ let cmd_list env os_dir status has limit sort_lru =
 let find_layer_by_prefix env os_dir prefix =
   L.Scan.list_layers env os_dir
   |> List.filter_map (fun (name, layer_dir) ->
-         let h =
-           match String.index_opt name '-' with
-           | Some i -> String.sub name (i + 1) (String.length name - i - 1)
-           | None -> name
-         in
-         if
-           String.length h >= String.length prefix
-           && String.sub h 0 (String.length prefix) = prefix
-         then Some (name, layer_dir)
-         else None)
+      let h =
+        match String.index_opt name '-' with
+        | Some i -> String.sub name (i + 1) (String.length name - i - 1)
+        | None -> name
+      in
+      if
+        String.length h >= String.length prefix
+        && String.sub h 0 (String.length prefix) = prefix
+      then Some (name, layer_dir)
+      else None)
 
 let with_resolved_layer env os_dir hash_prefix f =
   let os_dir = fpath os_dir in

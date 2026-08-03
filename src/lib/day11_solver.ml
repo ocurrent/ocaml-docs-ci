@@ -162,15 +162,15 @@ module SolveOp = struct
     | Ok entries -> (
         entries
         |> List.filter_map (fun p ->
-               if String.equal (Fpath.basename p) current_key then None
-               else
-                 match Day11_batch.Snapshot.load p with
-                 | Ok s ->
-                     let sols = Fpath.(p / "solutions") in
-                     if Bos.OS.Dir.exists sols |> Result.value ~default:false
-                     then Some (s, sols)
-                     else None
-                 | Error _ -> None)
+            if String.equal (Fpath.basename p) current_key then None
+            else
+              match Day11_batch.Snapshot.load p with
+              | Ok s ->
+                  let sols = Fpath.(p / "solutions") in
+                  if Bos.OS.Dir.exists sols |> Result.value ~default:false then
+                    Some (s, sols)
+                  else None
+              | Error _ -> None)
         |> List.sort
              (fun
                ((a : Day11_batch.Snapshot.t), _)

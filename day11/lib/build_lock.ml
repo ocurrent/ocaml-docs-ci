@@ -44,12 +44,12 @@ let parse_lock_filename filename =
       let rest = String.sub base 6 (String.length base - 6) in
       parse_pkg_ver_universe rest
       |> Option.map (fun (package, version, universe) ->
-             (Build, package, version, universe))
+          (Build, package, version, universe))
     else if String.length base > 4 && String.sub base 0 4 = "doc-" then
       let rest = String.sub base 4 (String.length base - 4) in
       parse_pkg_ver_universe rest
       |> Option.map (fun (package, version, universe) ->
-             (Doc, package, version, universe))
+          (Doc, package, version, universe))
     else if String.length base > 5 && String.sub base 0 5 = "tool-" then
       let rest = String.sub base 5 (String.length base - 5) in
       match String.rindex_opt rest '-' with
@@ -89,48 +89,46 @@ let list_active ~cache_dir =
       |> Array.to_list
       |> List.filter (fun name -> Filename.check_suffix name ".lock")
       |> List.filter_map (fun filename ->
-             let path = Filename.concat locks_dir filename in
-             match parse_lock_filename filename with
-             | None -> None
-             | Some (stage, package, version, universe) ->
-                 if is_lock_held path then
-                   try
-                     let content =
-                       In_channel.with_open_text path In_channel.input_all
-                     in
-                     let lines = String.split_on_char '\n' content in
-                     match lines with
-                     | pid_str :: time_str :: rest ->
-                         let pid = int_of_string (String.trim pid_str) in
-                         let start_time =
-                           float_of_string (String.trim time_str)
-                         in
-                         let layer_name =
-                           match rest with
-                           | s :: _ when String.trim s <> "" ->
-                               Some (String.trim s)
-                           | _ -> None
-                         in
-                         let temp_log_path =
-                           match rest with
-                           | _ :: s :: _ when String.trim s <> "" ->
-                               Some (String.trim s)
-                           | _ -> None
-                         in
-                         Some
-                           {
-                             stage;
-                             package;
-                             version;
-                             universe;
-                             pid;
-                             start_time;
-                             layer_name;
-                             temp_log_path;
-                           }
-                     | _ -> None
-                   with _ -> None
-                 else None)
+          let path = Filename.concat locks_dir filename in
+          match parse_lock_filename filename with
+          | None -> None
+          | Some (stage, package, version, universe) ->
+              if is_lock_held path then
+                try
+                  let content =
+                    In_channel.with_open_text path In_channel.input_all
+                  in
+                  let lines = String.split_on_char '\n' content in
+                  match lines with
+                  | pid_str :: time_str :: rest ->
+                      let pid = int_of_string (String.trim pid_str) in
+                      let start_time = float_of_string (String.trim time_str) in
+                      let layer_name =
+                        match rest with
+                        | s :: _ when String.trim s <> "" ->
+                            Some (String.trim s)
+                        | _ -> None
+                      in
+                      let temp_log_path =
+                        match rest with
+                        | _ :: s :: _ when String.trim s <> "" ->
+                            Some (String.trim s)
+                        | _ -> None
+                      in
+                      Some
+                        {
+                          stage;
+                          package;
+                          version;
+                          universe;
+                          pid;
+                          start_time;
+                          layer_name;
+                          temp_log_path;
+                        }
+                  | _ -> None
+                with _ -> None
+              else None)
     with _ -> []
 
 let cleanup_stale ~cache_dir =
@@ -139,8 +137,7 @@ let cleanup_stale ~cache_dir =
     try
       Sys.readdir locks_dir
       |> Array.iter (fun filename ->
-             if Filename.check_suffix filename ".lock" then
-               let path = Filename.concat locks_dir filename in
-               if not (is_lock_held path) then
-                 try Unix.unlink path with _ -> ())
+          if Filename.check_suffix filename ".lock" then
+            let path = Filename.concat locks_dir filename in
+            if not (is_lock_held path) then try Unix.unlink path with _ -> ())
     with _ -> ()

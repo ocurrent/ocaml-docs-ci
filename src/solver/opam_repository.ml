@@ -50,9 +50,9 @@ let oldest_commit_with ~log ~from pkgs =
   let paths =
     pkgs
     |> List.map (fun pkg ->
-           let name = OpamPackage.name_to_string pkg in
-           let version = OpamPackage.version_to_string pkg in
-           Printf.sprintf "packages/%s/%s.%s" name name version)
+        let name = OpamPackage.name_to_string pkg in
+        let version = OpamPackage.version_to_string pkg in
+        Printf.sprintf "packages/%s/%s.%s" name name version)
   in
   let cmd =
     "git"

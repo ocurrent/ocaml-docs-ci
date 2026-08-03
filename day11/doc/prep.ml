@@ -23,9 +23,9 @@ let create_with_mounts ~source_layer_dir ~dest_layer_dir ~universe ~pkg
     let lib_dirs =
       installed_libs
       |> List.filter_map (fun rel_path ->
-             match String.split_on_char '/' rel_path with
-             | dir :: _ -> Some dir
-             | [] -> None)
+          match String.split_on_char '/' rel_path with
+          | dir :: _ -> Some dir
+          | [] -> None)
       |> List.sort_uniq String.compare
     in
     let lib_mounts =

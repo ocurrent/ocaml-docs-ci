@@ -58,8 +58,8 @@ let load path =
           |> member "local_repos"
           |> to_list
           |> List.map (fun j ->
-                 ( Fpath.v (j |> member "path" |> to_string),
-                   j |> member "packages" |> to_list |> List.map to_string ))
+              ( Fpath.v (j |> member "path" |> to_string),
+                j |> member "packages" |> to_list |> List.map to_string ))
         in
         let with_doc = json |> member "with_doc" |> to_bool in
         let with_jtw = json |> member "with_jtw" |> to_bool in
