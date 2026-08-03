@@ -1,8 +1,8 @@
 (** Solution persistence.
 
-    Serializes dependency solutions (package → dependency set maps)
-    to and from JSON. Used for caching solved results on disk and
-    for inter-process communication. *)
+    Serializes dependency solutions (package → dependency set maps) to and from
+    JSON. Used for caching solved results on disk and for inter-process
+    communication. *)
 
 type t = Deps.t
 (** Alias for {!Deps.t}. *)

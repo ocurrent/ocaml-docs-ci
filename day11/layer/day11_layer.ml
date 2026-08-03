@@ -1,7 +1,6 @@
 (** Content-addressed layer storage.
 
-    A layer is a directory on disk identified by its content hash.
-    It contains:
+    A layer is a directory on disk identified by its content hash. It contains:
     - [fs/] — the filesystem tree (overlayfs upper)
     - [layer.json] — metadata ({!Meta.t})
     - [layer.log] — build stdout/stderr
@@ -9,10 +8,7 @@
 
 (** {1 Core type} *)
 
-type t = Layer.t = {
-  hash : string;
-  dir : Fpath.t;
-}
+type t = Layer.t = { hash : string; dir : Fpath.t }
 
 include (Layer : module type of Layer with type t := t)
 

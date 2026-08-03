@@ -1,8 +1,8 @@
 (** Package index from git commits.
 
-    Reads opam packages directly from git tree objects without needing
-    a working tree checkout. Supports lazy loading (packages read on
-    demand) and eager loading (all at once). *)
+    Reads opam packages directly from git tree objects without needing a working
+    tree checkout. Supports lazy loading (packages read on demand) and eager
+    loading (all at once). *)
 
 module Store = Git_unix.Store
 
@@ -12,91 +12,85 @@ type t
 val empty : t
 
 val of_commit : ?super:t -> Store.t -> Store.Hash.t -> t
-(** [of_commit ?super store commit] builds a package index from the
-    [packages/] tree at [commit]. If [super] is provided, packages
-    from [super] are included as a base (overridden by [commit]). *)
+(** [of_commit ?super store commit] builds a package index from the [packages/]
+    tree at [commit]. If [super] is provided, packages from [super] are included
+    as a base (overridden by [commit]). *)
 
 val of_commit_eager : Store.t -> Store.Hash.t -> t
-(** [of_commit_eager store commit] reads all packages eagerly within
-    a single Lwt run. Safer for use with Domains. *)
+(** [of_commit_eager store commit] reads all packages eagerly within a single
+    Lwt run. Safer for use with Domains. *)
 
 val of_opam_repository : string -> t * Store.t * Store.Hash.t
-(** [of_opam_repository repo_path] opens the repo, reads HEAD, and
-    returns the package index along with the store and commit hash. *)
+(** [of_opam_repository repo_path] opens the repo, reads HEAD, and returns the
+    package index along with the store and commit hash. *)
 
-val of_repositories : (string * string option) list ->
-  t * (string * string) list
-(** [of_repositories repos] loads packages from multiple repositories.
-    Each element is [(repo_path, commit_sha_opt)]. Repositories are
-    layered in order — later repos override earlier ones.
-    Returns the merged package index and a list of
-    [(repo_path, commit_sha_hex)] pairs for passing to workers. *)
+val of_repositories :
+  (string * string option) list -> t * (string * string) list
+(** [of_repositories repos] loads packages from multiple repositories. Each
+    element is [(repo_path, commit_sha_opt)]. Repositories are layered in order
+    — later repos override earlier ones. Returns the merged package index and a
+    list of [(repo_path, commit_sha_hex)] pairs for passing to workers. *)
 
-val of_repositories_lwt : (string * string option) list ->
-  (t * (string * string) list) Lwt.t
-(** Lwt-native version of {!of_repositories}. Use this when calling
-    from inside an already-running Lwt event loop (e.g. an OCurrent
-    Op) to avoid nested {!Lwt_main.run} errors. *)
+val of_repositories_lwt :
+  (string * string option) list -> (t * (string * string) list) Lwt.t
+(** Lwt-native version of {!of_repositories}. Use this when calling from inside
+    an already-running Lwt event loop (e.g. an OCurrent Op) to avoid nested
+    {!Lwt_main.run} errors. *)
 
 type name_cache
-(** Per-repo reuse state from an incremental load: each package
-    name's [packages/<name>] tree OID paired with its parsed version
-    map. Opaque; thread the previous load's caches into the next. *)
+(** Per-repo reuse state from an incremental load: each package name's
+    [packages/<name>] tree OID paired with its parsed version map. Opaque;
+    thread the previous load's caches into the next. *)
 
 val of_repositories_incremental_lwt :
   prev:(string * name_cache) list ->
   (string * string option) list ->
   (t * (string * string) list * (string * name_cache) list) Lwt.t
-(** Like {!of_repositories_lwt}, but reuses parsed version maps from
-    [prev] (keyed by repo path) for every package name whose tree OID
-    is unchanged — only the diff is re-read and re-parsed. Loading is
-    eager like {!of_repositories_lwt} (safe to consume from non-Lwt
-    contexts); a full parse only happens on first load or when [prev]
-    lacks the repo. Returns the fresh caches for the next load. *)
+(** Like {!of_repositories_lwt}, but reuses parsed version maps from [prev]
+    (keyed by repo path) for every package name whose tree OID is unchanged —
+    only the diff is re-read and re-parsed. Loading is eager like
+    {!of_repositories_lwt} (safe to consume from non-Lwt contexts); a full parse
+    only happens on first load or when [prev] lacks the repo. Returns the fresh
+    caches for the next load. *)
 
 val force_all : t -> unit
-(** [force_all t] forces all lazy version maps. Call before using
-    [t] from multiple domains. *)
+(** [force_all t] forces all lazy version maps. Call before using [t] from
+    multiple domains. *)
 
 val get_versions :
-  t -> OpamPackage.Name.t ->
-  OpamFile.OPAM.t OpamPackage.Version.Map.t
+  t -> OpamPackage.Name.t -> OpamFile.OPAM.t OpamPackage.Version.Map.t
 
 val get_package : t -> OpamPackage.t -> OpamFile.OPAM.t
 
 val find_package : t -> OpamPackage.t -> OpamFile.OPAM.t option
-(** [find_package t pkg] returns [Some opam] if the package exists,
-    [None] otherwise. *)
+(** [find_package t pkg] returns [Some opam] if the package exists, [None]
+    otherwise. *)
 
 val all_names : t -> OpamPackage.Name.t list
 (** [all_names t] returns all package names in the index. *)
 
 val list_package_versions_lwt :
-  store:Store.t -> Store.Hash.t ->
-  (OpamPackage.t * string) list Lwt.t
-(** [list_package_versions_lwt ~store commit] lists every package
-    version under [packages/] at [commit], each paired with its
-    version-directory tree OID (hex) — a change fingerprint covering
-    the opam file {e and} any [files/] patches. Costs one tree read
-    per package name; no blob reads, no checkout. Raises on a
-    malformed repository (no [packages/] tree). *)
+  store:Store.t -> Store.Hash.t -> (OpamPackage.t * string) list Lwt.t
+(** [list_package_versions_lwt ~store commit] lists every package version under
+    [packages/] at [commit], each paired with its version-directory tree OID
+    (hex) — a change fingerprint covering the opam file {e and} any [files/]
+    patches. Costs one tree read per package name; no blob reads, no checkout.
+    Raises on a malformed repository (no [packages/] tree). *)
 
 val diff_packages :
-  store:Store.t -> Store.Hash.t -> Store.Hash.t ->
-  OpamPackage.Name.t list
-(** [diff_packages ~store commit1 commit2] returns package names
-    whose tree objects differ between the two commits.
+  store:Store.t -> Store.Hash.t -> Store.Hash.t -> OpamPackage.Name.t list
+(** [diff_packages ~store commit1 commit2] returns package names whose tree
+    objects differ between the two commits.
 
-    {b Asymmetric}: iterates [commit1]'s [packages/] entries, so it
-    reports names changed in or removed from [commit1]'s view — a
-    package present only in [commit2] (newly added) is not reported.
-    Callers needing a symmetric diff should union both directions.
+    {b Asymmetric}: iterates [commit1]'s [packages/] entries, so it reports
+    names changed in or removed from [commit1]'s view — a package present only
+    in [commit2] (newly added) is not reported. Callers needing a symmetric diff
+    should union both directions.
 
-    Runs its own Lwt loop ([Lwt_main.run]); do not call from inside a
-    running Lwt or Lwt_eio event loop — use {!diff_packages_lwt}. *)
+    Runs its own Lwt loop ([Lwt_main.run]); do not call from inside a running
+    Lwt or Lwt_eio event loop — use {!diff_packages_lwt}. *)
 
 val diff_packages_lwt :
-  store:Store.t -> Store.Hash.t -> Store.Hash.t ->
-  OpamPackage.Name.t list Lwt.t
-(** Lwt-native version of {!diff_packages}, safe under a running
-    event loop (e.g. from an OCurrent Op). *)
+  store:Store.t -> Store.Hash.t -> Store.Hash.t -> OpamPackage.Name.t list Lwt.t
+(** Lwt-native version of {!diff_packages}, safe under a running event loop
+    (e.g. from an OCurrent Op). *)

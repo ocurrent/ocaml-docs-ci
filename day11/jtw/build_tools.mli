@@ -1,8 +1,8 @@
 (** Build JTW tools, generate artifacts, and assemble output.
 
-    Builds [js_top_worker-bin] from a local checkout for each unique
-    compiler version, runs per-package and per-solution generation,
-    then assembles the content-hashed output directory. *)
+    Builds [js_top_worker-bin] from a local checkout for each unique compiler
+    version, runs per-package and per-solution generation, then assembles the
+    content-hashed output directory. *)
 
 val build_per_compiler :
   sw:Eio.Switch.t ->
@@ -33,5 +33,5 @@ val build_and_run :
   nodes:Day11_opam_layer.Build.t list ->
   solutions:(OpamPackage.t * Day11_solution.Deps.t) list ->
   unit
-(** Build tools, generate per-package artifacts and worker.js, then
-    assemble the output directory at [output]. *)
+(** Build tools, generate per-package artifacts and worker.js, then assemble the
+    output directory at [output]. *)

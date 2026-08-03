@@ -12,6 +12,5 @@ module type S = sig
     Day11_opam_layer.Build.t ->
     target_fs:Fpath.t ->
     unit ->
-    (Day11_sys.Run.t * Day11_layer.Meta.timing,
-     [> Rresult.R.msg ]) result
+    (Day11_sys.Run.t * Day11_layer.Meta.timing, [> Rresult.R.msg ]) result
 end

@@ -23,10 +23,10 @@
 
 let read_exactly fd buf off len =
   let rec loop off remaining =
-    if remaining > 0 then
+    if remaining > 0 then (
       let n = Unix.read fd buf off remaining in
       if n = 0 then raise End_of_file;
-      loop (off + n) (remaining - n)
+      loop (off + n) (remaining - n))
   in
   loop off len
 
@@ -79,9 +79,15 @@ let read_request fd =
 
 let write_response fd status stdout stderr =
   (match status with
-   | Unix.WEXITED n -> write_u8 fd 0; write_u32 fd n
-   | Unix.WSIGNALED n -> write_u8 fd 1; write_u32 fd n
-   | Unix.WSTOPPED n -> write_u8 fd 1; write_u32 fd n);
+  | Unix.WEXITED n ->
+      write_u8 fd 0;
+      write_u32 fd n
+  | Unix.WSIGNALED n ->
+      write_u8 fd 1;
+      write_u32 fd n
+  | Unix.WSTOPPED n ->
+      write_u8 fd 1;
+      write_u32 fd n);
   write_str fd stdout;
   write_str fd stderr
 
@@ -97,20 +103,21 @@ let read_pipes ?(on_idle = fun () -> ()) r_out r_err =
   let fds = ref [ r_out; r_err ] in
   while !fds <> [] do
     let readable =
-      try let r, _, _ = Unix.select !fds [] [] 1.0 in r
-      with Unix.Unix_error (Unix.EINTR, _, _) -> [] in
-    (match readable with
-     | [] -> on_idle ()
-     | _ ->
-       List.iter (fun fd ->
-         let n = Unix.read fd chunk 0 65536 in
-         if n = 0 then
-           fds := List.filter (fun f -> f <> fd) !fds
-         else if fd = r_out then
-           Buffer.add_subbytes stdout_buf chunk 0 n
-         else
-           Buffer.add_subbytes stderr_buf chunk 0 n
-       ) readable)
+      try
+        let r, _, _ = Unix.select !fds [] [] 1.0 in
+        r
+      with Unix.Unix_error (Unix.EINTR, _, _) -> []
+    in
+    match readable with
+    | [] -> on_idle ()
+    | _ ->
+        List.iter
+          (fun fd ->
+            let n = Unix.read fd chunk 0 65536 in
+            if n = 0 then fds := List.filter (fun f -> f <> fd) !fds
+            else if fd = r_out then Buffer.add_subbytes stdout_buf chunk 0 n
+            else Buffer.add_subbytes stderr_buf chunk 0 n)
+          readable
   done;
   Unix.close r_out;
   Unix.close r_err;
@@ -135,17 +142,14 @@ let wait_with_watchdog ~orig_ppid worker_pid =
   let rec loop delay =
     match Unix.waitpid [ WNOHANG ] worker_pid with
     | 0, _ ->
-      if Unix.getppid () <> orig_ppid then begin
-        (try Unix.kill worker_pid Sys.sigkill with _ -> ());
-        (try ignore (Unix.waitpid [] worker_pid) with _ -> ());
-        exit 0
-      end;
-      (try Unix.sleepf delay
-       with Unix.Unix_error (Unix.EINTR, _, _) -> ());
-      loop (Float.min 0.5 (delay *. 2.))
+        if Unix.getppid () <> orig_ppid then (
+          (try Unix.kill worker_pid Sys.sigkill with _ -> ());
+          (try ignore (Unix.waitpid [] worker_pid) with _ -> ());
+          exit 0);
+        (try Unix.sleepf delay with Unix.Unix_error (Unix.EINTR, _, _) -> ());
+        loop (Float.min 0.5 (delay *. 2.))
     | _pid, status -> status
-    | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
-      Unix.WEXITED 127
+    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> Unix.WEXITED 127
   in
   loop 0.005
 
@@ -156,34 +160,37 @@ let handle_connection fd =
     try
       match output_file with
       | Some path ->
-        let out_fd = Unix.openfile path
-          [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644 in
-        let pid = Unix.create_process_env
-          argv.(0) argv env Unix.stdin out_fd out_fd in
-        Unix.close out_fd;
-        let status = wait_with_watchdog ~orig_ppid pid in
-        let output =
-          try In_channel.with_open_text path In_channel.input_all
-          with _ -> "" in
-        (status, output, "")
+          let out_fd =
+            Unix.openfile path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o644
+          in
+          let pid =
+            Unix.create_process_env argv.(0) argv env Unix.stdin out_fd out_fd
+          in
+          Unix.close out_fd;
+          let status = wait_with_watchdog ~orig_ppid pid in
+          let output =
+            try In_channel.with_open_text path In_channel.input_all
+            with _ -> ""
+          in
+          (status, output, "")
       | None ->
-        let r_out, w_out = Unix.pipe () in
-        let r_err, w_err = Unix.pipe () in
-        let pid = Unix.create_process_env
-          argv.(0) argv env Unix.stdin w_out w_err in
-        Unix.close w_out;
-        Unix.close w_err;
-        let on_idle () =
-          if Unix.getppid () <> orig_ppid then begin
-            (try Unix.kill pid Sys.sigkill with _ -> ());
-            (try ignore (Unix.waitpid [] pid) with _ -> ());
-            exit 0
-          end in
-        let stdout, stderr = read_pipes ~on_idle r_out r_err in
-        let status = wait_with_watchdog ~orig_ppid pid in
-        (status, stdout, stderr)
-    with exn ->
-      (Unix.WEXITED 127, "", Printexc.to_string exn)
+          let r_out, w_out = Unix.pipe () in
+          let r_err, w_err = Unix.pipe () in
+          let pid =
+            Unix.create_process_env argv.(0) argv env Unix.stdin w_out w_err
+          in
+          Unix.close w_out;
+          Unix.close w_err;
+          let on_idle () =
+            if Unix.getppid () <> orig_ppid then (
+              (try Unix.kill pid Sys.sigkill with _ -> ());
+              (try ignore (Unix.waitpid [] pid) with _ -> ());
+              exit 0)
+          in
+          let stdout, stderr = read_pipes ~on_idle r_out r_err in
+          let status = wait_with_watchdog ~orig_ppid pid in
+          (status, stdout, stderr)
+    with exn -> (Unix.WEXITED 127, "", Printexc.to_string exn)
   in
   write_response fd status stdout stderr;
   Unix.close fd
@@ -191,7 +198,7 @@ let handle_connection fd =
 let reap_handlers () =
   let rec loop () =
     match Unix.waitpid [ WNOHANG ] (-1) with
-    | 0, _ | exception Unix.Unix_error (ECHILD, _, _) -> ()
+    | 0, _ | (exception Unix.Unix_error (ECHILD, _, _)) -> ()
     | _ -> loop ()
   in
   loop ()
@@ -217,26 +224,25 @@ let () =
     if Unix.getppid () <> orig_ppid then exit 0;
     let readable =
       try
-        let r, _, _ = Unix.select [ sock ] [] [] 1.0 in r
-      with Unix.Unix_error (EINTR, _, _) -> [] in
+        let r, _, _ = Unix.select [ sock ] [] [] 1.0 in
+        r
+      with Unix.Unix_error (EINTR, _, _) -> []
+    in
     match readable with
-    | [] -> ()  (* timeout — loop back to the watchdog check *)
-    | _ ->
-    match Unix.accept sock with
-    | exception Unix.Unix_error (EINTR, _, _) -> ()
-    | fd, _ ->
-    begin
-      let pid = Unix.fork () in
-      if pid = 0 then begin
-        (* Handler child *)
-        Unix.close sock;
-        (* Reset SIGCHLD so waitpid works for command children *)
-        Sys.set_signal Sys.sigchld Sys.Signal_default;
-        (try handle_connection fd
-         with e ->
-           Printf.eprintf "fork_helper: %s\n%!" (Printexc.to_string e));
-        exit 0
-      end else
-        Unix.close fd
-    end
+    | [] -> () (* timeout — loop back to the watchdog check *)
+    | _ -> (
+        match Unix.accept sock with
+        | exception Unix.Unix_error (EINTR, _, _) -> ()
+        | fd, _ ->
+            let pid = Unix.fork () in
+            if pid = 0 then (
+              (* Handler child *)
+              Unix.close sock;
+              (* Reset SIGCHLD so waitpid works for command children *)
+              Sys.set_signal Sys.sigchld Sys.Signal_default;
+              (try handle_connection fd
+               with e ->
+                 Printf.eprintf "fork_helper: %s\n%!" (Printexc.to_string e));
+              exit 0)
+            else Unix.close fd)
   done

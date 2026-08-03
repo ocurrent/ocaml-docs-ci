@@ -1,4 +1,13 @@
 (test
  (name test_lib)
- (libraries day11_lib day11_test_util alcotest astring bos eio eio_main fpath
-   opam-format yojson))
+ (libraries
+  day11_lib
+  day11_test_util
+  alcotest
+  astring
+  bos
+  eio
+  eio_main
+  fpath
+  opam-format
+  yojson))

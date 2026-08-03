@@ -21,7 +21,8 @@ let open_store_at path =
   Git_unix.Store.v ~dotgit fpath >|= function
   | Ok x -> x
   | Error e ->
-      Fmt.failwith "Failed to open opam-repository at %s: %a" path Store.pp_error e
+      Fmt.failwith "Failed to open opam-repository at %s: %a" path
+        Store.pp_error e
 
 let clone () =
   match Unix.lstat clone_path with

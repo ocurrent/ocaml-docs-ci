@@ -23,14 +23,14 @@ type results = {
 let classify_log log_file =
   match log_file with
   | None -> ("build_failure", None)
-  | Some path ->
-    match Bos.OS.File.read path with
-    | Error _ -> ("build_failure", None)
-    | Ok content ->
-      let (_status, category, error) =
-        Day11_lib.Classify.classify_build_log content
-      in
-      (category, error)
+  | Some path -> (
+      match Bos.OS.File.read path with
+      | Error _ -> ("build_failure", None)
+      | Ok content ->
+          let _status, category, error =
+            Day11_lib.Classify.classify_build_log content
+          in
+          (category, error))
 
 (* History writes happen incrementally inside {!Recorder} now. *)
 
@@ -45,16 +45,26 @@ let write_status ~snapshot_dir ~run_id (results : results) =
      pipeline, which has the DAG, does make that distinction. Keyed by
      package so we can drive both status.json and final_status.json. *)
   let pkg_outcomes =
-    List.map (fun (b : build_outcome) ->
-      (OpamPackage.to_string b.pkg,
-       { Day11_lib.Status_index.is_doc = false;
-         blessed = b.blessed; ok = b.success; cascaded = false }))
+    List.map
+      (fun (b : build_outcome) ->
+        ( OpamPackage.to_string b.pkg,
+          {
+            Day11_lib.Status_index.is_doc = false;
+            blessed = b.blessed;
+            ok = b.success;
+            cascaded = false;
+          } ))
       results.builds
-    @ List.map (fun (d : doc_outcome) ->
-      (OpamPackage.to_string d.pkg,
-       { Day11_lib.Status_index.is_doc = true;
-         blessed = d.blessed; ok = d.success; cascaded = false }))
-      results.docs
+    @ List.map
+        (fun (d : doc_outcome) ->
+          ( OpamPackage.to_string d.pkg,
+            {
+              Day11_lib.Status_index.is_doc = true;
+              blessed = d.blessed;
+              ok = d.success;
+              cascaded = false;
+            } ))
+        results.docs
   in
   let status =
     Day11_lib.Status_index.of_outcomes ~run_id
@@ -70,31 +80,28 @@ let finish ~snapshot_dir ~packages_dir:_ ~run_info results =
   (* History is written incrementally by [Recorder] now. *)
   write_status ~snapshot_dir ~run_id results;
   let builds_ok =
-    List.length (List.filter (fun (b : build_outcome) -> b.success) results.builds)
+    List.length
+      (List.filter (fun (b : build_outcome) -> b.success) results.builds)
   in
   let builds_fail = List.length results.builds - builds_ok in
   let docs_ok =
     List.length (List.filter (fun (d : doc_outcome) -> d.success) results.docs)
   in
   let failures =
-    List.filter_map (fun (b : build_outcome) ->
-      if b.success then None
-      else
-        let cat, _ = classify_log b.log_file in
-        Some (OpamPackage.to_string b.pkg, cat)
-    ) results.builds
+    List.filter_map
+      (fun (b : build_outcome) ->
+        if b.success then None
+        else
+          let cat, _ = classify_log b.log_file in
+          Some (OpamPackage.to_string b.pkg, cat))
+      results.builds
   in
   Printf.printf "Build: %d success, %d failed\n" builds_ok builds_fail;
   Printf.printf "Docs:  %d generated\n" docs_ok;
-  if failures <> [] then begin
+  if failures <> [] then (
     Printf.printf "Failures:\n";
-    List.iter (fun (p, cat) ->
-      Printf.printf "  %s (%s)\n" p cat
-    ) failures
-  end;
+    List.iter (fun (p, cat) -> Printf.printf "  %s (%s)\n" p cat) failures);
   Day11_lib.Run_log.finish_run run_info
     ~targets_requested:(List.length results.targets)
-    ~packages_built:builds_ok
-    ~packages_failed:builds_fail
-    ~docs_generated:docs_ok
-    ~failures
+    ~packages_built:builds_ok ~packages_failed:builds_fail
+    ~docs_generated:docs_ok ~failures

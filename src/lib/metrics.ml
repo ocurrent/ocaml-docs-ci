@@ -1,12 +1,12 @@
 (** Prometheus metrics for the docs pipeline.
 
-    Each definition registers into {!Prometheus.CollectorRegistry.default}
-    on first evaluation; the [/metrics] route (see
-    {!Docs_ci_web.Metrics_page}) renders that registry in the text
-    exposition format. The recording functions are called from the
-    pipeline — build/doc completion callbacks and status regeneration in
-    {!Docs_ci_pipelines.Docs}. Defining them here (in the app library,
-    not day11) keeps the prometheus dependency out of the lower layers. *)
+    Each definition registers into {!Prometheus.CollectorRegistry.default} on
+    first evaluation; the [/metrics] route (see {!Docs_ci_web.Metrics_page})
+    renders that registry in the text exposition format. The recording functions
+    are called from the pipeline — build/doc completion callbacks and status
+    regeneration in {!Docs_ci_pipelines.Docs}. Defining them here (in the app
+    library, not day11) keeps the prometheus dependency out of the lower layers.
+*)
 
 let namespace = "docs_ci"
 
@@ -30,16 +30,19 @@ let record_build ~profile ~success =
        [ profile; (if success then "ok" else "fail") ])
 
 let docs_total =
-  Prometheus.Counter.v_labels ~label_names:[ "profile"; "result"; "blessed" ]
+  Prometheus.Counter.v_labels
+    ~label_names:[ "profile"; "result"; "blessed" ]
     ~help:"Doc nodes (compile/doc-all/link) executed, by result and blessing."
     ~namespace ~subsystem:"pipeline" "docs_total"
 
 let record_doc ~profile ~success ~blessed =
   Prometheus.Counter.inc_one
     (Prometheus.Counter.labels docs_total
-       [ profile;
+       [
+         profile;
          (if success then "ok" else "fail");
-         (if blessed then "true" else "false") ])
+         (if blessed then "true" else "false");
+       ])
 
 (* ── Status gauges (the profile's latest completed snapshot) ───────
 
@@ -48,8 +51,8 @@ let record_doc ~profile ~success ~blessed =
    profile's gauge reflects its latest *completed* snapshot. *)
 
 let gauge name help =
-  Prometheus.Gauge.v_label ~label_name:"profile"
-    ~help ~namespace ~subsystem:"status" name
+  Prometheus.Gauge.v_label ~label_name:"profile" ~help ~namespace
+    ~subsystem:"status" name
 
 let packages_blessed =
   gauge "packages_blessed"
@@ -82,22 +85,25 @@ let layer_sides = [ "build"; "doc"; "tool" ]
 let layer_results = [ "success"; "failure"; "cascade" ]
 
 let status_layers =
-  Prometheus.Gauge.v_labels ~label_names:[ "profile"; "side"; "result" ]
-    ~help:"Plan nodes (layers) in the profile's latest completed snapshot, \
-           by side (build/doc/tool) and result (success/failure/cascade). \
-           Partitions all layers; sum for a total, fold cascade into \
-           failure for the plain split."
+  Prometheus.Gauge.v_labels
+    ~label_names:[ "profile"; "side"; "result" ]
+    ~help:
+      "Plan nodes (layers) in the profile's latest completed snapshot, by side \
+       (build/doc/tool) and result (success/failure/cascade). Partitions all \
+       layers; sum for a total, fold cascade into failure for the plain split."
     ~namespace ~subsystem:"status" "layers"
 
 (* [counts] maps (side, result) -> n; missing pairs are recorded as 0. *)
 let set_layers ~profile counts =
-  List.iter (fun side ->
-    List.iter (fun result ->
-      let n = try List.assoc (side, result) counts with Not_found -> 0 in
-      Prometheus.Gauge.set
-        (Prometheus.Gauge.labels status_layers [ profile; side; result ])
-        (float_of_int n))
-      layer_results)
+  List.iter
+    (fun side ->
+      List.iter
+        (fun result ->
+          let n = try List.assoc (side, result) counts with Not_found -> 0 in
+          Prometheus.Gauge.set
+            (Prometheus.Gauge.labels status_layers [ profile; side; result ])
+            (float_of_int n))
+        layer_results)
     layer_sides
 
 (* ── Package accounting — the profile's latest completed snapshot ──
@@ -109,29 +115,38 @@ let set_layers ~profile counts =
    is per package here (its canonical universe collapsed to one status),
    unlike the node-level {!status_layers}. *)
 let package_outcomes =
-  [ "solver_failure"; "not_documentable";
-    "blessed_doc_success"; "blessed_doc_failure" ]
+  [
+    "solver_failure";
+    "not_documentable";
+    "blessed_doc_success";
+    "blessed_doc_failure";
+  ]
 
 let status_packages =
   Prometheus.Gauge.v_labels ~label_names:[ "profile"; "outcome" ]
-    ~help:"Packages in the profile's latest completed snapshot by outcome: \
-           solver_failure (never solved), not_documentable (solved, no libs \
-           to document), blessed_doc_success / blessed_doc_failure (canonical \
-           docs built / failed). Sum = attempted; without solver_failure = \
-           scanned."
+    ~help:
+      "Packages in the profile's latest completed snapshot by outcome: \
+       solver_failure (never solved), not_documentable (solved, no libs to \
+       document), blessed_doc_success / blessed_doc_failure (canonical docs \
+       built / failed). Sum = attempted; without solver_failure = scanned."
     ~namespace ~subsystem:"status" "packages"
 
-let set_packages ~profile ~solver_failure ~not_documentable
-    ~blessed_doc_success ~blessed_doc_failure =
-  let by = [ "solver_failure", solver_failure;
-             "not_documentable", not_documentable;
-             "blessed_doc_success", blessed_doc_success;
-             "blessed_doc_failure", blessed_doc_failure ] in
-  List.iter (fun outcome ->
-    let n = try List.assoc outcome by with Not_found -> 0 in
-    Prometheus.Gauge.set
-      (Prometheus.Gauge.labels status_packages [ profile; outcome ])
-      (float_of_int n))
+let set_packages ~profile ~solver_failure ~not_documentable ~blessed_doc_success
+    ~blessed_doc_failure =
+  let by =
+    [
+      ("solver_failure", solver_failure);
+      ("not_documentable", not_documentable);
+      ("blessed_doc_success", blessed_doc_success);
+      ("blessed_doc_failure", blessed_doc_failure);
+    ]
+  in
+  List.iter
+    (fun outcome ->
+      let n = try List.assoc outcome by with Not_found -> 0 in
+      Prometheus.Gauge.set
+        (Prometheus.Gauge.labels status_packages [ profile; outcome ])
+        (float_of_int n))
     package_outcomes
 
 (* Wall-clock seconds from the profile's latest completed snapshot first
@@ -158,8 +173,8 @@ let disk_root_used_percent =
 
 let layers_total_bytes =
   disk_gauge "layers_total_bytes"
-    "Total size of all build layers across every os_dir, summed from \
-     each layer's disk_usage metadata (not by measuring)."
+    "Total size of all build layers across every os_dir, summed from each \
+     layer's disk_usage metadata (not by measuring)."
 
 (* [root_percent] < 0 means the df sample failed; leave that gauge as-is
    rather than record a bogus value. *)

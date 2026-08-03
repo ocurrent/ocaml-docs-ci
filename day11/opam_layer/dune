@@ -1,6 +1,15 @@
 (library
  (name day11_opam_layer)
  (public_name day11.opam-layer)
- (libraries day11_layer day11_sys day11_solution
-            bos fpath opam-format rresult yojson unix)
- (preprocess (pps ppx_deriving_yojson)))
+ (libraries
+  day11_layer
+  day11_sys
+  day11_solution
+  bos
+  fpath
+  opam-format
+  rresult
+  yojson
+  unix)
+ (preprocess
+  (pps ppx_deriving_yojson)))

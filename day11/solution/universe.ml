@@ -9,7 +9,6 @@ let of_deps deps =
   |> Digest.to_hex
 
 let dummy = ""
-
 let equal = String.equal
 let to_string t = t
 let pp fmt t = Format.pp_print_string fmt t

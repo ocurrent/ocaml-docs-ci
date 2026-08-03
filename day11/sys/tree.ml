@@ -1,4 +1,5 @@
 let src = Logs.Src.create "day11.sys.tree" ~doc:"Directory tree operations"
+
 module Log = (val Logs.src_log src)
 
 let cp_file ~source ~target =
@@ -7,17 +8,20 @@ let cp_file ~source ~target =
   let src_s = Fpath.to_string source in
   let tgt_s = Fpath.to_string target in
   let ic = open_in_bin src_s in
-  Fun.protect ~finally:(fun () -> close_in_noerr ic) (fun () ->
-    let oc = open_out_bin tgt_s in
-    Fun.protect ~finally:(fun () -> close_out_noerr oc) (fun () ->
-      let rec loop () =
-        let n = input ic buf 0 buf_size in
-        if n > 0 then begin
-          output oc buf 0 n;
-          loop ()
-        end
-      in
-      loop ()));
+  Fun.protect
+    ~finally:(fun () -> close_in_noerr ic)
+    (fun () ->
+      let oc = open_out_bin tgt_s in
+      Fun.protect
+        ~finally:(fun () -> close_out_noerr oc)
+        (fun () ->
+          let rec loop () =
+            let n = input ic buf 0 buf_size in
+            if n > 0 then (
+              output oc buf 0 n;
+              loop ())
+          in
+          loop ()));
   (* Preserve permissions and times; a failure here shouldn't abort the
      copy that already succeeded. *)
   let stat = Unix.lstat src_s in
@@ -29,8 +33,7 @@ let cp_file ~source ~target =
   try Unix.utimes tgt_s stat.Unix.st_atime stat.Unix.st_mtime
   with Unix.Unix_error (e, _, _) ->
     Log.warn (fun m ->
-        m "could not preserve timestamps on %s: %s" tgt_s
-          (Unix.error_message e))
+        m "could not preserve timestamps on %s: %s" tgt_s (Unix.error_message e))
 
 let rec walk_copy ~link source target =
   let src_s = Fpath.to_string source in
@@ -48,14 +51,13 @@ let rec walk_copy ~link source target =
       let link_target = Unix.readlink src_s in
       Unix.symlink link_target (Fpath.to_string target)
   | Unix.S_REG ->
-      if link then
+      if link then (
         try Unix.link src_s (Fpath.to_string target)
         with Unix.Unix_error (Unix.EMLINK, _, _) ->
           Log.debug (fun m ->
               m "EMLINK on %a, falling back to copy" Fpath.pp source);
-          cp_file ~source ~target
-      else
-        cp_file ~source ~target
+          cp_file ~source ~target)
+      else cp_file ~source ~target
   | _ -> ()
 
 let hardlink ~source ~target =
@@ -64,10 +66,9 @@ let hardlink ~source ~target =
     Ok ()
   with
   | Unix.Unix_error (e, fn, arg) ->
-      Rresult.R.error_msgf "hardlink %a -> %a: %s(%s): %s"
-        Fpath.pp source Fpath.pp target fn arg (Unix.error_message e)
-  | exn ->
-      Rresult.R.error_msgf "hardlink: %s" (Printexc.to_string exn)
+      Rresult.R.error_msgf "hardlink %a -> %a: %s(%s): %s" Fpath.pp source
+        Fpath.pp target fn arg (Unix.error_message e)
+  | exn -> Rresult.R.error_msgf "hardlink: %s" (Printexc.to_string exn)
 
 let copy ~source ~target =
   try
@@ -75,10 +76,9 @@ let copy ~source ~target =
     Ok ()
   with
   | Unix.Unix_error (e, fn, arg) ->
-      Rresult.R.error_msgf "copy %a -> %a: %s(%s): %s"
-        Fpath.pp source Fpath.pp target fn arg (Unix.error_message e)
-  | exn ->
-      Rresult.R.error_msgf "copy: %s" (Printexc.to_string exn)
+      Rresult.R.error_msgf "copy %a -> %a: %s(%s): %s" Fpath.pp source Fpath.pp
+        target fn arg (Unix.error_message e)
+  | exn -> Rresult.R.error_msgf "copy: %s" (Printexc.to_string exn)
 
 let clense ~source ~target =
   let rec walk src tgt =
@@ -96,21 +96,20 @@ let clense ~source ~target =
           entries;
         (* Remove dir if now empty *)
         let remaining = Bos.OS.Dir.contents tgt |> Result.get_ok in
-        if remaining = [] then
-          Bos.OS.Dir.delete ~recurse:false tgt |> ignore
-    | Unix.S_REG ->
+        if remaining = [] then Bos.OS.Dir.delete ~recurse:false tgt |> ignore
+    | Unix.S_REG -> (
         let src_s = Fpath.to_string src in
-        (try
-           let src_stat = Unix.lstat src_s in
-           if src_stat.Unix.st_mtime = stat.Unix.st_mtime then
-             try Unix.unlink tgt_s
-             with Unix.Unix_error (Unix.EACCES, _, _) ->
-               (* Read-only file: add write bits and retry. *)
-               Unix.chmod tgt_s (stat.Unix.st_perm lor 0o222);
-               Unix.unlink tgt_s
-         with Unix.Unix_error (e, _, _) ->
-           Log.debug (fun m ->
-               m "clense: skipping %s: %s" tgt_s (Unix.error_message e)))
+        try
+          let src_stat = Unix.lstat src_s in
+          if src_stat.Unix.st_mtime = stat.Unix.st_mtime then (
+            try Unix.unlink tgt_s
+            with Unix.Unix_error (Unix.EACCES, _, _) ->
+              (* Read-only file: add write bits and retry. *)
+              Unix.chmod tgt_s (stat.Unix.st_perm lor 0o222);
+              Unix.unlink tgt_s)
+        with Unix.Unix_error (e, _, _) ->
+          Log.debug (fun m ->
+              m "clense: skipping %s: %s" tgt_s (Unix.error_message e)))
     | _ -> ()
   in
   try
@@ -118,7 +117,6 @@ let clense ~source ~target =
     Ok ()
   with
   | Unix.Unix_error (e, fn, arg) ->
-      Rresult.R.error_msgf "clense %a -> %a: %s(%s): %s"
-        Fpath.pp source Fpath.pp target fn arg (Unix.error_message e)
-  | exn ->
-      Rresult.R.error_msgf "clense: %s" (Printexc.to_string exn)
+      Rresult.R.error_msgf "clense %a -> %a: %s(%s): %s" Fpath.pp source
+        Fpath.pp target fn arg (Unix.error_message e)
+  | exn -> Rresult.R.error_msgf "clense: %s" (Printexc.to_string exn)

@@ -13,5 +13,5 @@ let ensure env ~packages_dir ~id ~layer_name =
     Eio.Path.symlink ~link_to:target ep_link;
     Ok ()
   with exn ->
-    Rresult.R.error_msgf "Symlinks.ensure %s/%s: %s"
-      id layer_name (Printexc.to_string exn)
+    Rresult.R.error_msgf "Symlinks.ensure %s/%s: %s" id layer_name
+      (Printexc.to_string exn)

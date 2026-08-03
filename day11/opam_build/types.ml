@@ -1,5 +1,6 @@
 module Build = Day11_opam_layer.Build
 module Tool = Day11_opam_layer.Tool
+
 type build = Build.t
 type tool = Tool.t
 
@@ -9,10 +10,9 @@ type build_env = {
   uid : int;
   gid : int;
   cpu_slots : Day11_runner.Cpu_slots.t option;
-  (** Optional NUMA-aware cpuset pool. When [Some], every container
-      launch acquires a slot and passes its [(cpuset, numa_mems)]
-      into the OCI spec. [None] leaves containers unconstrained
-      (legacy behaviour). *)
+      (** Optional NUMA-aware cpuset pool. When [Some], every container launch
+          acquires a slot and passes its [(cpuset, numa_mems)] into the OCI
+          spec. [None] leaves containers unconstrained (legacy behaviour). *)
 }
 
 let make_build_env ~base ~os_dir ?(uid = Unix.getuid ()) ?(gid = Unix.getgid ())

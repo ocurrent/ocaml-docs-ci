@@ -1,16 +1,12 @@
-(** Wrap [Day11_batch.Profile_ctx.ensure_base] as a Current_cache
-    op so the Docker build + import show up at [/jobs] with live
-    logs. Downstream pipeline stages can then depend on the op's
-    [unit Current.t] output instead of polling a background-fiber
-    var. *)
+(** Wrap [Day11_batch.Profile_ctx.ensure_base] as a Current_cache op so the
+    Docker build + import show up at [/jobs] with live logs. Downstream pipeline
+    stages can then depend on the op's [unit Current.t] output instead of
+    polling a background-fiber var. *)
 
 module Profile_ctx = Day11_batch.Profile_ctx
 
 module Op = struct
-  type t = {
-    env : Eio_unix.Stdenv.base;
-    ctx : Profile_ctx.t;
-  }
+  type t = { env : Eio_unix.Stdenv.base; ctx : Profile_ctx.t }
 
   module Key = struct
     type t = {
@@ -27,7 +23,8 @@ module Op = struct
        the op re-runs — which is what makes the per-profile
        [opam-build-bin-<key>] cache actually get populated. *)
     let digest t =
-      let obr = match t.opam_build_repo with
+      let obr =
+        match t.opam_build_repo with
         | None -> "upstream"
         | Some p -> "local:" ^ p
       in
@@ -43,26 +40,23 @@ module Op = struct
 
   let id = "day11-ensure-base"
   let auto_cancel = false
-
-  let pp f (key : Key.t) =
-    Fmt.pf f "ensure-base %s" key.profile_name
+  let pp f (key : Key.t) = Fmt.pf f "ensure-base %s" key.profile_name
 
   let build (op_ctx : t) job (key : Key.t) =
     let open Lwt.Syntax in
     let* () = Current.Job.start job ~level:Current.Level.Average in
-    Current.Job.log job
-      "Ensuring base image for profile %s (digest %s)"
+    Current.Job.log job "Ensuring base image for profile %s (digest %s)"
       key.profile_name key.image_digest;
     Lwt_eio.run_eio @@ fun () ->
     Eio.Switch.run @@ fun sw ->
     let ctx = Profile_ctx.with_base_digest op_ctx.ctx key.image_digest in
     match Profile_ctx.ensure_base ~sw op_ctx.env ctx with
     | Ok _ready ->
-      Current.Job.log job "Base image ready";
-      Ok ()
+        Current.Job.log job "Base image ready";
+        Ok ()
     | Error (`Msg msg) ->
-      Current.Job.log job "Base image build failed: %s" msg;
-      Error (`Msg msg)
+        Current.Job.log job "Base image build failed: %s" msg;
+        Error (`Msg msg)
 end
 
 module Cache = Current_cache.Make (Op)
@@ -78,19 +72,22 @@ module Cache = Current_cache.Make (Op)
    Sets [rebuild=1] in the cache db (persisted). *)
 let invalidate ~image_digest (ctx : Profile_ctx.t) =
   Cache.invalidate
-    Op.Key.{
-      profile_name = ctx.profile.name;
-      image_digest;
-      opam_build_repo = ctx.profile.opam_build_repo;
-    }
+    Op.Key.
+      {
+        profile_name = ctx.profile.name;
+        image_digest;
+        opam_build_repo = ctx.profile.opam_build_repo;
+      }
 
 let ensure ~env ~digest (ctx : Profile_ctx.t) : unit Current.t =
   let open Current.Syntax in
-  Current.component "ensure-base %s" ctx.profile.name |>
+  Current.component "ensure-base %s" ctx.profile.name
+  |>
   let> image_digest = digest in
   Cache.get { env; ctx }
-    Op.Key.{
-      profile_name = ctx.profile.name;
-      image_digest;
-      opam_build_repo = ctx.profile.opam_build_repo;
-    }
+    Op.Key.
+      {
+        profile_name = ctx.profile.name;
+        image_digest;
+        opam_build_repo = ctx.profile.opam_build_repo;
+      }

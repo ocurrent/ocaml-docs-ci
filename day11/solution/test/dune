@@ -1,3 +1,11 @@
 (test
  (name test_graph)
- (libraries day11_solution day11_test_util alcotest astring bos fpath opam-format yojson))
+ (libraries
+  day11_solution
+  day11_test_util
+  alcotest
+  astring
+  bos
+  fpath
+  opam-format
+  yojson))

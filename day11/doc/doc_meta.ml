@@ -17,13 +17,10 @@ type wire = {
   package : string;
   phase : string;
   deps : string list; [@default []]
-} [@@deriving yojson { strict = false }]
-
-type t = {
-  package : string;
-  phase : phase;
-  deps : string list;
 }
+[@@deriving yojson { strict = false }]
+
+type t = { package : string; phase : phase; deps : string list }
 
 let to_wire (t : t) : wire =
   { package = t.package; phase = string_of_phase t.phase; deps = t.deps }
@@ -39,19 +36,19 @@ let save layer_dir t =
     Yojson.Safe.to_file (Fpath.to_string path) (wire_to_yojson (to_wire t));
     Ok ()
   with exn ->
-    Rresult.R.error_msgf "Doc_meta.save %a: %s"
-      Fpath.pp path (Printexc.to_string exn)
+    Rresult.R.error_msgf "Doc_meta.save %a: %s" Fpath.pp path
+      (Printexc.to_string exn)
 
 let load layer_dir =
   let path = Fpath.(layer_dir / "doc.json") in
   try
     match wire_of_yojson (Yojson.Safe.from_file (Fpath.to_string path)) with
     | Ok w -> Ok (of_wire w)
-    | Error msg ->
-      Rresult.R.error_msgf "Doc_meta.load %a: %s" Fpath.pp path msg
+    | Error msg -> Rresult.R.error_msgf "Doc_meta.load %a: %s" Fpath.pp path msg
   with exn ->
-    Rresult.R.error_msgf "Doc_meta.load %a: %s"
-      Fpath.pp path (Printexc.to_string exn)
+    Rresult.R.error_msgf "Doc_meta.load %a: %s" Fpath.pp path
+      (Printexc.to_string exn)
 
 let exists layer_dir =
-  Bos.OS.File.exists Fpath.(layer_dir / "doc.json") |> Result.value ~default:false
+  Bos.OS.File.exists Fpath.(layer_dir / "doc.json")
+  |> Result.value ~default:false

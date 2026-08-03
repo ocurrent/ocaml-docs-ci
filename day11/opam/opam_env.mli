@@ -1,7 +1,7 @@
 (** Opam variable environment for dependency filtering.
 
-    Provides the environment function that the solver context uses
-    to evaluate opam filter expressions. Pure — no I/O. *)
+    Provides the environment function that the solver context uses to evaluate
+    opam filter expressions. Pure — no I/O. *)
 
 val std_env :
   ?ocaml_native:bool ->
@@ -15,8 +15,8 @@ val std_env :
   unit ->
   string ->
   OpamVariable.variable_contents option
-(** [std_env ~arch ~os ~os_distribution ~os_family ~os_version ()]
-    returns an environment function for system-level opam variables.
+(** [std_env ~arch ~os ~os_distribution ~os_family ~os_version ()] returns an
+    environment function for system-level opam variables.
 
     Handles: [arch], [os], [os-distribution], [os-version], [os-family],
     [opam-version], [sys-ocaml-version], [ocaml:native]. *)

@@ -10,6 +10,7 @@ type t = {
 }
 
 let src = Logs.Src.create "day11.sys.run" ~doc:"Subprocess execution"
+
 module Log = (val Logs.src_log src)
 
 (* Delegate fork+exec to the fork helper daemon via a Unix socket.
@@ -28,32 +29,31 @@ let run ~sw env cmd output_file =
   let t_start = Unix.gettimeofday () in
   let env_arr =
     let cur = OS.Env.current () |> Result.get_ok in
-    Astring.String.Map.fold
-      (fun k v acc -> (k ^ "=" ^ v) :: acc)
-      cur []
+    Astring.String.Map.fold (fun k v acc -> (k ^ "=" ^ v) :: acc) cur []
     |> Array.of_list
   in
   let clock = Eio.Stdenv.clock env in
   let rec run_with_retry retries =
-    try run_via_helper ~sw env cmd env_arr output_file
-    with
+    try run_via_helper ~sw env cmd env_arr output_file with
     | Eio.Buf_read.Buffer_limit_exceeded as exn ->
-      (* The subprocess output exceeded the protocol's per-field cap.
+        (* The subprocess output exceeded the protocol's per-field cap.
          Retrying re-runs the (possibly expensive) process and gets
          the same oversized response — fail immediately instead. The
          caller should redirect bulk output via [output_file]. *)
-      Log.err (fun m -> m "Subprocess output exceeded the fork \
-        protocol buffer cap (cmd: %s) — not retrying; use an \
-        output_file for bulk output" (String.concat " " cmd));
-      raise exn
-    | exn ->
-      if retries > 0 then begin
-        Log.warn (fun m -> m "Fork helper failed (%s), retrying (%d left)"
-          (Printexc.to_string exn) retries);
-        Eio.Time.sleep clock 0.1;
-        run_with_retry (retries - 1)
-      end else
+        Log.err (fun m ->
+            m
+              "Subprocess output exceeded the fork protocol buffer cap (cmd: \
+               %s) — not retrying; use an output_file for bulk output"
+              (String.concat " " cmd));
         raise exn
+    | exn ->
+        if retries > 0 then (
+          Log.warn (fun m ->
+              m "Fork helper failed (%s), retrying (%d left)"
+                (Printexc.to_string exn) retries);
+          Eio.Time.sleep clock 0.1;
+          run_with_retry (retries - 1))
+        else raise exn
   in
   let output, errors, status = run_with_retry 3 in
   let t_end = Unix.gettimeofday () in
@@ -68,8 +68,7 @@ let run ~sw env cmd output_file =
         | `Signaled n -> ("signaled", n)
       in
       Log.err (fun m ->
-          m "Process %s with %d: '%s'\nStdout:\n%s\nStderr:\n%s"
-            verb n (String.concat " " result.cmd)
+          m "Process %s with %d: '%s'\nStdout:\n%s\nStderr:\n%s" verb n
+            (String.concat " " result.cmd)
             result.output result.errors));
   result
-

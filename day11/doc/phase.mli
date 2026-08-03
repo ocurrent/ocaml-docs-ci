@@ -1,9 +1,6 @@
 (** Documentation generation phases and results. *)
 
-type doc_phase =
-  | Doc_all
-  | Doc_compile_only
-  | Doc_link_only
+type doc_phase = Doc_all | Doc_compile_only | Doc_link_only
 
 type doc_result =
   | Doc_success of { html_path : string; blessed : bool }

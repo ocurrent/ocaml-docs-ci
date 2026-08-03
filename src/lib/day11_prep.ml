@@ -1,16 +1,12 @@
 (** Day11-based build/doc nodes for the OCurrent pipeline.
 
-    Each DAG node (build, tool, compile, link, doc-all) becomes an
-    OCurrent component with its own job log, visible in the web UI.
+    Each DAG node (build, tool, compile, link, doc-all) becomes an OCurrent
+    component with its own job log, visible in the web UI.
 
-    Uses Current_cache for job tracking but delegates all actual
-    caching to day11's content-addressed layer store. *)
+    Uses Current_cache for job tracking but delegates all actual caching to
+    day11's content-addressed layer store. *)
 
-type t = {
-  pkg : OpamPackage.t;
-  build_hash : string;
-  layer_dir : Fpath.t;
-}
+type t = { pkg : OpamPackage.t; build_hash : string; layer_dir : Fpath.t }
 (* The value threaded between nodes is deliberately small and stable.
    [build_hash] is a deterministic function of the node's inputs, so a
    node's value never changes once computed; combined with the [~eq]
@@ -64,7 +60,7 @@ module Op = struct
     env : Eio_unix.Stdenv.base;
     pool : unit Current.Pool.t;
     profile_name : string;
-      (* Tag job logs with the profile that scheduled the run. A
+        (* Tag job logs with the profile that scheduled the run. A
          shared layer hash can be scheduled from more than one
          profile; the last writer wins here, which is fine for
          log-line attribution. *)
@@ -74,19 +70,17 @@ module Op = struct
     type t = {
       hash : string;
       pkg : OpamPackage.t;
-      label : string;  (* node kind — display only, deliberately NOT in [digest] *)
+      label : string;
+          (* node kind — display only, deliberately NOT in [digest] *)
     }
+
     (* Identity is the content hash alone, so two nodes of different kind
        that resolve to the same layer share one cache entry. *)
     let digest t = t.hash
   end
 
   module Value = struct
-    type t = {
-      pkg : string;
-      hash : string;
-      layer_dir : string;
-    }
+    type t = { pkg : string; hash : string; layer_dir : string }
     [@@deriving yojson]
 
     let marshal t = Yojson.Safe.to_string (to_yojson t)
@@ -103,7 +97,8 @@ module Op = struct
      OCurrent "New job:" line and the /jobs dashboard, not just in the
      job's body log. *)
   let pp f (key : Key.t) =
-    Fmt.pf f "%s %s (%s)" key.label (OpamPackage.to_string key.pkg)
+    Fmt.pf f "%s %s (%s)" key.label
+      (OpamPackage.to_string key.pkg)
       (short_hash key.hash)
 
   let auto_cancel = false
@@ -111,20 +106,25 @@ module Op = struct
   let build (ctx : t) job (key : Key.t) =
     let open Lwt.Syntax in
     let label = key.label in
-    let* () = Current.Job.start job ~pool:ctx.pool ~level:Current.Level.Average in
-    Current.Job.log job "[profile %s] %s %s" ctx.profile_name
-      label (OpamPackage.to_string key.pkg);
+    let* () =
+      Current.Job.start job ~pool:ctx.pool ~level:Current.Level.Average
+    in
+    Current.Job.log job "[profile %s] %s %s" ctx.profile_name label
+      (OpamPackage.to_string key.pkg);
     let layer = Day11_layer.Layer.of_hash ~os_dir:ctx.os_dir key.hash in
     Lwt_eio.run_eio @@ fun () ->
-    let cached_ok = match Day11_layer.Meta.load ctx.env (Day11_layer.Layer.meta_path layer) with
+    let cached_ok =
+      match
+        Day11_layer.Meta.load ctx.env (Day11_layer.Layer.meta_path layer)
+      with
       | Ok meta when meta.exit_status = 0 -> true
       | Ok _ ->
-        Current.Job.log job "Clearing failed layer %s" key.hash;
-        ignore (Bos.OS.Dir.delete ~recurse:true (Day11_layer.Layer.dir layer));
-        false
+          Current.Job.log job "Clearing failed layer %s" key.hash;
+          ignore (Bos.OS.Dir.delete ~recurse:true (Day11_layer.Layer.dir layer));
+          false
       | Error _ -> false
     in
-    if cached_ok then begin
+    if cached_ok then (
       (* Keep the LRU clock ticking on layers this profile still plans.
          [Day11_opam_build.Build_layer] touches on its own cache-hit
          path, but the daemon short-circuits before reaching it, so
@@ -135,52 +135,58 @@ module Op = struct
       (* Hits are high-volume on large profiles — debug level keeps
          the default log focused on genuine work. Bump via
          [--verbosity debug] to see them. *)
-      Log.debug (fun f -> f "[%s] cache hit: %s %s %s"
-        ctx.profile_name label
-        (OpamPackage.to_string key.pkg)
-        (short_hash key.hash));
+      Log.debug (fun f ->
+          f "[%s] cache hit: %s %s %s" ctx.profile_name label
+            (OpamPackage.to_string key.pkg)
+            (short_hash key.hash));
       Current.Job.log job "Cached: %s %s (%s)" label
         (OpamPackage.to_string key.pkg)
         (short_hash key.hash);
-      Ok Value.{
-        pkg = OpamPackage.to_string key.pkg;
-        hash = key.hash;
-        layer_dir = Fpath.to_string (Day11_layer.Layer.dir layer);
-      }
-    end else begin
-      Log.info (fun f -> f "[%s] cache miss: %s %s %s"
-        ctx.profile_name label
-        (OpamPackage.to_string key.pkg)
-        (short_hash key.hash));
+      Ok
+        Value.
+          {
+            pkg = OpamPackage.to_string key.pkg;
+            hash = key.hash;
+            layer_dir = Fpath.to_string (Day11_layer.Layer.dir layer);
+          })
+    else (
+      Log.info (fun f ->
+          f "[%s] cache miss: %s %s %s" ctx.profile_name label
+            (OpamPackage.to_string key.pkg)
+            (short_hash key.hash));
       Current.Job.log job "%s %s (%s)" label
         (OpamPackage.to_string key.pkg)
         (short_hash key.hash);
       let success = ctx.dispatch ctx.env ctx.dag_node in
       (match Bos.OS.File.read (Day11_layer.Layer.log_path layer) with
-       | Ok contents -> Current.Job.write job contents
-       | Error _ -> ());
-      if success then begin
-        (match Day11_layer.Meta.load ctx.env (Day11_layer.Layer.meta_path layer) with
-         | Ok meta ->
-           let tf name = Day11_layer.Meta.timing_field name meta.timing in
-           Current.Job.log job "OK: %s %s (runc: %.1fs, disk: %dKB)"
-             label (OpamPackage.to_string key.pkg)
-             (tf "runc_run") (meta.disk_usage / 1024)
-         | Error _ ->
-           Current.Job.log job "OK: %s %s" label
-             (OpamPackage.to_string key.pkg));
-        Ok Value.{
-          pkg = OpamPackage.to_string key.pkg;
-          hash = key.hash;
-          layer_dir = Fpath.to_string (Day11_layer.Layer.dir layer);
-        }
-      end else begin
+      | Ok contents -> Current.Job.write job contents
+      | Error _ -> ());
+      if success then (
+        (match
+           Day11_layer.Meta.load ctx.env (Day11_layer.Layer.meta_path layer)
+         with
+        | Ok meta ->
+            let tf name = Day11_layer.Meta.timing_field name meta.timing in
+            Current.Job.log job "OK: %s %s (runc: %.1fs, disk: %dKB)" label
+              (OpamPackage.to_string key.pkg)
+              (tf "runc_run") (meta.disk_usage / 1024)
+        | Error _ ->
+            Current.Job.log job "OK: %s %s" label
+              (OpamPackage.to_string key.pkg));
+        Ok
+          Value.
+            {
+              pkg = OpamPackage.to_string key.pkg;
+              hash = key.hash;
+              layer_dir = Fpath.to_string (Day11_layer.Layer.dir layer);
+            })
+      else (
         Current.Job.log job "FAILED: %s %s" label
           (OpamPackage.to_string key.pkg);
-        Error (`Msg (Printf.sprintf "%s failed: %s" label
-          (OpamPackage.to_string key.pkg)))
-      end
-    end
+        Error
+          (`Msg
+             (Printf.sprintf "%s failed: %s" label
+                (OpamPackage.to_string key.pkg)))))
 end
 
 module Cache = Current_cache.Make (Op)
@@ -204,22 +210,23 @@ module Cache = Current_cache.Make (Op)
    the number invalidated. *)
 let reconcile_cache () =
   let entries = Current_cache.Db.query ~op:Op.id ~ok:true () in
-  List.fold_left (fun n (e : Current_cache.Db.entry) ->
-    match e.outcome with
-    | Error _ -> n
-    | Ok payload ->
-      match (try Some (Op.Value.unmarshal payload) with _ -> None) with
-      | None -> n
-      | Some (v : Op.Value.t) ->
-        if Sys.file_exists (Filename.concat v.layer_dir "layer.json") then n
-        else begin
-          (match OpamPackage.of_string_opt v.pkg with
-           | Some pkg ->
-             Cache.invalidate Op.Key.{ hash = v.hash; pkg; label = "" }
-           | None -> ());
-          n + 1
-        end
-  ) 0 entries
+  List.fold_left
+    (fun n (e : Current_cache.Db.entry) ->
+      match e.outcome with
+      | Error _ -> n
+      | Ok payload -> (
+          match try Some (Op.Value.unmarshal payload) with _ -> None with
+          | None -> n
+          | Some (v : Op.Value.t) ->
+              if Sys.file_exists (Filename.concat v.layer_dir "layer.json") then
+                n
+              else (
+                (match OpamPackage.of_string_opt v.pkg with
+                | Some pkg ->
+                    Cache.invalidate Op.Key.{ hash = v.hash; pkg; label = "" }
+                | None -> ());
+                n + 1)))
+    0 entries
 
 (* Reconcile the OCurrent cache against the on-disk layers of one plan.
 
@@ -249,23 +256,25 @@ let reconcile_cache () =
    number invalidated. *)
 let reconcile_plan ~env ~os_dir (nodes : Day11_opam_layer.Build.t list) =
   let status = Day11_layer.Layer_status.load ~os_dir in
-  List.fold_left (fun n (node : Day11_opam_layer.Build.t) ->
-    let layer = Day11_layer.Layer.of_hash ~os_dir node.hash in
-    if Day11_layer.Layer.exists env layer then n
-    else
-      match Hashtbl.find_opt status (Day11_layer.Dir.name node.hash) with
-      | Some e when e.Day11_layer.Layer_status.exit_status <> 0 -> n
-      | _ ->
-        Cache.invalidate Op.Key.{ hash = node.hash; pkg = node.pkg; label = "" };
-        n + 1
-  ) 0 nodes
+  List.fold_left
+    (fun n (node : Day11_opam_layer.Build.t) ->
+      let layer = Day11_layer.Layer.of_hash ~os_dir node.hash in
+      if Day11_layer.Layer.exists env layer then n
+      else
+        match Hashtbl.find_opt status (Day11_layer.Dir.name node.hash) with
+        | Some e when e.Day11_layer.Layer_status.exit_status <> 0 -> n
+        | _ ->
+            Cache.invalidate
+              Op.Key.{ hash = node.hash; pkg = node.pkg; label = "" };
+            n + 1)
+    0 nodes
 
 (* ── Public interface ──────────────────────────────────────────── *)
 
-(** Run a DAG node as an OCurrent component with job logs.
-    [dag_node] is the original DAG node with full deps and universe.
-    [dispatch] is called with the original node to execute it.
-    [deps] are OCurrent dependencies that must complete first. *)
+(** Run a DAG node as an OCurrent component with job logs. [dag_node] is the
+    original DAG node with full deps and universe. [dispatch] is called with the
+    original node to execute it. [deps] are OCurrent dependencies that must
+    complete first. *)
 let run_node ~env ~os_dir ~pool ~dispatch ~label ~profile_name
     ~(dag_node : Day11_opam_layer.Build.t) ~deps () : t Current.t =
   let open Current.Syntax in
@@ -275,23 +284,22 @@ let run_node ~env ~os_dir ~pool ~dispatch ~label ~profile_name
        dispatch is never invoked and this node cascades to [Error]; an
        [Error -> Ok] transition when a dep recovers still re-fires this
        node, so rerunning a failed layer rebuilds everything below it. *)
-    (Current.component "[%s] %s %s" profile_name label
+    Current.component "[%s] %s %s" profile_name label
       (OpamPackage.to_string dag_node.pkg)
-  |>
-  let> () = deps in
-  let result =
-    Cache.get { os_dir; dag_node; dispatch; env; pool; profile_name }
-      Op.Key.{ hash = dag_node.hash; pkg = dag_node.pkg; label }
+    |>
+    let> () = deps in
+    let result =
+      Cache.get
+        { os_dir; dag_node; dispatch; env; pool; profile_name }
+        Op.Key.{ hash = dag_node.hash; pkg = dag_node.pkg; label }
+      |> Current.Primitive.map_result
+           (Result.map (fun v ->
+                (v.Op.Value.hash, Fpath.v v.Op.Value.layer_dir)))
+    in
+    result
     |> Current.Primitive.map_result
-      (Result.map (fun v ->
-        (v.Op.Value.hash, Fpath.v v.Op.Value.layer_dir)))
-  in
-  result
-  |> Current.Primitive.map_result
-       (Result.map (fun (hash, own_dir) ->
-         { pkg = dag_node.pkg;
-           build_hash = hash;
-           layer_dir = own_dir })))
+         (Result.map (fun (hash, own_dir) ->
+              { pkg = dag_node.pkg; build_hash = hash; layer_dir = own_dir }))
   in
   (* Cut off propagation when this node's value is unchanged: a node
      re-emitting the same [build_hash] (the common case under churn)

@@ -5,13 +5,10 @@
     solver.
 
     Supports [prefer_oldest] for reproducible solves, doc/post dependency
-    filtering, user constraints, pinned packages, and tracking which
-    packages were examined (for incremental reuse). *)
+    filtering, user constraints, pinned packages, and tracking which packages
+    were examined (for incremental reuse). *)
 
-type rejection =
-  | UserConstraint of OpamFormula.atom
-  | Unavailable
-
+type rejection = UserConstraint of OpamFormula.atom | Unavailable
 type t
 
 val create :
@@ -27,18 +24,20 @@ val create :
   t
 
 val candidates :
-  t -> OpamPackage.Name.t ->
+  t ->
+  OpamPackage.Name.t ->
   (OpamPackage.Version.t * (OpamFile.OPAM.t, rejection) result) list
 
 val filter_deps :
-  t -> OpamPackage.t -> OpamTypes.filtered_formula ->
-  OpamFormula.t
+  t -> OpamPackage.t -> OpamTypes.filtered_formula -> OpamFormula.t
 
 val user_restrictions :
   t -> OpamPackage.Name.t -> OpamFormula.version_constraint option
 
 val env :
-  t -> OpamPackage.t -> OpamVariable.Full.t ->
+  t ->
+  OpamPackage.t ->
+  OpamVariable.Full.t ->
   OpamVariable.variable_contents option
 
 val pp_rejection : rejection Fmt.t
@@ -47,6 +46,5 @@ val examined_packages : t -> OpamPackage.Name.Set.t
 (** Returns the set of package names examined during solving. *)
 
 val with_doc_post : doc:bool -> post:bool -> t -> t
-(** Create a context with different doc/post settings for recomputing
-    dependency edges under alternate filter flags. Internal to the
-    solver library. *)
+(** Create a context with different doc/post settings for recomputing dependency
+    edges under alternate filter flags. Internal to the solver library. *)

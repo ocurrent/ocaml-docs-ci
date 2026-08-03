@@ -1,12 +1,9 @@
-type t = {
-  hash : string;
-  dir : Fpath.t;
-}
+type t = { hash : string; dir : Fpath.t }
 
 (* Manual doc-format version. Bump when day11's doc-generation logic,
    HTML layout, or output convention changes *without* a doc-tool change
    — it's the only input that captures pure-code changes. *)
-let version = "v2"  (* v2: per-universe doc nodes (compile/link per (bh,U)) *)
+let version = "v2" (* v2: per-universe doc nodes (compile/link per (bh,U)) *)
 
 (* The epoch hash identifies a set of docs all produced by the same doc
    toolchain. It folds in [version] plus the resolved *versions* of the
@@ -26,8 +23,7 @@ let version = "v2"  (* v2: per-universe doc nodes (compile/link per (bh,U)) *)
    package bump. [inputs] is sorted+deduped so ordering doesn't matter. *)
 let compute ~inputs =
   let key = String.concat ":" (List.sort_uniq String.compare inputs) in
-  Printf.sprintf "%s:%s" version key
-  |> Digest.string |> Digest.to_hex
+  Printf.sprintf "%s:%s" version key |> Digest.string |> Digest.to_hex
 
 let create ~base_dir hash =
   let dir = Fpath.(base_dir / ("epoch-" ^ hash)) in
@@ -43,7 +39,8 @@ let promote ~base_dir t =
      (e.g. /srv). [t.dir] is [base_dir/epoch-<hash>] and the link lives
      in [base_dir], so the relative target is "epoch-<hash>/html". *)
   let target =
-    Filename.concat (Filename.basename (Fpath.to_string t.dir)) "html" in
+    Filename.concat (Filename.basename (Fpath.to_string t.dir)) "html"
+  in
   (try Unix.unlink link_s with Unix.Unix_error _ -> ());
   Unix.symlink target link_s
 
@@ -71,36 +68,39 @@ let current ~base_dir =
 let to_gc ~base_dir ~keep =
   let base_s = Fpath.to_string base_dir in
   let entries =
-    try Sys.readdir base_s |> Array.to_list
-    with Sys_error _ -> []
+    try Sys.readdir base_s |> Array.to_list with Sys_error _ -> []
   in
-  let epochs = List.filter_map (fun name ->
-    if String.length name > 6 && String.sub name 0 6 = "epoch-" then
-      let dir = Fpath.(base_dir / name) in
-      let mtime =
-        try (Unix.stat (Fpath.to_string dir)).Unix.st_mtime
-        with _ -> 0.0
-      in
-      Some (name, dir, mtime)
-    else None
-  ) entries in
+  let epochs =
+    List.filter_map
+      (fun name ->
+        if String.length name > 6 && String.sub name 0 6 = "epoch-" then
+          let dir = Fpath.(base_dir / name) in
+          let mtime =
+            try (Unix.stat (Fpath.to_string dir)).Unix.st_mtime with _ -> 0.0
+          in
+          Some (name, dir, mtime)
+        else None)
+      entries
+  in
   let sorted = List.sort (fun (_, _, a) (_, _, b) -> compare b a) epochs in
-  let to_delete = if List.length sorted > keep then
-    List.filteri (fun i _ -> i >= keep) sorted
-  else [] in
+  let to_delete =
+    if List.length sorted > keep then List.filteri (fun i _ -> i >= keep) sorted
+    else []
+  in
   (* Never delete the currently-live epoch, even if it's older than the
      [keep] most-recent — e.g. after a deliberate rollback-promote to a
      known-good older epoch. *)
-  let to_delete = match current ~base_dir with
+  let to_delete =
+    match current ~base_dir with
     | Some live ->
-      List.filter (fun (_, dir, _) -> not (Fpath.equal dir live.dir)) to_delete
+        List.filter
+          (fun (_, dir, _) -> not (Fpath.equal dir live.dir))
+          to_delete
     | None -> to_delete
   in
   List.map (fun (_, dir, _) -> dir) to_delete
 
 let gc ~base_dir ~keep =
   let dirs = to_gc ~base_dir ~keep in
-  List.iter (fun dir ->
-    Bos.OS.Dir.delete ~recurse:true dir |> ignore
-  ) dirs;
+  List.iter (fun dir -> Bos.OS.Dir.delete ~recurse:true dir |> ignore) dirs;
   List.length dirs

@@ -1,5 +1,13 @@
 (library
  (name day11_runner)
  (public_name day11.runner)
- (libraries day11_container day11_sys day11_layer
-            bos eio fpath logs rresult unix))
+ (libraries
+  day11_container
+  day11_sys
+  day11_layer
+  bos
+  eio
+  fpath
+  logs
+  rresult
+  unix))

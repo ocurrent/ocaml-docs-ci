@@ -1,36 +1,27 @@
-type status =
-  | Ok
-  | Failed
-  | Cascade of string
-  | Pending
+type status = Ok | Failed | Cascade of string | Pending
+type result = { status : status; pkg : OpamPackage.t; kind : Dag_marshal.kind }
 
-type result = {
-  status : status;
-  pkg : OpamPackage.t;
-  kind : Dag_marshal.kind;
-}
-
-(** Build [pkg → (build_hash → entry)] from disk, scanning each unique
-    package once. Latest entry per hash wins (matches
-    {!History.read_latest}). *)
+(** Build [pkg → (build_hash → entry)] from disk, scanning each unique package
+    once. Latest entry per hash wins (matches {!History.read_latest}). *)
 let load_history_index ~packages_dir entries =
   let by_pkg : (string, (string, History.entry) Hashtbl.t) Hashtbl.t =
-    Hashtbl.create 64 in
+    Hashtbl.create 64
+  in
   let load_pkg pkg_str =
     if Hashtbl.mem by_pkg pkg_str then ()
-    else begin
+    else
       let entries = History.read_latest ~packages_dir ~pkg_str in
       let tbl = Hashtbl.create (List.length entries) in
-      List.iter (fun (h : History.entry) ->
-        if not (Hashtbl.mem tbl h.build_hash) then
-          Hashtbl.add tbl h.build_hash h
-      ) entries;
+      List.iter
+        (fun (h : History.entry) ->
+          if not (Hashtbl.mem tbl h.build_hash) then
+            Hashtbl.add tbl h.build_hash h)
+        entries;
       Hashtbl.add by_pkg pkg_str tbl
-    end
   in
-  List.iter (fun (e : Dag_marshal.entry) ->
-    load_pkg (OpamPackage.to_string e.pkg)
-  ) entries;
+  List.iter
+    (fun (e : Dag_marshal.entry) -> load_pkg (OpamPackage.to_string e.pkg))
+    entries;
   by_pkg
 
 let lookup_history index pkg hash =
@@ -51,50 +42,55 @@ type direct = D_ok | D_failed | D_unrun
    [direct_status] (per-package history vs. on-disk layer status). *)
 let classify_dfs ~direct_status entries =
   let by_hash : (string, Dag_marshal.entry) Hashtbl.t =
-    Hashtbl.create (List.length entries) in
-  List.iter (fun (e : Dag_marshal.entry) ->
-    Hashtbl.replace by_hash e.hash e) entries;
+    Hashtbl.create (List.length entries)
+  in
+  List.iter
+    (fun (e : Dag_marshal.entry) -> Hashtbl.replace by_hash e.hash e)
+    entries;
   let table : (string, result) Hashtbl.t =
-    Hashtbl.create (List.length entries) in
+    Hashtbl.create (List.length entries)
+  in
   let visiting : (string, unit) Hashtbl.t = Hashtbl.create 64 in
   let rec classify_one h =
     match Hashtbl.find_opt table h with
     | Some r -> Some r
-    | None ->
-      match Hashtbl.find_opt by_hash h with
-      | None -> None
-      | Some e ->
-        if Hashtbl.mem visiting h then begin
-          (* DAG cycle — shouldn't happen, but stay safe. *)
-          let r = { status = Pending; pkg = e.pkg; kind = e.kind } in
-          Hashtbl.replace table h r;
-          Some r
-        end else begin
-          Hashtbl.add visiting h ();
-          List.iter (fun dh -> ignore (classify_one dh)) e.deps;
-          Hashtbl.remove visiting h;
-          let status = match direct_status e h with
-            | D_ok -> Ok
-            | D_failed -> Failed
-            | D_unrun ->
-              (match
-                 List.find_map (fun dh ->
-                   match Hashtbl.find_opt table dh with
-                   | Some { status = Failed; _ } -> Some dh
-                   | Some { status = Cascade src; _ } -> Some src
-                   | _ -> None
-                 ) e.deps
-               with
-               | Some src -> Cascade src
-               | None -> Pending)
-          in
-          let r = { status; pkg = e.pkg; kind = e.kind } in
-          Hashtbl.replace table h r;
-          Some r
-        end
+    | None -> (
+        match Hashtbl.find_opt by_hash h with
+        | None -> None
+        | Some e ->
+            if Hashtbl.mem visiting h then (
+              (* DAG cycle — shouldn't happen, but stay safe. *)
+              let r = { status = Pending; pkg = e.pkg; kind = e.kind } in
+              Hashtbl.replace table h r;
+              Some r)
+            else (
+              Hashtbl.add visiting h ();
+              List.iter (fun dh -> ignore (classify_one dh)) e.deps;
+              Hashtbl.remove visiting h;
+              let status =
+                match direct_status e h with
+                | D_ok -> Ok
+                | D_failed -> Failed
+                | D_unrun -> (
+                    match
+                      List.find_map
+                        (fun dh ->
+                          match Hashtbl.find_opt table dh with
+                          | Some { status = Failed; _ } -> Some dh
+                          | Some { status = Cascade src; _ } -> Some src
+                          | _ -> None)
+                        e.deps
+                    with
+                    | Some src -> Cascade src
+                    | None -> Pending)
+              in
+              let r = { status; pkg = e.pkg; kind = e.kind } in
+              Hashtbl.replace table h r;
+              Some r))
   in
-  List.iter (fun (e : Dag_marshal.entry) ->
-    ignore (classify_one e.hash)) entries;
+  List.iter
+    (fun (e : Dag_marshal.entry) -> ignore (classify_one e.hash))
+    entries;
   table
 
 let classify ~packages_dir entries =
@@ -119,7 +115,7 @@ let classify_from_layer_index ~status_index entries =
     match Hashtbl.find_opt status_index key with
     | None -> D_unrun
     | Some (e : Day11_layer.Layer_status.entry) ->
-      if e.exit_status = 0 then D_ok else D_failed
+        if e.exit_status = 0 then D_ok else D_failed
   in
   classify_dfs ~direct_status entries
 

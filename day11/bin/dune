@@ -2,6 +2,23 @@
  (name main)
  (public_name day11)
  (package day11)
- (libraries day11_batch day11_opam_build day11_doc day11_sys day11_solution
-            day11_jtw day11_layer day11_lib day11_solver day11_solver_pool
-            bos cmdliner eio_main fpath git-unix logs logs.fmt opam-format unix))
+ (libraries
+  day11_batch
+  day11_opam_build
+  day11_doc
+  day11_sys
+  day11_solution
+  day11_jtw
+  day11_layer
+  day11_lib
+  day11_solver
+  day11_solver_pool
+  bos
+  cmdliner
+  eio_main
+  fpath
+  git-unix
+  logs
+  logs.fmt
+  opam-format
+  unix))

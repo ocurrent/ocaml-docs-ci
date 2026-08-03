@@ -31,8 +31,7 @@
    different OIDs (overlay repos) they displace each other's entry,
    which is correct (the validator mismatches) and merely costs the
    occasional re-parse. *)
-let global_digests : (string, string * string) Hashtbl.t =
-  Hashtbl.create 65536
+let global_digests : (string, string * string) Hashtbl.t = Hashtbl.create 65536
 
 type t = {
   find_opam : OpamPackage.t -> OpamFile.OPAM.t option;
@@ -46,9 +45,13 @@ type t = {
 }
 
 let create ~find_opam ?find_oid ?patches () =
-  { find_opam; find_oid; patches;
+  {
+    find_opam;
+    find_oid;
+    patches;
     per_pkg = Hashtbl.create 256;
-    per_layer = Hashtbl.create 256; }
+    per_layer = Hashtbl.create 256;
+  }
 
 let pkg_opam_hash t pkg =
   let key = OpamPackage.to_string pkg in
@@ -61,39 +64,42 @@ let pkg_opam_hash t pkg =
       let parse () =
         match t.find_opam pkg with
         | Some opam ->
-            Some (opam
-                  |> OpamFile.OPAM.effective_part
-                  |> OpamFile.OPAM.write_to_string
-                  |> Digest.string |> Digest.to_hex)
+            Some
+              (opam
+              |> OpamFile.OPAM.effective_part
+              |> OpamFile.OPAM.write_to_string
+              |> Digest.string
+              |> Digest.to_hex)
         | None -> None
       in
       let opam_h =
         let via_global =
           match t.find_oid with
           | None -> None
-          | Some find_oid ->
-            (match find_oid pkg with
-             | None -> None
-             | Some oid ->
-               (match Hashtbl.find_opt global_digests key with
-                | Some (o, d) when String.equal o oid -> Some d
-                | _ ->
-                  (match parse () with
-                   | Some d ->
-                     Hashtbl.replace global_digests key (oid, d);
-                     Some d
-                   | None -> None)))
+          | Some find_oid -> (
+              match find_oid pkg with
+              | None -> None
+              | Some oid -> (
+                  match Hashtbl.find_opt global_digests key with
+                  | Some (o, d) when String.equal o oid -> Some d
+                  | _ -> (
+                      match parse () with
+                      | Some d ->
+                          Hashtbl.replace global_digests key (oid, d);
+                          Some d
+                      | None -> None)))
         in
         match via_global with
         | Some d -> d
-        | None ->
-          (match parse () with Some d -> d | None -> "missing-" ^ key)
+        | None -> (
+            match parse () with Some d -> d | None -> "missing-" ^ key)
       in
-      let h = match t.patches with
+      let h =
+        match t.patches with
         | Some patches ->
-          let ph = Patches.hash_for patches pkg in
-          if ph = "" then opam_h
-          else Digest.string (opam_h ^ ph) |> Digest.to_hex
+            let ph = Patches.hash_for patches pkg in
+            if ph = "" then opam_h
+            else Digest.string (opam_h ^ ph) |> Digest.to_hex
         | None -> opam_h
       in
       Hashtbl.replace t.per_pkg key h;
@@ -105,15 +111,14 @@ let layer_hash t ~base_hash pkgs =
      universes of 50-100 packages and 4000+ solutions, an un-digested
      key made per-entry Hashtbl ops O(universe_size) and dominated
      [build_dag] wall-clock. *)
-  let str = String.concat ","
-    (base_hash :: List.map OpamPackage.to_string pkgs) in
+  let str =
+    String.concat "," (base_hash :: List.map OpamPackage.to_string pkgs)
+  in
   let key = Digest.to_hex (Digest.string str) in
   match Hashtbl.find_opt t.per_layer key with
   | Some h -> h
   | None ->
-      let hashes =
-        List.map (fun pkg -> pkg_opam_hash t pkg) pkgs
-      in
+      let hashes = List.map (fun pkg -> pkg_opam_hash t pkg) pkgs in
       let h = Day11_layer.Hash.of_strings (base_hash :: hashes) in
       Hashtbl.replace t.per_layer key h;
       h

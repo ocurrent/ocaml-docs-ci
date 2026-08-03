@@ -1,4 +1,12 @@
 (test
  (name test_opam_layer)
- (libraries day11_layer day11_opam_layer day11_test_util
-            alcotest bos fpath opam-format str yojson))
+ (libraries
+  day11_layer
+  day11_opam_layer
+  day11_test_util
+  alcotest
+  bos
+  fpath
+  opam-format
+  str
+  yojson))

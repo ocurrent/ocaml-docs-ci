@@ -1,7 +1,7 @@
 (** Build configuration persistence.
 
-    Saves batch run parameters so rerun/cascade commands don't
-    need CLI arguments. *)
+    Saves batch run parameters so rerun/cascade commands don't need CLI
+    arguments. *)
 
 type t = {
   opam_repositories : Fpath.t list;

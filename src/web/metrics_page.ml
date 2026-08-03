@@ -1,16 +1,15 @@
 (** The [/metrics] endpoint.
 
-    Renders {!Prometheus.CollectorRegistry.default} — every metric defined
-    in {!Docs_ci_lib.Metrics} plus OCurrent's built-in engine/cache
-    metrics, the OCaml GC stats and per-log-level message counts that
-    [prometheus-app] registers automatically — in the Prometheus text
-    exposition format (version 0.0.4).
+    Renders {!Prometheus.CollectorRegistry.default} — every metric defined in
+    {!Docs_ci_lib.Metrics} plus OCurrent's built-in engine/cache metrics, the
+    OCaml GC stats and per-log-level message counts that [prometheus-app]
+    registers automatically — in the Prometheus text exposition format (version
+    0.0.4).
 
-    We override [get_raw] rather than [get] because the latter wraps the
-    body in the HTML dashboard template; a scrape target needs raw
-    [text/plain]. The endpoint is unauthenticated, like a conventional
-    Prometheus target — restrict it at the network / Caddy layer if the
-    deployment needs it. *)
+    We override [get_raw] rather than [get] because the latter wraps the body in
+    the HTML dashboard template; a scrape target needs raw [text/plain]. The
+    endpoint is unauthenticated, like a conventional Prometheus target —
+    restrict it at the network / Caddy layer if the deployment needs it. *)
 
 module Resource = Current_web.Resource
 

@@ -1,16 +1,16 @@
-(** Reusable in-page helpers for the dashboard pages. Pages render
-    via {!Current_web.Context.respond_ok}, which already wraps the
-    body in the site-wide chrome (the OCurrent nav with our pages
-    listed via their [nav_link] methods). What lives here is the
-    smaller bits that need to look the same across pages —
-    breadcrumbs, status badges, short-SHA rendering, etc. *)
+(** Reusable in-page helpers for the dashboard pages. Pages render via
+    {!Current_web.Context.respond_ok}, which already wraps the body in the
+    site-wide chrome (the OCurrent nav with our pages listed via their
+    [nav_link] methods). What lives here is the smaller bits that need to look
+    the same across pages — breadcrumbs, status badges, short-SHA rendering,
+    etc. *)
 
 open Tyxml.Html
 
-(** Inline stylesheet. Loaded as a [<style>] block at the top of
-    each page body — small enough to inline, no static-asset
-    plumbing to worry about. *)
-let style = {|
+(** Inline stylesheet. Loaded as a [<style>] block at the top of each page body
+    — small enough to inline, no static-asset plumbing to worry about. *)
+let style =
+  {|
   .crumbs { color: #34495e; font-size: 0.9em;
             margin: 0 0 1em 0; padding-bottom: 0.4em;
             border-bottom: 1px solid #ecf0f1; }
@@ -42,26 +42,27 @@ let style = {|
 
 let style_block = Tyxml.Html.style [ Unsafe.data style ]
 
-(** Status-aware text. Maps a [history.jsonl] / [build.jsonl] status
-    string to a colour-coded [<span>]. *)
+(** Status-aware text. Maps a [history.jsonl] / [build.jsonl] status string to a
+    colour-coded [<span>]. *)
 let status_span s =
-  let cls = match s with
+  let cls =
+    match s with
     | "ok" | "success" -> "ok"
     | "fail" | "failure" | "error" -> "fail"
     | "cascade" -> "cascade"
     | "pending" | "in_progress" -> "pending"
-    | _ -> "" in
+    | _ -> ""
+  in
   span ~a:[ a_class [ cls ] ] [ txt s ]
 
 (** First 12 characters of a SHA. *)
-let short_sha s =
-  if String.length s <= 12 then s else String.sub s 0 12
+let short_sha s = if String.length s <= 12 then s else String.sub s 0 12
 
 (** Render a SHA as monospace small text. *)
 let sha_span s = span ~a:[ a_class [ "sha" ] ] [ txt (short_sha s) ]
 
-(** Breadcrumb element. [parts] is a list of [(href_opt, text)] —
-    [None] for the current (non-link) page. *)
+(** Breadcrumb element. [parts] is a list of [(href_opt, text)] — [None] for the
+    current (non-link) page. *)
 let breadcrumbs parts =
   let sep = txt " › " in
   let render = function
@@ -73,5 +74,4 @@ let breadcrumbs parts =
     | [ x ] -> [ x ]
     | x :: rest -> x :: sep :: interleave rest
   in
-  div ~a:[ a_class [ "crumbs" ] ]
-    (interleave (List.map render parts))
+  div ~a:[ a_class [ "crumbs" ] ] (interleave (List.map render parts))

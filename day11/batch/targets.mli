@@ -11,11 +11,10 @@ val small_universe : string list
 
 val pick_latest_version :
   Day11_opam.Git_packages.t -> string -> OpamPackage.t list
-(** [pick_latest_version packages name] returns all non-avoid versions
-    of [name] from newest to oldest. Used for retry on solve failure. *)
+(** [pick_latest_version packages name] returns all non-avoid versions of [name]
+    from newest to oldest. Used for retry on solve failure. *)
 
-val find_all_versions :
-  Day11_opam.Git_packages.t -> OpamPackage.t list
+val find_all_versions : Day11_opam.Git_packages.t -> OpamPackage.t list
 (** All versions of all non-compiler packages. *)
 
 val resolve :
@@ -25,6 +24,5 @@ val resolve :
   string option ->
   OpamPackage.t list
 (** [resolve ?small ?all_versions packages target] resolves the target
-    specification to a list of packages. When [all_versions] is true
-    and no target is given, returns all versions instead of just the
-    latest. *)
+    specification to a list of packages. When [all_versions] is true and no
+    target is given, returns all versions instead of just the latest. *)

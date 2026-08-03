@@ -1,8 +1,8 @@
 (** Doc tool layer management.
 
     Manages two types of tool layers:
-    - {b Driver layer} (shared): [odoc_driver_voodoo], [sherlodoc], [odoc-md]
-      — built once with a fixed OCaml version.
+    - {b Driver layer} (shared): [odoc_driver_voodoo], [sherlodoc], [odoc-md] —
+      built once with a fixed OCaml version.
     - {b Odoc layer} (per OCaml version): [odoc] — must match the target
       compiler since [.cmt]/[.cmti] formats are version-specific.
 
@@ -20,9 +20,9 @@ val driver_layer_name :
 
 val driver_build_script :
   packages:string list -> pin_commands:string list -> string
-(** Generate the shell script to install driver tools. [packages] is
-    the list of opam packages to install. [pin_commands] are optional
-    [opam pin] commands for local repos. *)
+(** Generate the shell script to install driver tools. [packages] is the list of
+    opam packages to install. [pin_commands] are optional [opam pin] commands
+    for local repos. *)
 
 val driver_exists : Eio_unix.Stdenv.base -> layer_dir:Fpath.t -> bool
 (** Check if the driver layer has been built (layer.json exists). *)

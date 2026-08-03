@@ -160,6 +160,6 @@ let read_packages store commit =
                OpamPackage.Name.Map.empty)
 
 let create ?(test = OpamPackage.Name.Set.empty)
-    ?(pins = OpamPackage.Name.Map.empty) ?(doc = false)
-    ~constraints ~env ~packages () =
+    ?(pins = OpamPackage.Name.Map.empty) ?(doc = false) ~constraints ~env
+    ~packages () =
   { env; packages; pins; constraints; test; doc }

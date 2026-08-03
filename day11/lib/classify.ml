@@ -17,45 +17,49 @@ let matches_any patterns text =
 let extract_compiler_from_deps json =
   let open Yojson.Safe.Util in
   let deps =
-    try json |> member "deps" |> to_list |> List.map to_string
-    with _ -> []
+    try json |> member "deps" |> to_list |> List.map to_string with _ -> []
   in
   let compiler_pkg =
-    List.find_opt (fun dep ->
-      let name =
-        try String.sub dep 0 (String.index dep '.')
-        with Not_found -> dep
-      in
-      name = "ocaml-base-compiler" || name = "ocaml-variants"
-    ) deps
+    List.find_opt
+      (fun dep ->
+        let name =
+          try String.sub dep 0 (String.index dep '.') with Not_found -> dep
+        in
+        name = "ocaml-base-compiler" || name = "ocaml-variants")
+      deps
   in
   match compiler_pkg with
-  | Some pkg ->
-      (try
-         let dot = String.index pkg '.' in
-         String.sub pkg (dot + 1) (String.length pkg - dot - 1)
-       with Not_found -> pkg)
+  | Some pkg -> (
+      try
+        let dot = String.index pkg '.' in
+        String.sub pkg (dot + 1) (String.length pkg - dot - 1)
+      with Not_found -> pkg)
   | None -> ""
 
 let classify_build_log log_content =
-  let transient_patterns = [
-    "No space left on device";
-    "Connection timed out";
-    "Could not resolve host";
-    "Temporary failure in name resolution";
-    "Network is unreachable";
-  ] in
-  let depext_patterns = [
-    "Unable to locate package";
-    "is not available";
-    "unmet dependencies";
-    "dpkg: dependency problems";
-  ] in
+  let transient_patterns =
+    [
+      "No space left on device";
+      "Connection timed out";
+      "Could not resolve host";
+      "Temporary failure in name resolution";
+      "Network is unreachable";
+    ]
+  in
+  let depext_patterns =
+    [
+      "Unable to locate package";
+      "is not available";
+      "unmet dependencies";
+      "dpkg: dependency problems";
+    ]
+  in
   if matches_any transient_patterns log_content then
-    ("failure", "transient_failure",
-     Some "Transient infrastructure failure detected in build log")
+    ( "failure",
+      "transient_failure",
+      Some "Transient infrastructure failure detected in build log" )
   else if matches_any depext_patterns log_content then
-    ("failure", "depext_unavailable",
-     Some "Missing system dependency detected in build log")
-  else
-    ("failure", "build_failure", None)
+    ( "failure",
+      "depext_unavailable",
+      Some "Missing system dependency detected in build log" )
+  else ("failure", "build_failure", None)

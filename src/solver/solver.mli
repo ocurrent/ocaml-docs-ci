@@ -11,7 +11,8 @@ val test_fake : unit -> unit
 (** [test_fake ()] runs a test with fake packages, no git needed. *)
 
 val test_real : string -> unit
-(** [test_real repo_path] runs a test with the real opam-repository at [repo_path]. *)
+(** [test_real repo_path] runs a test with the real opam-repository at
+    [repo_path]. *)
 
 val main : Git_unix.Store.Hash.t -> unit
 (** [main hash] runs a worker process that reads requests from stdin and writes

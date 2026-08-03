@@ -171,76 +171,76 @@ let record_attempt env ~layer ~node ~benv ~timing ?patches
       (Printf.sprintf "%s=== STDOUT ===\n%s\n=== STDERR ===\n%s\n"
          (format_deps_block node) run.output run.errors)
   in
-  (if exit_code = 0 then
-     let dep_hashes = List.map (fun (d : Build.t) -> d.hash) node.Build.deps in
-     let disk_usage =
-       match Day11_sys.Util.dir_size (Layer.dir layer) with
-       | Ok size -> size
-       | Error _ -> 0
-     in
-     let meta : Day11_layer.Meta.t =
-       {
-         exit_status = 0;
-         parent_hashes = dep_hashes;
-         uid = benv.Types.uid;
-         gid = benv.gid;
-         base_hash = benv.base.hash;
-         disk_usage;
-         timing;
-         created_at = "";
-         failed_dep = None;
-       }
-     in
-     let _ = Day11_layer.Meta.save env (Layer.meta_path layer) meta in
-     let layer_dir = Layer.dir layer in
-     (* Re-load the input-side build.json written by [record_input],
+  if exit_code = 0 then (
+    let dep_hashes = List.map (fun (d : Build.t) -> d.hash) node.Build.deps in
+    let disk_usage =
+      match Day11_sys.Util.dir_size (Layer.dir layer) with
+      | Ok size -> size
+      | Error _ -> 0
+    in
+    let meta : Day11_layer.Meta.t =
+      {
+        exit_status = 0;
+        parent_hashes = dep_hashes;
+        uid = benv.Types.uid;
+        gid = benv.gid;
+        base_hash = benv.base.hash;
+        disk_usage;
+        timing;
+        created_at = "";
+        failed_dep = None;
+      }
+    in
+    let _ = Day11_layer.Meta.save env (Layer.meta_path layer) meta in
+    let layer_dir = Layer.dir layer in
+    (* Re-load the input-side build.json written by [record_input],
        fill in the post-build scan results, save again. Falling back
        to a fresh record if the load fails keeps things robust if a
        caller invoked [record_attempt] without [record_input]. *)
-     let bm =
-       match Day11_opam_layer.Build_meta.load layer_dir with
-       | Ok bm -> bm
-       | Error _ ->
-           {
-             package = OpamPackage.to_string node.Build.pkg;
-             deps =
-               List.map
-                 (fun (d : Build.t) ->
-                   {
-                     Day11_opam_layer.Build_meta.pkg =
-                       OpamPackage.to_string d.pkg;
-                     hash = d.hash;
-                   })
-                 node.Build.deps;
-             stack = Container_backend.collect_transitive_dep_hashes node;
-             build_deps =
-               List.sort String.compare
-                 (List.map OpamPackage.to_string
-                    (Container_backend.collect_transitive_dep_pkgs node));
-             installed_libs = [];
-             installed_docs = [];
-             patches =
-               (match patches with
-               | Some p -> Patches.patch_filenames p node.Build.pkg
-               | None -> []);
-             base_image = benv.Types.base.image;
-             cmd = "";
-             universe = Day11_solution.Universe.to_string node.Build.universe;
-           }
-     in
-     let bm =
-       {
-         bm with
-         installed_libs = Day11_opam_layer.Installed_files.scan_libs ~layer_dir;
-         installed_docs = Day11_opam_layer.Installed_files.scan_docs ~layer_dir;
-       }
-     in
-     let _ = Day11_opam_layer.Build_meta.save layer_dir bm in
-     (* Start the LRU clock at build time. Without this a layer carries
+    let bm =
+      match Day11_opam_layer.Build_meta.load layer_dir with
+      | Ok bm -> bm
+      | Error _ ->
+          {
+            package = OpamPackage.to_string node.Build.pkg;
+            deps =
+              List.map
+                (fun (d : Build.t) ->
+                  {
+                    Day11_opam_layer.Build_meta.pkg =
+                      OpamPackage.to_string d.pkg;
+                    hash = d.hash;
+                  })
+                node.Build.deps;
+            stack = Container_backend.collect_transitive_dep_hashes node;
+            build_deps =
+              List.sort String.compare
+                (List.map OpamPackage.to_string
+                   (Container_backend.collect_transitive_dep_pkgs node));
+            installed_libs = [];
+            installed_docs = [];
+            patches =
+              (match patches with
+              | Some p -> Patches.patch_filenames p node.Build.pkg
+              | None -> []);
+            base_image = benv.Types.base.image;
+            cmd = "";
+            universe = Day11_solution.Universe.to_string node.Build.universe;
+          }
+    in
+    let bm =
+      {
+        bm with
+        installed_libs = Day11_opam_layer.Installed_files.scan_libs ~layer_dir;
+        installed_docs = Day11_opam_layer.Installed_files.scan_docs ~layer_dir;
+      }
+    in
+    let _ = Day11_opam_layer.Build_meta.save layer_dir bm in
+    (* Start the LRU clock at build time. Without this a layer carries
         no [last_used] sentinel until something re-uses it, and a sweep
         in between has nothing to date it by. *)
-     Day11_layer.Last_used.touch env layer_dir;
-     ());
+    Day11_layer.Last_used.touch env layer_dir;
+    ());
   let os_dir = Fpath.parent (Layer.dir layer) in
   Day11_layer.Layer_status.append ~os_dir ~hash:(Layer.hash layer)
     ~exit_status:exit_code;

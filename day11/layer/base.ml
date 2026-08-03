@@ -1,5 +1,1 @@
-type t = {
-  hash : string;
-  dir : Fpath.t;
-  image : string;
-}
+type t = { hash : string; dir : Fpath.t; image : string }

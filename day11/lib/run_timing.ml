@@ -9,34 +9,37 @@
    and across restarts — the run_log's start time churns on every re-eval, so
    it can't be used for this. *)
 
-type t = {
-  started_at : float;
-  completed_at : float option;
-}
+type t = { started_at : float; completed_at : float option }
 
 let path dir = Fpath.(dir / "run_timing.json")
 
 let to_json t : Yojson.Safe.t =
-  `Assoc (("started_at", `Float t.started_at)
-          :: (match t.completed_at with
-              | Some c -> [ ("completed_at", `Float c) ]
-              | None -> []))
+  `Assoc
+    (("started_at", `Float t.started_at)
+    ::
+    (match t.completed_at with
+    | Some c -> [ ("completed_at", `Float c) ]
+    | None -> []))
 
 let of_json : Yojson.Safe.t -> t option = function
-  | `Assoc a ->
-    let num k = match List.assoc_opt k a with
-      | Some (`Float f) -> Some f
-      | Some (`Int n) -> Some (float_of_int n)
-      | _ -> None in
-    (match num "started_at" with
-     | Some started_at -> Some { started_at; completed_at = num "completed_at" }
-     | None -> None)
+  | `Assoc a -> (
+      let num k =
+        match List.assoc_opt k a with
+        | Some (`Float f) -> Some f
+        | Some (`Int n) -> Some (float_of_int n)
+        | _ -> None
+      in
+      match num "started_at" with
+      | Some started_at ->
+          Some { started_at; completed_at = num "completed_at" }
+      | None -> None)
   | _ -> None
 
 let read dir =
   let p = Fpath.to_string (path dir) in
   if not (Sys.file_exists p) then None
-  else match Yojson.Safe.from_file p with
+  else
+    match Yojson.Safe.from_file p with
     | exception _ -> None
     | json -> of_json json
 
@@ -44,9 +47,11 @@ let write dir t =
   let p = Fpath.to_string (path dir) in
   let tmp = p ^ ".tmp" in
   let oc = open_out tmp in
-  Fun.protect ~finally:(fun () -> close_out oc) (fun () ->
-    output_string oc (Yojson.Safe.to_string (to_json t));
-    output_char oc '\n');
+  Fun.protect
+    ~finally:(fun () -> close_out oc)
+    (fun () ->
+      output_string oc (Yojson.Safe.to_string (to_json t));
+      output_char oc '\n');
   Sys.rename tmp p
 
 (* Record the start of a snapshot's build, once. No-op if already recorded
@@ -67,6 +72,6 @@ let duration ~dir : float option =
   | None -> None
   | Some { started_at; completed_at = Some c } -> Some (c -. started_at)
   | Some ({ started_at; completed_at = None } as t) ->
-    let now = Unix.gettimeofday () in
-    write dir { t with completed_at = Some now };
-    Some (now -. started_at)
+      let now = Unix.gettimeofday () in
+      write dir { t with completed_at = Some now };
+      Some (now -. started_at)

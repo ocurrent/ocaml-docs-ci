@@ -13,8 +13,10 @@ let env (vars : Worker.Vars.t) =
 
 let get_names = OpamFormula.fold_left (fun a (name, _) -> name :: a) []
 
-let universes ?(post = false) ?(doc = false) ~packages (resolutions : OpamPackage.t list) =
-  Printf.eprintf "DEBUG universes: post=%b doc=%b resolutions=%d\n%!" post doc (List.length resolutions);
+let universes ?(post = false) ?(doc = false) ~packages
+    (resolutions : OpamPackage.t list) =
+  Printf.eprintf "DEBUG universes: post=%b doc=%b resolutions=%d\n%!" post doc
+    (List.length resolutions);
   let aux root =
     let name, version = (OpamPackage.name root, OpamPackage.version root) in
     let opamfile : OpamFile.OPAM.t =
@@ -23,15 +25,16 @@ let universes ?(post = false) ?(doc = false) ~packages (resolutions : OpamPackag
         |> OpamPackage.Name.Map.find name
         |> OpamPackage.Version.Map.find version
       with Not_found ->
-        Printf.eprintf "DEBUG: Package not found in packages map: %s\n%!" (OpamPackage.to_string root);
+        Printf.eprintf "DEBUG: Package not found in packages map: %s\n%!"
+          (OpamPackage.to_string root);
         raise Not_found
     in
     let deps =
       opamfile
       |> OpamFile.OPAM.depends
       |> OpamFilter.partial_filter_formula
-           (OpamFilter.deps_var_env ~build:true ~post ~test:false
-              ~doc ~dev_setup:false ~dev:false)
+           (OpamFilter.deps_var_env ~build:true ~post ~test:false ~doc
+              ~dev_setup:false ~dev:false)
       |> get_names
       |> OpamPackage.Name.Set.of_list
     in
@@ -39,8 +42,8 @@ let universes ?(post = false) ?(doc = false) ~packages (resolutions : OpamPackag
       opamfile
       |> OpamFile.OPAM.depopts
       |> OpamFilter.partial_filter_formula
-           (OpamFilter.deps_var_env ~build:true ~post ~test:false
-              ~doc ~dev_setup:false ~dev:false)
+           (OpamFilter.deps_var_env ~build:true ~post ~test:false ~doc
+              ~dev_setup:false ~dev:false)
       |> get_names
       |> OpamPackage.Name.Set.of_list
     in
@@ -113,11 +116,15 @@ let solve ~packages ~constraints ~root_pkgs (vars : Worker.Vars.t) =
          on odoc/documentation tools that create cycles (e.g., camlp-streams -> odoc -> odoc-parser -> camlp-streams) *)
       Printf.eprintf "DEBUG: Computing compile_universes...\n%!";
       let compile_universes = universes ~post:false ~doc:false ~packages pkgs in
-      Printf.eprintf "DEBUG: compile_universes done (%d entries)\n%!" (List.length compile_universes);
+      Printf.eprintf "DEBUG: compile_universes done (%d entries)\n%!"
+        (List.length compile_universes);
       (* link_universes: use extended packages, include all deps *)
       Printf.eprintf "DEBUG: Computing link_universes...\n%!";
-      let link_universes = universes ~post:true ~doc:true ~packages:extended pkgs in
-      Printf.eprintf "DEBUG: link_universes done (%d entries)\n%!" (List.length link_universes);
+      let link_universes =
+        universes ~post:true ~doc:true ~packages:extended pkgs
+      in
+      Printf.eprintf "DEBUG: link_universes done (%d entries)\n%!"
+        (List.length link_universes);
       let map_universes univs =
         List.map
           (fun (pkg, str, univ) ->
@@ -232,7 +239,8 @@ let main commit =
 (* Test with fake packages - no git needed *)
 let test_fake () =
   (* Helper to create a simple opam with unfiltered depends *)
-  let make_opam ?(depends = []) ?(doc_depends = []) ?(x_extra_doc_deps = []) () =
+  let make_opam ?(depends = []) ?(doc_depends = []) ?(x_extra_doc_deps = []) ()
+      =
     let empty = OpamFile.OPAM.empty in
     let mk_dep name =
       let name = OpamPackage.Name.of_string name in
@@ -245,7 +253,9 @@ let test_fake () =
       List.map
         (fun name ->
           let name = OpamPackage.Name.of_string name in
-          let filter = OpamTypes.FIdent ([], OpamVariable.of_string "with-doc", None) in
+          let filter =
+            OpamTypes.FIdent ([], OpamVariable.of_string "with-doc", None)
+          in
           OpamFormula.Atom (name, OpamFormula.Atom (OpamTypes.Filter filter)))
         doc_depends
       |> OpamFormula.ands
@@ -258,7 +268,10 @@ let test_fake () =
     if x_extra_doc_deps = [] then opam
     else
       let ext_value =
-        let deps_str = String.concat " & " (List.map (fun s -> "\"" ^ s ^ "\"") x_extra_doc_deps) in
+        let deps_str =
+          String.concat " & "
+            (List.map (fun s -> "\"" ^ s ^ "\"") x_extra_doc_deps)
+        in
         OpamParser.FullPos.value_from_string deps_str "<test>"
       in
       let extensions =
@@ -295,19 +308,18 @@ let test_fake () =
         ("base", "2.0", make_opam ());
         ("doc-helper", "1.0", make_opam ());
         ("extra-helper", "1.0", make_opam ());
-        ( "mylib", "1.0",
-          make_opam
-            ~depends:[ "base" ]
-            ~doc_depends:[ "doc-helper" ]
-            ~x_extra_doc_deps:[ "extra-helper" ]
-            () );
+        ( "mylib",
+          "1.0",
+          make_opam ~depends:[ "base" ] ~doc_depends:[ "doc-helper" ]
+            ~x_extra_doc_deps:[ "extra-helper" ] () );
       ]
   in
   let constraints = OpamPackage.Name.Map.empty in
   let root_pkgs = [ OpamPackage.Name.of_string "mylib" ] in
 
   Printf.printf "=== Testing two-phase solve with fake packages ===\n%!";
-  Printf.printf "Testing both {with-doc} filtered deps AND x-extra-doc-deps extension\n%!";
+  Printf.printf
+    "Testing both {with-doc} filtered deps AND x-extra-doc-deps extension\n%!";
 
   (* First solve: no doc deps *)
   let context =
@@ -318,7 +330,7 @@ let test_fake () =
   | Error e ->
       Printf.printf "First solve failed: %s\n" (Solver.diagnostics e);
       exit 1
-  | Ok sels ->
+  | Ok sels -> (
       let pkgs = Solver.packages_of_result sels in
       Printf.printf "\n[1] First solve (no with-doc deps):\n%!";
       List.iter (fun p -> Printf.printf "  %s\n" (OpamPackage.to_string p)) pkgs;
@@ -334,10 +346,13 @@ let test_fake () =
         List.exists (fun p -> OpamPackage.name_to_string p = "doc-helper") pkgs
       in
       let has_extra_helper =
-        List.exists (fun p -> OpamPackage.name_to_string p = "extra-helper") pkgs
+        List.exists
+          (fun p -> OpamPackage.name_to_string p = "extra-helper")
+          pkgs
       in
       if has_doc_helper || has_extra_helper then (
-        Printf.printf "FAILURE: First solve should not include doc/extra helpers\n%!";
+        Printf.printf
+          "FAILURE: First solve should not include doc/extra helpers\n%!";
         exit 1);
 
       (* Use extended packages (processes x-extra-doc-deps) *)
@@ -361,21 +376,23 @@ let test_fake () =
           ~constraints ~pins ~doc:true
       in
       let extended_result = Solver.solve extended_context root_pkgs in
-      (match extended_result with
+      match extended_result with
       | Error e ->
-          Printf.printf "Extended solve failed: %s\n%!"
-            (Solver.diagnostics e);
+          Printf.printf "Extended solve failed: %s\n%!" (Solver.diagnostics e);
           exit 1
       | Ok extended_sels ->
           let extended_pkgs = Solver.packages_of_result extended_sels in
-          Printf.printf "\n[2] Extended solve (doc=true, post=true, with pins):\n%!";
+          Printf.printf
+            "\n[2] Extended solve (doc=true, post=true, with pins):\n%!";
           List.iter
             (fun p -> Printf.printf "  %s\n" (OpamPackage.to_string p))
             extended_pkgs;
 
           (* Verify base version is still the same (pinned) *)
           let extended_base_pkg =
-            List.find (fun p -> OpamPackage.name_to_string p = "base") extended_pkgs
+            List.find
+              (fun p -> OpamPackage.name_to_string p = "base")
+              extended_pkgs
           in
           let base_version_preserved =
             OpamPackage.Version.equal
@@ -392,16 +409,23 @@ let test_fake () =
             extra;
 
           let has_doc_helper =
-            List.exists (fun p -> OpamPackage.name_to_string p = "doc-helper") extra
+            List.exists
+              (fun p -> OpamPackage.name_to_string p = "doc-helper")
+              extra
           in
           let has_extra_helper =
-            List.exists (fun p -> OpamPackage.name_to_string p = "extra-helper") extra
+            List.exists
+              (fun p -> OpamPackage.name_to_string p = "extra-helper")
+              extra
           in
 
           Printf.printf "\n[4] Results:\n%!";
-          Printf.printf "  Base version preserved (pinning works): %b\n%!" base_version_preserved;
-          Printf.printf "  doc-helper added ({doc} filter works): %b\n%!" has_doc_helper;
-          Printf.printf "  extra-helper added (x-extra-doc-deps works): %b\n%!" has_extra_helper;
+          Printf.printf "  Base version preserved (pinning works): %b\n%!"
+            base_version_preserved;
+          Printf.printf "  doc-helper added ({doc} filter works): %b\n%!"
+            has_doc_helper;
+          Printf.printf "  extra-helper added (x-extra-doc-deps works): %b\n%!"
+            has_extra_helper;
 
           if base_version_preserved && has_doc_helper && has_extra_helper then (
             Printf.printf "\nSUCCESS: Both mechanisms work!\n%!";
@@ -435,9 +459,7 @@ let test_real repo_path =
     (OpamPackage.Name.Map.cardinal packages);
 
   (* Test with odoc.3.1.0 which has x-extra-doc-deps *)
-  let root_pkgs =
-    List.map OpamPackage.Name.of_string [ "odoc" ]
-  in
+  let root_pkgs = List.map OpamPackage.Name.of_string [ "odoc" ] in
   let constraints =
     [ ("odoc", `Eq, "3.1.0"); ("ocaml", `Geq, "5.2.0") ]
     |> List.map (fun (name, rel, version) ->
@@ -468,7 +490,9 @@ let test_real repo_path =
           result.compile_universes
       in
       let link_pkgs =
-        List.find_opt (fun (name, _, _) -> name = "odoc.3.1.0") result.link_universes
+        List.find_opt
+          (fun (name, _, _) -> name = "odoc.3.1.0")
+          result.link_universes
       in
       (match compile_pkgs with
       | Some (_, _, deps) ->
@@ -492,17 +516,31 @@ let test_real repo_path =
       let extra_in_link =
         List.filter
           (fun name ->
-            List.exists (fun dep -> String.sub dep 0 (min (String.length name) (String.length dep)) = name) link_deps
-            && not (List.exists (fun dep -> String.sub dep 0 (min (String.length name) (String.length dep)) = name) compile_deps))
+            List.exists
+              (fun dep ->
+                String.sub dep 0 (min (String.length name) (String.length dep))
+                = name)
+              link_deps
+            && not
+                 (List.exists
+                    (fun dep ->
+                      String.sub dep 0
+                        (min (String.length name) (String.length dep))
+                      = name)
+                    compile_deps))
           expected_extra
       in
-      Printf.printf "\nExtra packages in link but not compile (from x-extra-doc-deps):\n%!";
+      Printf.printf
+        "\nExtra packages in link but not compile (from x-extra-doc-deps):\n%!";
       List.iter (fun p -> Printf.printf "  %s\n%!" p) extra_in_link;
 
       if List.length extra_in_link >= 2 then (
-        Printf.printf "\nSUCCESS: x-extra-doc-deps packages found in link universe!\n%!";
+        Printf.printf
+          "\nSUCCESS: x-extra-doc-deps packages found in link universe!\n%!";
         exit 0)
       else (
-        Printf.printf "\nNote: Some x-extra-doc-deps packages may not be available.\n%!";
-        Printf.printf "Check if odoc-driver, sherlodoc, odig exist in the repo.\n%!";
+        Printf.printf
+          "\nNote: Some x-extra-doc-deps packages may not be available.\n%!";
+        Printf.printf
+          "Check if odoc-driver, sherlodoc, odig exist in the repo.\n%!";
         exit 0)

@@ -1,5 +1,6 @@
 module Build = Day11_opam_layer.Build
 module Tool = Day11_opam_layer.Tool
+
 type build = Build.t
 
 (* See {!Day11_doc.Generate}'s cooperative_yield — same rationale:
@@ -9,7 +10,7 @@ let cooperative_yield =
   let n = ref 0 in
   fun () ->
     incr n;
-    if !n land 63 = 0 then (try Eio.Fiber.yield () with _ -> ())
+    if !n land 63 = 0 then try Eio.Fiber.yield () with _ -> ()
 
 let build_dag cache ~base_hash solutions =
   let t0 = Unix.gettimeofday () in
@@ -39,9 +40,9 @@ let build_dag cache ~base_hash solutions =
     match Hashtbl.find_opt local pkg_key with
     | Some node -> node
     | None ->
-      let node = get_node_uncached local solution trans_build trans_doc pkg in
-      Hashtbl.replace local pkg_key node;
-      node
+        let node = get_node_uncached local solution trans_build trans_doc pkg in
+        Hashtbl.replace local pkg_key node;
+        node
   and get_node_uncached local solution trans_build trans_doc pkg =
     let pkg_build_deps =
       match OpamPackage.Map.find_opt pkg trans_build with
@@ -53,49 +54,59 @@ let build_dag cache ~base_hash solutions =
     match Hashtbl.find_opt memo hash with
     | Some node -> node
     | None ->
-      (* Universe identity reflects the {b doc-deps} closure. Two
+        (* Universe identity reflects the {b doc-deps} closure. Two
          solutions sharing build-deps but differing in doc-deps will
          hash-collide here (same [hash]); the first-arriving one's
          universe is the one we keep — same convention as
          [build_by_hash]'s last-write-wins. Falls back to build-deps
          when [pkg] isn't in [trans_doc] (defensive — shouldn't
          happen, since doc_solution ⊇ solution). *)
-      let pkg_universe_deps =
-        match OpamPackage.Map.find_opt pkg trans_doc with
-        | Some s -> OpamPackage.Set.elements s
-        | None -> pkg_build_deps
-      in
-      let universe =
-        Day11_solution.Universe.of_deps
-          (OpamPackage.Set.of_list pkg_universe_deps) in
-      let direct_deps =
-        match OpamPackage.Map.find_opt pkg solution with
-        | Some s -> OpamPackage.Set.elements s
-        | None -> []
-      in
-      let deps = List.filter_map (fun dep ->
-        if OpamPackage.Map.mem dep solution then
-          Some (get_node local solution trans_build trans_doc dep)
-        else
-          None
-      ) direct_deps in
-      let node : build = { hash; pkg; deps; universe } in
-      Hashtbl.replace memo hash node;
-      node
+        let pkg_universe_deps =
+          match OpamPackage.Map.find_opt pkg trans_doc with
+          | Some s -> OpamPackage.Set.elements s
+          | None -> pkg_build_deps
+        in
+        let universe =
+          Day11_solution.Universe.of_deps
+            (OpamPackage.Set.of_list pkg_universe_deps)
+        in
+        let direct_deps =
+          match OpamPackage.Map.find_opt pkg solution with
+          | Some s -> OpamPackage.Set.elements s
+          | None -> []
+        in
+        let deps =
+          List.filter_map
+            (fun dep ->
+              if OpamPackage.Map.mem dep solution then
+                Some (get_node local solution trans_build trans_doc dep)
+              else None)
+            direct_deps
+        in
+        let node : build = { hash; pkg; deps; universe } in
+        Hashtbl.replace memo hash node;
+        node
   in
-  List.iter (fun (_target, solution, doc_solution) ->
-    let trans_build = Day11_solution.Deps.transitive_deps solution in
-    let trans_doc = Day11_solution.Deps.transitive_deps doc_solution in
-    let local : (string, build) Hashtbl.t =
-      Hashtbl.create (OpamPackage.Map.cardinal solution) in
-    OpamPackage.Map.iter (fun pkg _deps ->
-      cooperative_yield ();
-      ignore (get_node local solution trans_build trans_doc pkg)
-    ) solution
-  ) solutions;
+  List.iter
+    (fun (_target, solution, doc_solution) ->
+      let trans_build = Day11_solution.Deps.transitive_deps solution in
+      let trans_doc = Day11_solution.Deps.transitive_deps doc_solution in
+      let local : (string, build) Hashtbl.t =
+        Hashtbl.create (OpamPackage.Map.cardinal solution)
+      in
+      OpamPackage.Map.iter
+        (fun pkg _deps ->
+          cooperative_yield ();
+          ignore (get_node local solution trans_build trans_doc pkg))
+        solution)
+    solutions;
   let all_nodes = Hashtbl.fold (fun _ node acc -> node :: acc) memo [] in
-  let sorted = List.sort (fun (a : build) (b : build) ->
-    compare (List.length a.deps) (List.length b.deps)) all_nodes in
+  let sorted =
+    List.sort
+      (fun (a : build) (b : build) ->
+        compare (List.length a.deps) (List.length b.deps))
+      all_nodes
+  in
   Printf.printf "  build_dag: %d nodes from %d solutions in %.1fs\n%!"
     (List.length sorted) (List.length solutions)
     (Unix.gettimeofday () -. t0);

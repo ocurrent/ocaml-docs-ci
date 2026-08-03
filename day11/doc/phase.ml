@@ -12,18 +12,15 @@ let phase_to_string = function
 
 let doc_result_to_yojson = function
   | Doc_success { html_path; blessed } ->
-      `Assoc [
-        ("status", `String "success");
-        ("html_path", `String html_path);
-        ("blessed", `Bool blessed);
-      ]
-  | Doc_skipped ->
-      `Assoc [ ("status", `String "skipped") ]
+      `Assoc
+        [
+          ("status", `String "success");
+          ("html_path", `String html_path);
+          ("blessed", `Bool blessed);
+        ]
+  | Doc_skipped -> `Assoc [ ("status", `String "skipped") ]
   | Doc_failure msg ->
-      `Assoc [
-        ("status", `String "failure");
-        ("message", `String msg);
-      ]
+      `Assoc [ ("status", `String "failure"); ("message", `String msg) ]
 
 let doc_result_of_yojson json =
   try

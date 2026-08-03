@@ -1,11 +1,10 @@
 (** The site index ("/" and "/index.html").
 
     Shadows Current_web's stock index page: the [Routes] router is
-    first-match-wins, so registering this ahead of
-    [Current_web.routes engine] replaces the default. It renders a
-    short description of the service, then the same pipeline diagram,
-    engine result and confirmation-threshold settings as the stock
-    page (all rebuilt from the public API — [Current_web] doesn't
+    first-match-wins, so registering this ahead of [Current_web.routes engine]
+    replaces the default. It renders a short description of the service, then
+    the same pipeline diagram, engine result and confirmation-threshold settings
+    as the stock page (all rebuilt from the public API — [Current_web] doesn't
     expose its own index resource). *)
 
 open Tyxml.Html
@@ -15,7 +14,7 @@ module Resource = Current_web.Resource
 let render_result = function
   | Ok () -> [ txt "Success!" ]
   | Error (`Active `Waiting_for_confirmation) ->
-    [ txt "Waiting for confirmation..." ]
+      [ txt "Waiting for confirmation..." ]
   | Error (`Active `Ready) -> [ txt "Ready..." ]
   | Error (`Active `Running) -> [ txt "Running..." ]
   | Error (`Msg msg) -> [ txt ("ERROR: " ^ msg) ]
@@ -49,8 +48,7 @@ let about =
       h2 [ txt "ocaml-docs-ci" ];
       p
         [
-          txt
-            "This service builds the HTML documentation for the packages in ";
+          txt "This service builds the HTML documentation for the packages in ";
           a
             ~a:[ a_href "https://github.com/ocaml/opam-repository" ]
             [ txt "opam-repository" ];
@@ -61,8 +59,8 @@ let about =
              builds the package, and generates its documentation with ";
           a ~a:[ a_href "https://github.com/ocaml/odoc" ] [ txt "odoc" ];
           txt
-            ". When a package builds in several universes, the richest one \
-             is \u{201c}blessed\u{201d} and its documentation is the one \
+            ". When a package builds in several universes, the richest one is \
+             \u{201c}blessed\u{201d} and its documentation is the one \
              published.";
         ];
       p
@@ -70,10 +68,9 @@ let about =
           txt "The ";
           a ~a:[ a_href "/profiles" ] [ txt "Profiles" ];
           txt
-            " dashboard tracks build status per profile: snapshots over \
-             time, per-package and per-universe detail, and build logs. The \
-             pipeline below is the live OCurrent view of the current run; \
-             see also the ";
+            " dashboard tracks build status per profile: snapshots over time, \
+             per-package and per-universe detail, and build logs. The pipeline \
+             below is the live OCurrent view of the current run; see also the ";
           a ~a:[ a_href "/jobs" ] [ txt "jobs" ];
           txt " page. Source code and issues: ";
           a
@@ -93,9 +90,7 @@ let r ~engine =
       let config = Current.Engine.config engine in
       let { Current.Engine.value; jobs = _ } = Current.Engine.state engine in
       let verbatim_query = Uri.verbatim_query uri in
-      let path =
-        "/pipeline.svg?" ^ Option.value verbatim_query ~default:""
-      in
+      let path = "/pipeline.svg?" ^ Option.value verbatim_query ~default:"" in
       Context.respond_ok ctx
         [
           about;

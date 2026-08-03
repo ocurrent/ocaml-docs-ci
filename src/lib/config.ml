@@ -25,9 +25,7 @@ let take_n_last_versions =
 let v jobs track_packages take_n_last_versions =
   { jobs; track_packages; take_n_last_versions }
 
-let cmdliner =
-  Term.(const v $ jobs $ track_packages $ take_n_last_versions)
-
+let cmdliner = Term.(const v $ jobs $ track_packages $ take_n_last_versions)
 let jobs t = t.jobs
 let track_packages t = t.track_packages
 let take_n_last_versions t = t.take_n_last_versions

@@ -1,4 +1,15 @@
 (library
  (name day11_lib)
  (public_name day11.lib)
- (libraries bos day11_layer day11_opam_layer eio fmt fpath logs rresult unix str yojson))
+ (libraries
+  bos
+  day11_layer
+  day11_opam_layer
+  eio
+  fmt
+  fpath
+  logs
+  rresult
+  unix
+  str
+  yojson))

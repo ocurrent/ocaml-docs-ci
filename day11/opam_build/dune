@@ -1,7 +1,20 @@
 (library
  (name day11_opam_build)
  (public_name day11.opam-build)
- (libraries day11_container day11_sys day11_solution
-            day11_layer day11_opam day11_opam_layer day11_runner
-            day11_solver_pool
-            bos dockerfile eio fpath opam-format rresult yojson unix))
+ (libraries
+  day11_container
+  day11_sys
+  day11_solution
+  day11_layer
+  day11_opam
+  day11_opam_layer
+  day11_runner
+  day11_solver_pool
+  bos
+  dockerfile
+  eio
+  fpath
+  opam-format
+  rresult
+  yojson
+  unix))

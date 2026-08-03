@@ -2,8 +2,15 @@
  (name day11_solver)
  (public_name day11.solver)
  (modules :standard \ solver_worker)
- (libraries bos day11_solution day11_opam fmt fpath
-            opam-0install opam-format rresult))
+ (libraries
+  bos
+  day11_solution
+  day11_opam
+  fmt
+  fpath
+  opam-0install
+  opam-format
+  rresult))
 
 (executable
  (name solver_worker)

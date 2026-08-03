@@ -37,13 +37,13 @@ module Track = struct
   end
 
   let pp f { Key.repo; filter; limit } =
-    let limit_s = match limit with
-      | None -> "all"
-      | Some n -> string_of_int n
+    let limit_s =
+      match limit with None -> "all" | Some n -> string_of_int n
     in
-    Fmt.pf f "opam repo track (limit=%s) %a [%a]"
-      limit_s Git.Commit.pp_short repo
-      Fmt.(list ~sep:(any ",") string) filter
+    Fmt.pf f "opam repo track (limit=%s) %a [%a]" limit_s Git.Commit.pp_short
+      repo
+      Fmt.(list ~sep:(any ",") string)
+      filter
 
   module Value = struct
     type package_definition = { package : OpamPackage.t; digest : string }
@@ -52,10 +52,7 @@ module Track = struct
     (* The commit rides in the value so consumers can check that a
        (possibly latched) tracking result actually corresponds to the
        repo state the rest of their inputs were derived from. *)
-    type t = {
-      commit : string;
-      packages : package_definition list;
-    }
+    type t = { commit : string; packages : package_definition list }
     [@@deriving yojson]
 
     let marshal t = t |> to_yojson |> Yojson.Safe.to_string
@@ -86,31 +83,32 @@ module Track = struct
         let path = Fpath.to_string (Git.Commit.repo repo) in
         let hash = Git.Commit.hash repo in
         let* store, commit =
-          Day11_opam.Git_utils.get_git_repo_store_and_hash_commit_lwt
-            path (Some hash) in
+          Day11_opam.Git_utils.get_git_repo_store_and_hash_commit_lwt path
+            (Some hash)
+        in
         let* entries =
-          Day11_opam.Git_packages.list_package_versions_lwt ~store commit in
+          Day11_opam.Git_packages.list_package_versions_lwt ~store commit
+        in
         let packages =
           entries
           |> List.filter (fun (pkg, _) ->
-               filter (OpamPackage.Name.to_string (OpamPackage.name pkg)))
-          |> List.map (fun (pkg, oid) ->
-               Value.{ package = pkg; digest = oid })
+                 filter (OpamPackage.Name.to_string (OpamPackage.name pkg)))
+          |> List.map (fun (pkg, oid) -> Value.{ package = pkg; digest = oid })
           (* Group by name to apply [limit] (newest N versions per
              name), matching the historical per-name semantics. *)
-          |> List.fold_left (fun m (e : Value.package_definition) ->
-               let n = OpamPackage.name e.package in
-               OpamPackage.Name.Map.update n (fun es -> e :: es) [] m)
+          |> List.fold_left
+               (fun m (e : Value.package_definition) ->
+                 let n = OpamPackage.name e.package in
+                 OpamPackage.Name.Map.update n (fun es -> e :: es) [] m)
                OpamPackage.Name.Map.empty
           |> OpamPackage.Name.Map.values
           |> List.concat_map (fun es ->
-               es
-               |> List.sort (fun (a : Value.package_definition) b ->
-                    -OpamPackage.compare a.package b.package)
-               |> take limit)
+                 es
+                 |> List.sort (fun (a : Value.package_definition) b ->
+                        -OpamPackage.compare a.package b.package)
+                 |> take limit)
         in
-        Lwt.return_ok
-          Value.{ commit = Git.Commit.hash repo; packages })
+        Lwt.return_ok Value.{ commit = Git.Commit.hash repo; packages })
       (fun exn ->
         Lwt.return_error
           (`Msg (Printf.sprintf "track failed: %s" (Printexc.to_string exn))))
@@ -119,16 +117,21 @@ end
 module LatchedBuilder (B : Current_cache.S.BUILDER) = struct
   module Adaptor = struct
     type t = B.t
+
     let id = B.id
+
     module Key = Current.String
     module Value = B.Key
     module Outcome = B.Value
+
     let run op job _ key = B.build op job key
     let pp f (_, key) = B.pp f key
     let auto_cancel = B.auto_cancel
     let latched = true
   end
+
   include Current_cache.Generic (Adaptor)
+
   let get ~opkey ?schedule ctx key = run ?schedule ctx opkey key
 end
 
@@ -152,8 +155,8 @@ module Map = OpamStd.Map.Make (struct
   let to_string t = OpamPackage.to_string t.package
 end)
 
-let v ~repo_label ~limit ~(filter : string list)
-    (repo : Git.Commit.t Current.t) =
+let v ~repo_label ~limit ~(filter : string list) (repo : Git.Commit.t Current.t)
+    =
   let open Current.Syntax in
   (* [repo_label] distinguishes same-(filter, limit) calls that feed
      from different repos — e.g. the ocaml mainline + oxcaml overlay
@@ -169,35 +172,33 @@ let v ~repo_label ~limit ~(filter : string list)
      repo-derived inputs (the solver) must check the embedded commit
      against their view of the repo and skip mismatched evaluations —
      see {!Docs_ci_lib.Day11_solver.solve}. *)
-  let limit_s = match limit with
-    | None -> "all"
-    | Some n -> string_of_int n
-  in
+  let limit_s = match limit with None -> "all" | Some n -> string_of_int n in
   let reduced_filter =
-    if List.length filter <= 3 then filter else
-      List.take 3 filter @ ["..."]
+    if List.length filter <= 3 then filter else List.take 3 filter @ [ "..." ]
   in
   Current.component "Track %s (limit=%s) - %a" repo_label limit_s
-    Fmt.(list string) reduced_filter
+    Fmt.(list string)
+    reduced_filter
   |> let> repo in
      (* opkey disambiguates at the LatchedBuilder layer too. *)
-     let opkey = Printf.sprintf "track-%s-%s-%s"
-       repo_label limit_s (String.concat "," filter) in
+     let opkey =
+       Printf.sprintf "track-%s-%s-%s" repo_label limit_s
+         (String.concat "," filter)
+     in
      TrackCache.get ~opkey No_context { filter; repo; limit }
      |> Current.Primitive.map_result
           (Result.map (fun (v : Track.Value.t) -> (v.commit, v.packages)))
 
-(** Union per-repo tracking results (as plain values), with later
-    repos' entries overriding earlier by [(name, version)] —
-    mirroring opam's overlay resolution. Sorted by package for a
-    deterministic order (it feeds cache-key digests). *)
+(** Union per-repo tracking results (as plain values), with later repos' entries
+    overriding earlier by [(name, version)] — mirroring opam's overlay
+    resolution. Sorted by package for a deterministic order (it feeds cache-key
+    digests). *)
 let merge_values (per_repo : t list list) : t list =
   let table = Hashtbl.create 1024 in
-  List.iter (fun pkgs ->
-    List.iter (fun (pkg : t) ->
-      Hashtbl.replace table pkg.package pkg
-    ) pkgs
-  ) per_repo;
+  List.iter
+    (fun pkgs ->
+      List.iter (fun (pkg : t) -> Hashtbl.replace table pkg.package pkg) pkgs)
+    per_repo;
   Hashtbl.fold (fun _ v acc -> v :: acc) table []
   |> List.sort (fun (a : t) b -> OpamPackage.compare a.package b.package)
-  |> List.sort (fun a b -> -(OpamPackage.compare a.package b.package))
+  |> List.sort (fun a b -> -OpamPackage.compare a.package b.package)
