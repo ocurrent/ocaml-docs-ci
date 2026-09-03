@@ -32,7 +32,7 @@ services:
     # socket below. The socket is group-owned by [docker]; since the
     # daemon runs as the non-root app user, add that group so it can
     # talk to the socket. This must match the docker group's gid *on the
-    # host*: dill's docker.io install put it at 107 (999 was already taken
+    # host*: sage's docker.io install put it at 107 (999 was already taken
     # by systemd-journal). Update this if the host's docker gid differs.
     group_add:
       - "107"
@@ -101,7 +101,7 @@ services:
     # The Caddyfile is shipped to the remote daemon as an inline Compose
     # config (see the top-level `configs:` block below) rather than bind-
     # mounting /etc/caddy. ocurrent-deployer runs `docker --context
-    # dill.caelum.ci.dev compose up`, so any bind source would resolve on
+    # sage.caelum.ci.dev compose up`, so any bind source would resolve on
     # the remote host's filesystem, not in the deployer's checkout — only
     # an inline config ships the file's bytes to the remote daemon.
     configs:
@@ -156,7 +156,7 @@ configs:
       # plain HTTP to HTTPS. Needs ports 80 + 443 reachable from the internet
       # and a DNS record for the domain pointing here. Certs/account key persist
       # on the /data volume so restarts don't re-request.
-      dill.caelum.ci.dev {
+      sage.caelum.ci.dev {
         # gzip-compress the static .css/.js/.json odoc emits (and HTML).
         encode gzip
 
