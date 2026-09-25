@@ -24,7 +24,7 @@
 services:
   daemon:
     # ocurrent-deployer pins this to a name@sha256 digest before deploying.
-    image: ocurrent/ocaml-docs-ci:live
+    image: ocurrent/ocaml-docs-ci:staging
     restart: unless-stopped
     privileged: true
     # The daemon builds (and imports) its base image via the host
