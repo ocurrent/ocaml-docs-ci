@@ -510,12 +510,15 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
            v4 → v5: {!Prep.create_with_mounts} now copies the [README.md] /
            [CHANGES.md] / [odoc-assets] doc files that voodoo-prep used to
            provide, so every doc layer must be rebuilt to pick up the pages.
-           The link hash below feeds on [dn.layer.hash], so it cascades. *)
+           v5 → v6: doc-all/link layers now keep their HTML
+           ({!Html_publish}); rebuild so layers shared between profiles
+           carry it. The link hash below feeds on [dn.layer.hash], so it
+           cascades. *)
             let hash =
               Day11_layer.Hash.of_strings
                 ([
                    phase;
-                   "v5";
+                   "v6";
                    n.hash;
                    u_s;
                    composite_tool_hash;
