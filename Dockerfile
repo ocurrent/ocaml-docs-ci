@@ -172,6 +172,12 @@ USER ${UID}:${GID}
 RUN mkdir -p ${HOME_DIR}/.day11/profiles \
       ${HOME_DIR}/.day11/overlays ${HOME_DIR}/.day11/repo
 COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/.day11/profiles/
+# The seeding above only happens when the named volume is first
+# created, so later image changes to docker/profiles/ would never reach
+# an existing volume. Keep a second copy outside the volume, which the
+# entrypoint copies over [.day11/profiles/] on every start: the image
+# is the source of truth for the shipped profiles.
+COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/profiles-image/
 
 # Ensure TMPDIR exists and is owned by the runtime user before the
 # command starts. It lives under the bind-mounted cache, so it can't be
@@ -180,9 +186,10 @@ COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/.day11/profiles/
 # assuming it's present. Creating it here (as the app user, before any
 # sudo path can make it root-owned) keeps it writable.
 #
-# The entrypoint is deliberately generic — it just preps TMPDIR and
-# execs whatever command it's given, so the same image serves both the
+# The entrypoint is deliberately generic — it just preps TMPDIR,
+# refreshes the shipped profiles (see above), and execs whatever
+# command it's given, so the same image serves both the
 # daemon (docker-compose's [command: ocaml-docs-ci ...]) and one-off
 # CLI runs ([docker compose run --rm daemon day11 batch ...]).
-ENTRYPOINT ["dumb-init", "sh", "-c", "mkdir -p \"$TMPDIR\" && exec \"$@\"", "sh"]
+ENTRYPOINT ["dumb-init", "sh", "-c", "mkdir -p \"$TMPDIR\" \"$HOME/.day11/profiles\" && cp -f \"$HOME\"/profiles-image/*.json \"$HOME/.day11/profiles/\" && exec \"$@\"", "sh"]
 CMD ["ocaml-docs-ci", "--help"]

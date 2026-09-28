@@ -53,15 +53,31 @@ services:
       # environment with e.g.:
       #   docker compose run --rm daemon day11 batch --profile=full ...
       - ocaml-docs-ci
-      # Single profile: running quick+full concurrently split the doc
-      # HTML between the two profiles' epoch trees — doc layers are
-      # shared (content-addressed) across profiles, but the HTML lands
-      # in the epoch of whichever profile dispatched the layer first,
-      # leaving permanent holes in the other's site (dangling
-      # cross-package links). Until cache-hit publication reconciles
-      # epochs, run full only.
-      - --profiles=full
+      # Sage runs two experimental profiles, both against odoc master:
+      #   odoc-master-mini   = mainline compiler, latest version of a
+      #                        curated list of historically problematic
+      #                        packages (eliom, camlp5, jsonkit, ...).
+      #   oxcaml-odoc-master = oxcaml compiler (ocaml-variants.5.4.0+ox),
+      #                        latest version of every package.
+      # Running two profiles at once splits the doc HTML between their
+      # epoch trees when they share doc layers: layers are
+      # content-addressed, and the HTML lands only in the epoch of
+      # whichever profile dispatched the layer first. These two can't
+      # share any, because every universe in one has the oxcaml
+      # compiler and every universe in the other has a mainline
+      # compiler. Don't add a third profile that overlaps either of
+      # them (e.g. full with odoc master) until cache-hit publication
+      # reconciles epochs.
+      - --profiles=odoc-master-mini,oxcaml-odoc-master
       - --remote=https://github.com/ocaml/opam-repository.git=repo/opam-repository
+      - --remote=https://github.com/oxcaml/opam-repository.git=repo/oxcaml/opam-repository
+      # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from
+      # ocaml/odoc's default branch (master) as an opam overlay under
+      # .day11/overlays/odoc-master/repo, versioned
+      # <latest-tag>+master.<epoch>.<sha7> so it outranks both mainline
+      # odoc and oxcaml's odoc.3.2.0+ox2. Both profiles layer it last.
+      # Tracks master on the hourly schedule and re-plans when it moves.
+      - --github-pin-overlay=https://github.com/ocaml/odoc=overlays/odoc-master
       - --jobs=40
       - --cores-per-build=4
       - --overcommit=2.5
