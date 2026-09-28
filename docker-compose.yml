@@ -53,22 +53,21 @@ services:
       # environment with e.g.:
       #   docker compose run --rm daemon day11 batch --profile=full ...
       - ocaml-docs-ci
-      # Sage runs two experimental profiles, both against odoc master:
-      #   odoc-master-mini   = mainline compiler, latest version of a
-      #                        curated list of historically problematic
-      #                        packages (eliom, camlp5, jsonkit, ...).
-      #   oxcaml-odoc-master = oxcaml compiler (ocaml-variants.5.4.0+ox),
-      #                        latest version of every package.
-      # Running two profiles at once splits the doc HTML between their
-      # epoch trees when they share doc layers: layers are
-      # content-addressed, and the HTML lands only in the epoch of
-      # whichever profile dispatched the layer first. These two can't
-      # share any, because every universe in one has the oxcaml
-      # compiler and every universe in the other has a mainline
-      # compiler. Don't add a third profile that overlaps either of
-      # them (e.g. full with odoc master) until cache-hit publication
-      # reconciles epochs.
-      - --profiles=odoc-master-mini,oxcaml-odoc-master
+      # Sage runs three experimental profiles, all against odoc master:
+      #   odoc-master-mini    = mainline compiler, latest version of a
+      #                         curated list of historically problematic
+      #                         packages (eliom, camlp5, jsonkit, ...).
+      #   odoc-master-overlap = same repos and compiler, 22 of mini's
+      #                         targets, so most of its doc layers are
+      #                         ones mini also plans. This deliberately
+      #                         exercises cross-profile HTML publication
+      #                         (Html_publish / Epoch_publish): pages for a
+      #                         layer the other profile built must still
+      #                         appear in this profile's epoch.
+      #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.4.0+ox),
+      #                         latest version of every package; shares no
+      #                         doc layers with the other two.
+      - --profiles=odoc-master-mini,odoc-master-overlap,oxcaml-odoc-master
       - --remote=https://github.com/ocaml/opam-repository.git=repo/opam-repository
       - --remote=https://github.com/oxcaml/opam-repository.git=repo/oxcaml/opam-repository
       # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from
