@@ -89,3 +89,8 @@
   eio_main
   fpath
   opam-format))
+
+(test
+ (name test_html_publish)
+ (modules test_html_publish)
+ (libraries day11_doc day11_test_util alcotest bos fpath unix))

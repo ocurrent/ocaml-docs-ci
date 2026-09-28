@@ -61,14 +61,14 @@ val link :
   build_deps_layers:Fpath.t list ->
   compile_layer:Fpath.t ->
   dep_compile_layers:Fpath.t list ->
-  html_dir:Fpath.t ->
   hash:string ->
   OpamPackage.t ->
-  (unit, string) result
+  (Fpath.t, string) result
 (** [link env benv ~config ~build_layer ~build_deps_layers ~compile_layer
-     ~dep_compile_layers ~html_dir ~hash pkg] runs the odoc link phase for
-    [pkg]. Reads [.odoc] files from [compile_layer] and [dep_compile_layers],
-    writes HTML to [html_dir]. Stacks [build_deps_layers] for build-tool access
+     ~dep_compile_layers ~hash pkg] runs the odoc link phase for [pkg]. Reads
+    [.odoc] files from [compile_layer] and [dep_compile_layers] and renders HTML
+    into the link layer ({!Html_publish.capture}); publishing it into an epoch
+    is the caller's job. Stacks [build_deps_layers] for build-tool access
     (ocamlobjinfo etc.).
 
     {b Dep closure required:} [dep_compile_layers] must be drawn from the
@@ -77,8 +77,11 @@ val link :
     may target packages that the compile phase didn't see. See
     {!page-doc_dep_graphs} §3.
 
-    Returns [Ok ()] on success. The link layer itself is ephemeral — only the
-    HTML output matters. *)
+    Returns the link layer directory on success. *)
+
+val support_root : os_dir:Fpath.t -> Fpath.t
+(** [support_root ~os_dir] is where {!Html_publish.capture} keeps HTML support
+    files, one dir per toolchain. *)
 
 val doc_all :
   sw:Eio.Switch.t ->
@@ -89,14 +92,14 @@ val doc_all :
   universe:string ->
   build_deps_layers:Fpath.t list ->
   dep_compile_layers:Fpath.t list ->
-  html_dir:Fpath.t ->
   hash:string ->
   OpamPackage.t ->
   (Fpath.t, string) result
-(** [doc_all env benv ~config ~build_layer ~universe ~dep_compile_layers
-     ~html_dir ~hash pkg] runs compile + link + HTML generation in a single
-    container invocation. Returns the compile layer directory (which contains
-    the [.odoc] output for use by dependents).
+(** [doc_all env benv ~config ~build_layer ~universe ~dep_compile_layers ~hash
+     pkg] runs compile + link + HTML generation in a single container
+    invocation, rendering the HTML into the layer ({!Html_publish.capture}).
+    Returns the layer directory, which holds both the [.odoc] output for
+    dependents and the HTML.
 
     {b Precondition:} only valid for packages where [build_deps == doc_deps]
     (see {!Day11_doc.Doc_deps.needs_separate_link}). [dep_compile_layers] is

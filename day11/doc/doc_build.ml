@@ -211,26 +211,50 @@ let debug_inspect_image =
    /home/opam/prep/universes/*/*/*/ 2>/dev/null | sort; echo '=== END DEBUG \
    ==='; "
 
+(* Where HTML support files (odoc.css, fonts, ...) are kept, one dir per
+   toolchain; see {!Html_publish.capture}. Not a 12-hex name, so the layer
+   GC leaves it alone. *)
+let support_root ~os_dir = Fpath.(os_dir / "html-support")
+
+let support_key (config : doc_config) =
+  Day11_layer.Hash.of_strings
+    [ "html-support"; config.driver_tool.hash; config.odoc_tool.hash ]
+
 (* Shared body of the three doc phases (compile / link / doc-all). They
    differ only in the voodoo [actions], the [Doc_meta] phase + recorded
-   deps, whether an HTML output dir is bind-mounted, the layer dirs to
-   stack, and the error label. Returns the built node on success; the
+   deps, whether they render HTML, the layer dirs to stack, and the error
+   label. Returns the built node on success; the
    wrappers map that to the layer dir (compile/doc-all) or unit (link).
    Layer dirs are stacked build-deps first (build-time tooling) then
    compile layers (.odoc files) — order matters for overlayfs. *)
 let run_doc_phase ~sw env benv ~(config : doc_config) ~build_layer ~universe
-    ~actions ~phase ~meta_deps ~html_dir ~build_dirs ~label ~hash pkg :
+    ~actions ~phase ~meta_deps ~render_html ~build_dirs ~label ~hash pkg :
     (Build.t, string) result =
   match prepare env ~config ~build_layer ~universe pkg with
   | Error _ as e -> e
   | Ok (universe, mounts, prep_dir) ->
-      (* The HTML output dir is a bind-mount source; runc won't start if it
-       doesn't exist, so ensure it (top-level callers usually do too). *)
+      (* HTML is rendered into a scratch dir (bind-mounted rather than left
+       in the overlay upper, so it never ends up in [fs/] where dependants
+       would stack it), then moved into the layer on success; see
+       {!Html_publish}. It sits beside the layer dir, on the same
+       filesystem, and is recreated empty because runc needs the mount
+       source to exist. *)
+      let html_scratch =
+        if render_html then (
+          let dir =
+            Fpath.(
+              config.os_dir
+              / (String.sub hash 0 (min 12 (String.length hash)) ^ ".html-out"))
+          in
+          ignore (Day11_sys.Sudo.rm_rf ~sw env dir);
+          ignore (Bos.OS.Dir.create ~path:true dir);
+          Some dir)
+        else None
+      in
       let mounts =
-        match html_dir with
+        match html_scratch with
         | None -> mounts
         | Some dir ->
-            ignore (Bos.OS.Dir.create ~path:true dir);
             mounts
             @ [
                 Day11_container.Mount.bind_rw ~src:(Fpath.to_string dir)
@@ -246,11 +270,24 @@ let run_doc_phase ~sw env benv ~(config : doc_config) ~build_layer ~universe
       let node : Build.t =
         { hash; pkg; deps = []; universe = Day11_solution.Universe.dummy }
       in
-      let on_extract ~layer_dir ~success:_ =
+      let on_extract ~layer_dir ~success =
         let dm : Doc_meta.t =
           { package = OpamPackage.to_string pkg; phase; deps = meta_deps }
         in
-        ignore (Doc_meta.save layer_dir dm)
+        ignore (Doc_meta.save layer_dir dm);
+        match html_scratch with
+        | Some src when success -> (
+            match
+              Html_publish.capture ~src ~layer_dir
+                ~support_root:(support_root ~os_dir:config.os_dir)
+                ~support_key:(support_key config)
+            with
+            | Ok () -> ()
+            | Error (`Msg m) ->
+                Printf.eprintf "html capture for %s: %s\n%!"
+                  (OpamPackage.to_string pkg)
+                  m)
+        | _ -> ()
       in
       let result =
         match
@@ -268,6 +305,9 @@ let run_doc_phase ~sw env benv ~(config : doc_config) ~build_layer ~universe
                  (OpamPackage.to_string pkg))
       in
       ignore (Day11_sys.Sudo.rm_rf ~sw env prep_dir);
+      Option.iter
+        (fun dir -> ignore (Day11_sys.Sudo.rm_rf ~sw env dir))
+        html_scratch;
       result
 
 let compile ~sw env benv ~(config : doc_config) ~build_layer ~universe
@@ -275,27 +315,27 @@ let compile ~sw env benv ~(config : doc_config) ~build_layer ~universe
   run_doc_phase ~sw env benv ~config ~build_layer ~universe
     ~actions:"compile-only" ~phase:Doc_meta.Compile
     ~meta_deps:(List.map Fpath.basename dep_compile_layers)
-    ~html_dir:None
+    ~render_html:false
     ~build_dirs:(build_deps_layers @ dep_compile_layers)
     ~label:"compile" ~hash pkg
   |> Result.map (fun node ->
       Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)
 
 let link ~sw env benv ~(config : doc_config) ~build_layer ~universe
-    ~build_deps_layers ~compile_layer ~dep_compile_layers ~html_dir ~hash pkg =
+    ~build_deps_layers ~compile_layer ~dep_compile_layers ~hash pkg =
   run_doc_phase ~sw env benv ~config ~build_layer ~universe
-    ~actions:"link-and-gen" ~phase:Doc_meta.Link ~meta_deps:[]
-    ~html_dir:(Some html_dir)
+    ~actions:"link-and-gen" ~phase:Doc_meta.Link ~meta_deps:[] ~render_html:true
     ~build_dirs:(build_deps_layers @ (compile_layer :: dep_compile_layers))
     ~label:"link" ~hash pkg
-  |> Result.map ignore
+  |> Result.map (fun node ->
+      Day11_opam_layer.Build.dir ~os_dir:config.os_dir node)
 
 let doc_all ~sw env benv ~(config : doc_config) ~build_layer ~universe
-    ~build_deps_layers ~dep_compile_layers ~html_dir ~hash pkg =
+    ~build_deps_layers ~dep_compile_layers ~hash pkg =
   run_doc_phase ~sw env benv ~config ~build_layer ~universe ~actions:"all"
     ~phase:Doc_meta.Doc_all
     ~meta_deps:(List.map Fpath.basename dep_compile_layers)
-    ~html_dir:(Some html_dir)
+    ~render_html:true
     ~build_dirs:(build_deps_layers @ dep_compile_layers)
     ~label:"doc-all" ~hash pkg
   |> Result.map (fun node ->

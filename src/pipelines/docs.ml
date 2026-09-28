@@ -611,9 +611,37 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
   match doc_plan with
   | None -> builds
   | Some plan ->
+      (* Once the run completes, link every planned doc layer's HTML into
+         this profile's epoch — including layers another profile built,
+         which never dispatch here (see [Epoch_publish]). Fresh builds
+         already published themselves; this catches cache hits and repairs
+         anything missing. [collapsed_builds] only resolves when every node
+         has a result, so this can't act on a half-finished run. *)
+      let publish_layers =
+        let+ results = collapsed_builds in
+        if List.compare_lengths results all_dag_nodes <> 0 then []
+        else
+          List.fold_left2
+            (fun acc (n : Day11_opam_layer.Build.t) res ->
+              match (node_kind n, res) with
+              | (Day11_doc.Generate.Doc_all | Link), Ok _ ->
+                  ( n.hash,
+                    Day11_layer.Layer.dir
+                      (Day11_layer.Layer.of_hash ~os_dir:ctx.os_dir n.hash) )
+                  :: acc
+              | _ -> acc)
+            [] all_dag_nodes results
+          |> List.rev
+      in
       Current.all
         [
           builds;
+          Epoch_publish.reconcile ~env
+            ~support_root:(Day11_doc.Doc_build.support_root ~os_dir:ctx.os_dir)
+            ~epoch_html:
+              Fpath.(plan.epoch_base / ("epoch-" ^ plan.epoch_hash) / "html")
+            ~run_id:(Day11_lib.Run_log.get_id run_log)
+            publish_layers;
           Epoch_promote.promote ~base_dir:plan.epoch_base
             ~epoch_hash:plan.epoch_hash;
           Epoch_gc.gc ~base_dir:plan.epoch_base ~epoch_hash:plan.epoch_hash;

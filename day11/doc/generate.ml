@@ -182,6 +182,23 @@ let pp_missing_deps ~kind ppf missing =
    [Prep] and writes a real (mostly empty) layer — keeping [Layer.is_ok]
    in sync with [layer_status.jsonl] so dependers don't misread the dep
    as missing. *)
+(* Publish a just-built doc layer into the dispatching profile's epoch, so
+   its pages appear as soon as it lands. Other epochs that plan the same
+   layer pick it up from their next {!Html_publish.reconcile}. A publish
+   failure doesn't fail the doc node: the layer is fine, and reconcile will
+   retry. *)
+let publish_fresh ~os_dir ~html_dir ~hash pkg layer_dir =
+  match
+    Html_publish.publish ~epoch_html:html_dir
+      ~support_root:(Doc_build.support_root ~os_dir)
+      ~hash layer_dir
+  with
+  | Ok _ -> ()
+  | Error (`Msg m) ->
+      Printf.printf "  %s: html publish FAILED (%s)\n%!"
+        (OpamPackage.to_string pkg)
+        m
+
 let run_doc_node ~sw env benv ~os_dir ~html_dir ~driver_tool (dn : doc_node) =
   match dn.odoc_tool with
   | None -> false
@@ -243,12 +260,13 @@ let run_doc_node ~sw env benv ~os_dir ~html_dir ~driver_tool (dn : doc_node) =
                   |> Result.map ignore
               | Doc_all, _ ->
                   Doc_build.doc_all ~sw env benv ~config ~build_layer ~universe
-                    ~build_deps_layers ~dep_compile_layers ~html_dir ~hash pkg
-                  |> Result.map ignore
+                    ~build_deps_layers ~dep_compile_layers ~hash pkg
+                  |> Result.map (publish_fresh ~os_dir ~html_dir ~hash pkg)
               | Link, Some compile_layer ->
                   Doc_build.link ~sw env benv ~config ~build_layer ~universe
-                    ~build_deps_layers ~compile_layer ~dep_compile_layers
-                    ~html_dir ~hash pkg
+                    ~build_deps_layers ~compile_layer ~dep_compile_layers ~hash
+                    pkg
+                  |> Result.map (publish_fresh ~os_dir ~html_dir ~hash pkg)
               | Link, None | Build, _ | Tool, _ -> Ok () (* unreachable *)
             in
             match result with
