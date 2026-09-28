@@ -67,7 +67,14 @@ services:
       #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.4.0+ox),
       #                         latest version of every package; shares no
       #                         doc layers with the other two.
-      - --profiles=odoc-master-mini,odoc-master-overlap,oxcaml-odoc-master
+      #   odoc-driver-series  = smoke test of jonludlam/odoc#driver-series
+      #                         (the rewritten odoc_driver_voodoo): mainline
+      #                         compiler, five packages, each covering one
+      #                         risk — fmt (plain lib), logs (deps from an
+      #                         earlier job), cmdliner (.mld pages), digestif
+      #                         (virtual library), eio (x-extra-doc-deps, so
+      #                         the compile-only/link-and-gen split).
+      - --profiles=odoc-master-mini,odoc-master-overlap,oxcaml-odoc-master,odoc-driver-series
       - --remote=https://github.com/ocaml/opam-repository.git=repo/opam-repository
       - --remote=https://github.com/oxcaml/opam-repository.git=repo/oxcaml/opam-repository
       # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from
@@ -77,6 +84,9 @@ services:
       # odoc and oxcaml's odoc.3.2.0+ox2. Both profiles layer it last.
       # Tracks master on the hourly schedule and re-plans when it moves.
       - --github-pin-overlay=https://github.com/ocaml/odoc=overlays/odoc-master
+      # odoc + odoc-driver from the driver-series branch of the jonludlam/odoc
+      # fork, for the odoc-driver-series profile only.
+      - --github-pin-overlay=https://github.com/jonludlam/odoc#driver-series=overlays/driver-series
       - --jobs=40
       - --cores-per-build=4
       - --overcommit=2.5
