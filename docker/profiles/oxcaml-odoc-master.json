@@ -20,7 +20,7 @@
   "arch": "x86_64",
   "os_distribution": "debian",
   "os_version": "trixie",
-  "driver_compiler": "",
+  "driver_compiler": "ocaml-variants.5.4.0+ox",
   "extra_pins": [],
   "pinned_versions": [],
   "patches_dir": null,
