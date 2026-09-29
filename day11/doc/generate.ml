@@ -325,6 +325,46 @@ let cooperative_yield =
     incr n;
     if !n land 63 = 0 then try Eio.Fiber.yield () with _ -> ()
 
+(* Packages whose version can change the rendered docs. A doc layer is
+   keyed on the resolved versions of these, not on the tools' layer
+   hashes: a tool's layer hash covers its whole dependency closure (~90
+   packages for odoc-driver), so an unrelated bump like mtime 2.1.0 →
+   2.2.0 used to rehash every doc layer in the plan and force a full
+   re-doc. Master/overlay builds still move with every commit, because
+   their versions carry the git SHA. The odoc binary's compiler is
+   already in the package's own build hash, which the doc hash includes.
+
+   [cmarkit] is odoc-md's Markdown renderer and [odoc-parser] parses doc
+   comments; both ship separately from odoc. If a dependency not listed
+   here turns out to affect output, add it: that invalidates exactly the
+   docs it should. *)
+let doc_tool_names =
+  List.map OpamPackage.Name.of_string
+    [
+      "odoc";
+      "odoc-parser";
+      "odoc-driver";
+      "odoc-md";
+      "sherlodoc";
+      "odig";
+      "cmarkit";
+    ]
+
+(* The doc-tool identity folded into doc and link layer hashes: the
+   sorted [name.version]s of {!doc_tool_names} across the driver's and
+   this compiler's odoc tool closures. *)
+let doc_tool_identity ~(driver_tool : Tool.t) ~(odoc_tool : Tool.t) =
+  driver_tool.builds @ odoc_tool.builds
+  |> List.filter_map (fun (b : build) ->
+      if
+        List.exists
+          (OpamPackage.Name.equal (OpamPackage.name b.pkg))
+          doc_tool_names
+      then Some (OpamPackage.to_string b.pkg)
+      else None)
+  |> List.sort_uniq String.compare
+  |> fun versions -> Day11_layer.Hash.of_strings ("doc-tools-v1" :: versions)
+
 let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
     ~odoc_tools ~nodes ~solutions =
   let t0 = Unix.gettimeofday () in
@@ -489,8 +529,7 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
             let composite_tool_hash =
               match Option.bind g.g_compiler odoc_tool_of_compiler with
               | Some (odoc_tool : Tool.t) ->
-                  Day11_layer.Hash.of_strings
-                    [ driver_tool.hash; odoc_tool.hash ]
+                  doc_tool_identity ~driver_tool ~odoc_tool
               | None -> ""
             in
             let blessed = is_blessed_u n.pkg u in
@@ -721,7 +760,7 @@ let build_internal_plan ~os_dir:_ ~cache ~base_hash ~(driver_tool : Tool.t)
               Hashtbl.fold (fun _ ddn acc -> ddn :: acc) by_layer []
             in
             let composite_tool_hash =
-              Day11_layer.Hash.of_strings [ driver_tool.hash; odoc_tool.hash ]
+              doc_tool_identity ~driver_tool ~odoc_tool
             in
             let dep_hashes =
               List.sort String.compare
