@@ -259,7 +259,15 @@ let reconcile_plan ~env ~os_dir (nodes : Day11_opam_layer.Build.t list) =
   List.fold_left
     (fun n (node : Day11_opam_layer.Build.t) ->
       let layer = Day11_layer.Layer.of_hash ~os_dir node.hash in
-      if Day11_layer.Layer.exists env layer then n
+      if Day11_layer.Layer.exists env layer then (
+        (* Mark every layer the current plan uses as used. The day11-node
+           op only touches [last_used] when it runs, and OCurrent never
+           re-runs a cached success, so a layer that stays in the plan
+           without being rebuilt would otherwise look idle. The 7-day GC
+           then deleted it and this function had it rebuilt: about 200
+           live layers on sage's first GC, and nightly on dill. *)
+        Day11_layer.Last_used.touch_sync (Day11_layer.Layer.dir layer);
+        n)
       else
         match Hashtbl.find_opt status (Day11_layer.Dir.name node.hash) with
         | Some e when e.Day11_layer.Layer_status.exit_status <> 0 -> n

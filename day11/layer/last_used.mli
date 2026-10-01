@@ -12,6 +12,12 @@ val touch : Eio_unix.Stdenv.base -> Fpath.t -> unit
     [layer_dir/last_used] if it doesn't exist, or updates its mtime if it does.
     Errors are silently ignored — touch must never fail a build. *)
 
+val touch_sync : Fpath.t -> unit
+(** [touch_sync layer_dir] is {!touch} with plain blocking [Unix] calls and no
+    Eio: one [utimes] (plus a create the first time). For marking a whole plan's
+    layers in one pass, where a systhread hop per layer would cost more than the
+    touch itself. Errors are ignored. *)
+
 val get : Eio_unix.Stdenv.base -> Fpath.t -> float option
 (** [get env layer_dir] returns the unix timestamp (seconds since epoch) of the
     last touch, or [None] if the sentinel file doesn't exist or can't be stat'd.

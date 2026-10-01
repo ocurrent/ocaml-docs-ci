@@ -12,6 +12,14 @@ let touch env layer_dir =
     Eio_unix.run_in_systhread (fun () -> Unix.utimes path_s 0.0 0.0)
   with _ -> ()
 
+let touch_sync layer_dir =
+  let path_s = Fpath.to_string Fpath.(layer_dir / sentinel) in
+  try
+    if not (Sys.file_exists path_s) then
+      close_out (open_out_gen [ Open_creat; Open_wronly ] 0o644 path_s);
+    Unix.utimes path_s 0.0 0.0
+  with _ -> ()
+
 let get env layer_dir =
   let ep = eio_path env Fpath.(layer_dir / sentinel) in
   try Some (Eio.Path.stat ~follow:true ep).mtime with _ -> None
