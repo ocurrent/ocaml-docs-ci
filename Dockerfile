@@ -178,6 +178,11 @@ COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/.day11/profiles/
 # entrypoint copies over [.day11/profiles/] on every start: the image
 # is the source of truth for the shipped profiles.
 COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/profiles-image/
+# Small opam overlays that ship with the image (e.g. oxcaml-odoc-guards,
+# see its README). The entrypoint recreates each one as a git repo under
+# [.day11/overlays/<name>/repo] on every start, where profiles reference it.
+COPY --chown=${UID}:${GID} docker/overlays/ ${HOME_DIR}/overlays-image/
+COPY --chown=${UID}:${GID} docker/entrypoint.sh ${HOME_DIR}/entrypoint.sh
 
 # Ensure TMPDIR exists and is owned by the runtime user before the
 # command starts. It lives under the bind-mounted cache, so it can't be
@@ -186,10 +191,10 @@ COPY --chown=${UID}:${GID} docker/profiles/ ${HOME_DIR}/profiles-image/
 # assuming it's present. Creating it here (as the app user, before any
 # sudo path can make it root-owned) keeps it writable.
 #
-# The entrypoint is deliberately generic — it just preps TMPDIR,
-# refreshes the shipped profiles (see above), and execs whatever
-# command it's given, so the same image serves both the
-# daemon (docker-compose's [command: ocaml-docs-ci ...]) and one-off
-# CLI runs ([docker compose run --rm daemon day11 batch ...]).
-ENTRYPOINT ["dumb-init", "sh", "-c", "mkdir -p \"$TMPDIR\" \"$HOME/.day11/profiles\" && cp -f \"$HOME\"/profiles-image/*.json \"$HOME/.day11/profiles/\" && exec \"$@\"", "sh"]
+# The entrypoint (docker/entrypoint.sh) is deliberately generic: it preps
+# TMPDIR, refreshes the shipped profiles and overlays (see above), and execs
+# whatever command it's given. So the same image serves both the daemon
+# (docker-compose's [command: ocaml-docs-ci ...]) and one-off CLI runs
+# ([docker compose run --rm daemon day11 batch ...]).
+ENTRYPOINT ["dumb-init", "/home/app/entrypoint.sh"]
 CMD ["ocaml-docs-ci", "--help"]

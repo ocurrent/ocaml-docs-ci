@@ -1,0 +1,17 @@
+opam-version: "2.0"
+synopsis: "OxCaml patched sherlodoc"
+description: "OxCaml meta-package indicating this library is installed.\n\nOverridden by ocaml-docs-ci (docker/overlays/oxcaml-odoc-guards): the\nupstream guard pins sherlodoc to exactly 3.2.0+ox2, which rules out the\nodoc-master overlay's builds under the oxcaml compiler. Relaxed to >=."
+maintainer: "David Allsopp <dallsopp@janestreet.com>"
+authors: "David Allsopp"
+license: "CC0-1.0+"
+homepage: "https://oxcaml.org"
+bug-reports: "https://github.com/oxcaml/opam-repository/issues"
+conflicts: "oxcaml-sherlodoc"
+depends: [
+  ("oxcaml-spawn" {post} | "oxcaml-spawn-patches" {post})
+  "oxcaml" {post}
+  "sherlodoc" {build & (
+                 >= "3.2.0+ox2"
+               )}
+]
+messages: ["WARNING! An older version of OxCaml is being installed" {oxcaml:version = "archived"}]

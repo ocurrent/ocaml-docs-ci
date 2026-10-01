@@ -3,11 +3,12 @@
   "opam_repositories": [
     "repo/opam-repository",
     "repo/oxcaml/opam-repository",
-    "overlays/odoc-master/repo"
+    "overlays/odoc-master/repo",
+    "overlays/oxcaml-odoc-guards/repo"
   ],
   "odoc_repo": null,
   "opam_build_repo": null,
-  "compiler": "ocaml-variants.5.4.0+ox",
+  "compiler": "ocaml-variants.5.2.0+ox",
   "target_mode": {
     "versions": {
       "latest": 1
@@ -20,7 +21,7 @@
   "arch": "x86_64",
   "os_distribution": "debian",
   "os_version": "trixie",
-  "driver_compiler": "ocaml-variants.5.4.0+ox",
+  "driver_compiler": "ocaml-variants.5.2.0+ox",
   "extra_pins": [],
   "pinned_versions": [],
   "patches_dir": null,
