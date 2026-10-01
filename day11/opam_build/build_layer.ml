@@ -281,17 +281,6 @@ let build ~sw env (benv : Types.build_env) ~opam_repositories ?snapshot_repos
     Log.info (fun m -> m "Building %s (%s)" pkg_str layer_name);
     let layer_dir = Layer.dir layer in
     let lock_file = Fpath.(os_dir / (layer_name ^ ".lock")) in
-    (* Clear any residue from a prior failed attempt at this hash.
-       Without this, [Container_backend.build]'s [mv upper target_fs]
-       lands {b inside} an existing [target_fs] (POSIX mv semantics
-       for source→existing-directory) and silently fails on the
-       second-retry case where [target_fs/upper/] is already
-       populated. The actual install ends up in the temp upper, then
-       gets rm -rf'd in cleanup. Net effect: layer.json says success
-       but the captured [fs/] is empty. See menhir.20260209
-       cascade-from-failure repro. *)
-    if Sys.file_exists (Fpath.to_string layer_dir) then
-      ignore (Day11_sys.Sudo.rm_rf ~sw env layer_dir);
     (* Resolve the default strategy here so [record_attempt] can
        record the actual cmd that ran. Both backends already fall
        back to [opam_build_strategy ?patches node.pkg] when no
@@ -305,6 +294,24 @@ let build ~sw env (benv : Types.build_env) ~opam_repositories ?snapshot_repos
     let _lock_result =
       Day11_sys.Dir_lock.with_lock ~marker_file:(Fpath.v "layer.json")
         ~lock_file layer_dir (fun ~set_temp_log_path:_ _dir ->
+          (* Clear any residue from a prior failed attempt at this hash.
+             Without this, [Container_backend.build]'s [mv upper target_fs]
+             lands {b inside} an existing [target_fs] (POSIX mv semantics
+             for source→existing-directory) and silently fails on the
+             second-retry case where [target_fs/upper/] is already
+             populated. The actual install ends up in the temp upper, then
+             gets rm -rf'd in cleanup. Net effect: layer.json says success
+             but the captured [fs/] is empty. See menhir.20260209
+             cascade-from-failure repro.
+
+             This must happen under the lock. Two profiles can dispatch
+             the same hash at once, and before the lock the second caller
+             can't tell residue from the first caller's build in progress:
+             clearing it there deleted a live build. Inside the lock, a
+             finished build has written [layer.json] and with_lock skips
+             this body, so whatever is here really is residue. *)
+          if Sys.file_exists (Fpath.to_string layer_dir) then
+            ignore (Day11_sys.Sudo.rm_rf ~sw env layer_dir);
           mkdir layer_dir;
           (* Persist the build's input description {b before} we run
              it. If the build fails (or the host crashes mid-build),

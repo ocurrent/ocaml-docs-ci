@@ -211,6 +211,14 @@ let debug_inspect_image =
    /home/opam/prep/universes/*/*/*/ 2>/dev/null | sort; echo '=== END DEBUG \
    ==='; "
 
+(* Two profiles can dispatch the same doc layer at the same moment (each
+   profile runs its own day11-node job for a shared hash). Build_layer's
+   per-layer lock serialises the builds, but the HTML scratch dir is made
+   and removed outside that lock, so it must be unique per invocation:
+   with a name derived only from the hash, one invocation's cleanup
+   deleted the other's bind-mount source and runc failed to start. *)
+let scratch_counter = Atomic.make 0
+
 (* Where HTML support files (odoc.css, fonts, ...) are kept, one dir per
    toolchain; see {!Html_publish.capture}. Not a 12-hex name, so the layer
    GC leaves it alone. *)
@@ -237,16 +245,17 @@ let run_doc_phase ~sw env benv ~(config : doc_config) ~build_layer ~universe
        in the overlay upper, so it never ends up in [fs/] where dependants
        would stack it), then moved into the layer on success; see
        {!Html_publish}. It sits beside the layer dir, on the same
-       filesystem, and is recreated empty because runc needs the mount
-       source to exist. *)
+       filesystem, and is unique per invocation (see [scratch_counter]). *)
       let html_scratch =
         if render_html then (
           let dir =
             Fpath.(
               config.os_dir
-              / (String.sub hash 0 (min 12 (String.length hash)) ^ ".html-out"))
+              / Printf.sprintf "%s.html-out.%d.%d"
+                  (String.sub hash 0 (min 12 (String.length hash)))
+                  (Unix.getpid ())
+                  (Atomic.fetch_and_add scratch_counter 1))
           in
-          ignore (Day11_sys.Sudo.rm_rf ~sw env dir);
           ignore (Bos.OS.Dir.create ~path:true dir);
           Some dir)
         else None
