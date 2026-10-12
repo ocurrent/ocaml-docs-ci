@@ -2978,8 +2978,22 @@ let package_version ~ctx name pkg ver =
          the build-failure box. Shown above the build/doc diagnostic
          since it's the upstream reason nothing was built. *)
       let solver_failure_block =
+        (* Only the newest snapshot that solved this target counts. A
+           failure from an older snapshot (e.g. before a profile change)
+           must not shadow a later successful solve: searching every
+           snapshot for a failure showed "Solve failed" on packages the
+           latest run had built and documented. *)
+        let latest_solve =
+          List.find_opt
+            (fun snap ->
+              Sys.file_exists
+                (Fpath.to_string
+                   Fpath.(snap / "solutions" / (pkg_str ^ ".json"))))
+            snaps
+        in
         match
-          List.find_map (fun snap -> read_solver_failure snap pkg_str) snaps
+          Option.bind latest_solve (fun snap ->
+              read_solver_failure snap pkg_str)
         with
         | None -> []
         | Some err ->
