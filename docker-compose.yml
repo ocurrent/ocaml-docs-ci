@@ -64,9 +64,11 @@ services:
       #                         (Html_publish / Epoch_publish): pages for a
       #                         layer the other profile built must still
       #                         appear in this profile's epoch.
-      #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.2.0+ox),
-      #                         latest version of every package; shares no
-      #                         doc layers with the other two.
+      #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.2.0+ox,
+      #                         oxcaml-compiler pinned to 5.2.0minus39),
+      #                         latest version of each of the ~400 package
+      #                         names in oxcaml/opam-repository; shares no
+      #                         doc layers with the other profiles.
       #   odoc-driver-series  = smoke test of jonludlam/odoc#driver-series
       #                         (the rewritten odoc_driver_voodoo): mainline
       #                         compiler, five packages, each covering one
