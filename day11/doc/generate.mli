@@ -19,6 +19,13 @@
     Tool builds are included as nodes in the unified DAG, so they run in
     parallel with regular package builds instead of blocking. *)
 
+val tool_solve_compiler : OpamPackage.t -> OpamPackage.t * OpamPackage.t list
+(** [tool_solve_compiler c] is the [(ocaml_version, constraints)] to solve a
+    universe's odoc tool with, given the universe's compiler key [c] (from
+    {!find_compiler}). An [oxcaml-compiler.x.y.zminusNN] key becomes
+    [ocaml-variants.x.y.z+ox] constrained to that exact [oxcaml-compiler]; any
+    other compiler is returned unchanged with no constraints. *)
+
 val find_compiler : Day11_solution.Deps.t -> OpamPackage.t option
 (** [find_compiler solution] returns the concrete compiler package
     ([ocaml-base-compiler], [ocaml-variants], or [ocaml-system]) from

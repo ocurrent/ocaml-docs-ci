@@ -43,6 +43,31 @@ let solver_compiler_names =
    cascaded through every doc in those universes. *)
 let oxcaml_compiler_name = OpamPackage.Name.of_string "oxcaml-compiler"
 
+(* How to solve a universe's odoc tool for compiler key [c]. An
+   [oxcaml-compiler] key can't be the solve's compiler: it reaches
+   [ocaml-variants] only through a [{post}] dep the solver doesn't
+   follow, so the [ocaml = x.y.z] pin derived from it was met by mainline
+   [ocaml-base-compiler.x.y.z], and the tool's [+ox] deps then failed
+   with syntax errors. Solve with the matching [ocaml-variants.x.y.z+ox]
+   instead, constraining [oxcaml-compiler] to exactly [c]. *)
+let tool_solve_compiler c =
+  if OpamPackage.Name.equal (OpamPackage.name c) oxcaml_compiler_name then
+    let v = OpamPackage.Version.to_string (OpamPackage.version c) in
+    let n = String.length v in
+    let rec stop i =
+      match if i < n then Some v.[i] else None with
+      | Some ('0' .. '9' | '.') -> stop (i + 1)
+      | _ -> i
+    in
+    let base = String.sub v 0 (stop 0) in
+    let variants =
+      OpamPackage.create
+        (OpamPackage.Name.of_string "ocaml-variants")
+        (OpamPackage.Version.of_string (base ^ "+ox"))
+    in
+    (variants, [ c ])
+  else (c, [])
+
 let find_compiler solution =
   match
     OpamPackage.Map.find_first_opt
@@ -1362,12 +1387,15 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
     (* Solve [pkg] under [ocaml_version], consulting / populating the
      tool cache. The compiler pin is encoded in the entry filename;
      the JSON body carries the real package name. *)
-    let solve_tool_cached ~pin_dirs ~source_dirs ?ocaml_version pkg =
+    let solve_tool_cached ~pin_dirs ~source_dirs ?(constraints = [])
+        ?ocaml_version pkg =
       let entry_file dir =
         let tag =
-          match ocaml_version with
-          | Some c -> OpamPackage.to_string c
-          | None -> "none"
+          String.concat "+"
+            ((match ocaml_version with
+             | Some c -> OpamPackage.to_string c
+             | None -> "none")
+            :: List.map OpamPackage.to_string constraints)
         in
         Fpath.(dir / (OpamPackage.to_string pkg ^ "@" ^ tag ^ ".json"))
       in
@@ -1390,7 +1418,7 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
       | None -> (
           match
             Day11_opam_build.Tools.solve_tool ~sw env ~repos ~pin_dirs
-              ~doc:false ?ocaml_version pkg
+              ~constraints ~doc:false ?ocaml_version pkg
           with
           | Error _ as e -> e
           | Ok result ->
@@ -1418,10 +1446,13 @@ let resolve_tools ~sw env benv ~packages ~repos ~odoc_repo ~cache
               in
               (`Driver, r)
           | `Odoc compiler_v ->
+              let solve_compiler, constraints =
+                tool_solve_compiler compiler_v
+              in
               let r =
                 solve_tool_cached ~pin_dirs:all_pin_dirs
-                  ~source_dirs:all_source_dirs ~ocaml_version:compiler_v
-                  odoc_pkg
+                  ~source_dirs:all_source_dirs ~constraints
+                  ~ocaml_version:solve_compiler odoc_pkg
               in
               (`Odoc compiler_v, r))
         tasks

@@ -261,6 +261,21 @@ let test_find_compiler_oxcaml () =
   check "variants without oxcaml-compiler" (Some "ocaml-variants.5.2.0+ox")
     [ variants; p "ocaml" "5.2.0" ]
 
+let test_tool_solve_compiler () =
+  let show (c, cs) =
+    String.concat " " (List.map OpamPackage.to_string (c :: cs))
+  in
+  let check name expected c =
+    Alcotest.(check string)
+      name expected
+      (show (Day11_doc.Generate.tool_solve_compiler c))
+  in
+  check "oxcaml 5.2" "ocaml-variants.5.2.0+ox oxcaml-compiler.5.2.0minus39"
+    (p "oxcaml-compiler" "5.2.0minus39");
+  check "oxcaml 5.4" "ocaml-variants.5.4.0+ox oxcaml-compiler.5.4.0-ox7"
+    (p "oxcaml-compiler" "5.4.0-ox7");
+  check "mainline unchanged" "ocaml-base-compiler.5.4.1" comp
+
 let () =
   Alcotest.run "generate_plan"
     [
@@ -276,6 +291,8 @@ let () =
       ( "find_compiler",
         [
           Alcotest.test_case "oxcaml-compiler" `Quick test_find_compiler_oxcaml;
+          Alcotest.test_case "tool solve compiler" `Quick
+            test_tool_solve_compiler;
         ] );
       ( "doc tool identity",
         [
