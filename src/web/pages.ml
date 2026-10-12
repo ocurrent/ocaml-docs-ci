@@ -2194,6 +2194,39 @@ let read_solver_failure snapshot_dir pkg_str =
           | _ -> None)
       | _ -> None)
 
+(* The failed node blocking [pkg_str]'s build in [snapshot_dir]'s plan,
+   derived from dag.json + on-disk layer status the same way the
+   snapshot page's cascade table is. Used when the run log recorded no
+   cascade line for the package, which is the daemon's normal case. *)
+let snapshot_cascade_root ~ctx ~name snapshot_dir pkg_str =
+  match
+    (read_dag_cached snapshot_dir, Profile.load ~dir:ctx.profile_dir ~name)
+  with
+  | Ok entries, Ok profile -> (
+      let os_dir = Fpath.(ctx.cache_dir / Profile.os_dir_name profile) in
+      let table =
+        Day11_lib.Cascade.classify_from_layer_index
+          ~status_index:(load_layer_status_cached os_dir)
+          entries
+      in
+      let pkg_of_hash h =
+        match Hashtbl.find_opt table h with
+        | Some r -> Some (OpamPackage.to_string r.Day11_lib.Cascade.pkg)
+        | None -> None
+      in
+      List.find_map
+        (fun (e : Day11_lib.Dag_marshal.entry) ->
+          if e.kind = Build && OpamPackage.to_string e.pkg = pkg_str then
+            match Hashtbl.find_opt table e.hash with
+            | Some { status = Cascade src; _ } -> pkg_of_hash src
+            | _ -> None
+          else None)
+        entries
+      |> function
+      | Some d when d <> pkg_str -> Some d
+      | _ -> None)
+  | _ -> None
+
 let package_version ~ctx name pkg ver =
   object
     inherit Resource.t
@@ -2638,7 +2671,14 @@ let package_version ~ctx name pkg ver =
               |> List.find_map (fun rd ->
                   scan (Filename.concat rd "build.jsonl"))
         in
-        List.find_map snap_dep snaps
+        match List.find_map snap_dep snaps with
+        | Some _ as d -> d
+        | None -> (
+            (* The daemon doesn't write cascade lines to the run log, so
+               derive the blocker from the newest snapshot's plan. *)
+            match snaps with
+            | newest :: _ -> snapshot_cascade_root ~ctx ~name newest pkg_str
+            | [] -> None)
       in
       let cascade_blurb dep =
         let dep_link =
