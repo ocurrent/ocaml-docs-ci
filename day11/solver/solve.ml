@@ -231,17 +231,23 @@ let add_ocaml_constraint ?ocaml_version constraints =
           (`Eq, OpamPackage.version pkg)
           constraints
       in
-      (* Pin the [ocaml] virtual to the matching major.minor.patch
-       (stripping [+ox] / [~rc1] suffixes). Without this, a single-
-       target tool solve leaves [ocaml] free and opam picks the
+      (* Pin the [ocaml] virtual to the matching major.minor.patch: the
+       leading digits-and-dots of the version, so [5.2.0+ox], [4.14.0~rc1],
+       [5.2.0minus39] and [5.4.0-ox7] all give their x.y.z. Without this,
+       a single-target tool solve leaves [ocaml] free and opam picks the
        highest-ranked match of [ocaml >= ...]. *)
       let ver_str = OpamPackage.Version.to_string (OpamPackage.version pkg) in
       let base_ver =
-        let stop_at c =
-          try String.index ver_str c with Not_found -> String.length ver_str
+        let n = String.length ver_str in
+        let rec stop i =
+          match if i < n then Some ver_str.[i] else None with
+          | Some ('0' .. '9' | '.') -> stop (i + 1)
+          | _ -> i
         in
-        let cut = min (stop_at '+') (stop_at '~') in
-        String.sub ver_str 0 cut
+        let s = String.sub ver_str 0 (stop 0) in
+        if String.length s > 0 && s.[String.length s - 1] = '.' then
+          String.sub s 0 (String.length s - 1)
+        else s
       in
       try
         let v = OpamPackage.Version.of_string base_ver in

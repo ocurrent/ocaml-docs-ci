@@ -38,19 +38,33 @@ let compute_blessings (solutions : (OpamPackage.t * Day11_solution.Deps.t) list)
     List.map OpamPackage.Name.of_string
       [ "ocaml-base-compiler"; "ocaml-variants"; "ocaml-system" ]
   in
+  (* OxCaml universes rank by their [oxcaml-compiler] version: all of
+     them share [ocaml-variants.5.2.0+ox], so that alone can't prefer a
+     5.2.0minus39 universe over a minus25 one. *)
+  let oxcaml_compiler = OpamPackage.Name.of_string "oxcaml-compiler" in
   let find_compiler_version solution =
-    OpamPackage.Map.fold
-      (fun pkg _deps acc ->
-        match acc with
-        | Some _ -> acc
-        | None ->
-            if
-              List.exists
-                (OpamPackage.Name.equal (OpamPackage.name pkg))
-                compiler_names
-            then Some (OpamPackage.version pkg)
-            else None)
-      solution None
+    match
+      OpamPackage.Map.find_first_opt
+        (fun pkg ->
+          OpamPackage.Name.compare (OpamPackage.name pkg) oxcaml_compiler >= 0)
+        solution
+    with
+    | Some (pkg, _)
+      when OpamPackage.Name.equal (OpamPackage.name pkg) oxcaml_compiler ->
+        Some (OpamPackage.version pkg)
+    | _ ->
+        OpamPackage.Map.fold
+          (fun pkg _deps acc ->
+            match acc with
+            | Some _ -> acc
+            | None ->
+                if
+                  List.exists
+                    (OpamPackage.Name.equal (OpamPackage.name pkg))
+                    compiler_names
+                then Some (OpamPackage.version pkg)
+                else None)
+          solution None
   in
   let pkg_universes :
       ( OpamPackage.t,

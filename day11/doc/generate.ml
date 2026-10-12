@@ -34,19 +34,39 @@ let solver_compiler_names =
   List.map OpamPackage.Name.of_string
     [ "ocaml-base-compiler"; "ocaml-variants"; "ocaml-system" ]
 
+(* A universe's compiler, which picks the odoc tool its docs are built
+   with. OxCaml universes are identified by their [oxcaml-compiler], not
+   [ocaml-variants]: [ocaml-variants.5.2.0+ox] is shared by every
+   5.2.0minusNN oxcaml-compiler, whose .cmi formats differ. Keyed on
+   ocaml-variants, minus25 and minus39 universes shared one odoc built on
+   minus39, which rejected minus25's files ("Not a valid file") and
+   cascaded through every doc in those universes. *)
+let oxcaml_compiler_name = OpamPackage.Name.of_string "oxcaml-compiler"
+
 let find_compiler solution =
-  OpamPackage.Map.fold
-    (fun pkg _deps acc ->
-      match acc with
-      | Some _ -> acc
-      | None ->
-          if
-            List.exists
-              (OpamPackage.Name.equal (OpamPackage.name pkg))
-              solver_compiler_names
-          then Some pkg
-          else None)
-    solution None
+  match
+    OpamPackage.Map.find_first_opt
+      (fun pkg ->
+        OpamPackage.Name.compare (OpamPackage.name pkg) oxcaml_compiler_name
+        >= 0)
+      solution
+  with
+  | Some (pkg, _)
+    when OpamPackage.Name.equal (OpamPackage.name pkg) oxcaml_compiler_name ->
+      Some pkg
+  | _ ->
+      OpamPackage.Map.fold
+        (fun pkg _deps acc ->
+          match acc with
+          | Some _ -> acc
+          | None ->
+              if
+                List.exists
+                  (OpamPackage.Name.equal (OpamPackage.name pkg))
+                  solver_compiler_names
+              then Some pkg
+              else None)
+        solution None
 
 (** Collect transitive build dep nodes into a [seen] map keyed by hash. Storing
     the {b full} [Build.t] (not just the hash) lets callers look the dep up by

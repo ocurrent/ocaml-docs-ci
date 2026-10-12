@@ -241,6 +241,26 @@ let test_output_dep_bump_changes_doc_hashes () =
   let after = doc_hashes (plan_with ~driver_extra:[ p "cmarkit" "0.4.0" ] ()) in
   Alcotest.(check bool) "cmarkit bump rehashes docs" true (before <> after)
 
+(* OxCaml universes must be told apart by oxcaml-compiler: they all share
+   ocaml-variants.5.2.0+ox, and odoc built for one minusNN can't read
+   another's .cmi files. *)
+let test_find_compiler_oxcaml () =
+  let sol pkgs = deps_of (List.map (fun x -> (x, [])) pkgs) in
+  let variants = p "ocaml-variants" "5.2.0+ox" in
+  let check name expected pkgs =
+    Alcotest.(check (option string))
+      name expected
+      (Option.map OpamPackage.to_string
+         (Day11_doc.Generate.find_compiler (sol pkgs)))
+  in
+  check "oxcaml universe -> oxcaml-compiler"
+    (Some "oxcaml-compiler.5.2.0minus25")
+    [ variants; p "oxcaml-compiler" "5.2.0minus25"; p "ocaml" "5.2.0" ];
+  check "mainline universe unchanged" (Some "ocaml-base-compiler.5.4.1")
+    [ comp; ocaml; p "zarith" "1.14" ];
+  check "variants without oxcaml-compiler" (Some "ocaml-variants.5.2.0+ox")
+    [ variants; p "ocaml" "5.2.0" ]
+
 let () =
   Alcotest.run "generate_plan"
     [
@@ -252,6 +272,10 @@ let () =
             test_pkgp_blessed_universe;
           Alcotest.test_case "distinct layer hash per universe" `Quick
             test_universes_have_distinct_layer_hashes;
+        ] );
+      ( "find_compiler",
+        [
+          Alcotest.test_case "oxcaml-compiler" `Quick test_find_compiler_oxcaml;
         ] );
       ( "doc tool identity",
         [
