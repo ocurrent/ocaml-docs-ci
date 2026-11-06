@@ -17,7 +17,8 @@
         "digestif",
         "eio",
         "fmt",
-        "logs"
+        "logs",
+        "eliom"
       ]
     }
   },
