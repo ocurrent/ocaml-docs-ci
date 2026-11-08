@@ -203,7 +203,8 @@ let main () current_config github_auth mode profiles_arg profile_dir_arg
     (fun (s : Docs_ci_lib.Github_pin_overlay.spec) ->
       let commit =
         Docs_ci_lib.Github_pin_overlay.maintain_commit ?branch:s.branch
-          ~schedule:remote_schedule ~url:s.url ~path:s.path ()
+          ?base_version:s.base_version ~schedule:remote_schedule ~url:s.url
+          ~path:s.path ()
       in
       let overlay_path = Fpath.to_string Fpath.(s.path / "repo") in
       Hashtbl.replace remote_commits overlay_path commit)
@@ -344,17 +345,20 @@ let pin_overlays_arg =
        ~doc:
          "Track a github URL and republish its $(b,*.opam) files as a \
           synthetic opam-repo overlay. Repeatable. Format: \
-          $(b,URL[#BRANCH]=PATH); an optional $(b,#BRANCH) suffix tracks a \
-          non-default branch (e.g. a fork's feature branch). On the same \
+          $(b,URL[#BRANCH][@VERSION]=PATH); an optional $(b,#BRANCH) suffix \
+          tracks a non-default branch (e.g. a fork's feature branch), and an \
+          optional $(b,@VERSION) suffix overrides the base version used for the \
+          synthesised label (needed when the branch's latest reachable tag is \
+          behind mainline, so the overlay still sorts above it). On the same \
           hourly schedule as $(b,--remote), ocaml-docs-ci clones $(b,URL) into \
           $(b,PATH/upstream/), rewrites each $(b,*.opam) with $(i,version:) \
-          set to $(i,<latest-tag>+<branch>.<commit-epoch>.<sha7>) and \
+          set to $(i,<base>+<branch>.<commit-epoch>.<sha7>) and \
           $(i,src:) pointing at the pinned commit, and commits the result to \
           $(b,PATH/repo/) (its own git repo). Profiles reference \
           $(b,PATH/repo) as a regular local repo. As with $(b,--remote), a \
           relative $(b,PATH) is resolved against the .day11 root \
           (--profile-dir's parent)."
-       ~docv:"URL[#BRANCH]=PATH" [ "github-pin-overlay" ]
+       ~docv:"URL[#BRANCH][@VERSION]=PATH" [ "github-pin-overlay" ]
 
 let cores_per_build_arg =
   Arg.value

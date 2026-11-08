@@ -10,12 +10,19 @@ module Op = struct
   type t = unit
 
   module Key = struct
-    type t = { url : string; branch : string option; path : Fpath.t }
+    type t = {
+      url : string;
+      branch : string option;
+      base_version : string option;
+      path : Fpath.t;
+    }
 
     let digest t =
       t.url
       ^ "|"
       ^ Option.value ~default:"" t.branch
+      ^ "|"
+      ^ Option.value ~default:"" t.base_version
       ^ "|"
       ^ Fpath.to_string t.path
   end
@@ -208,8 +215,16 @@ module Op = struct
       in
       let** sha_raw = read_head_sha job ~upstream in
       let sha = String.trim sha_raw in
-      let** tag_raw = read_latest_tag job ~upstream in
-      let tag = String.trim tag_raw in
+      let tag_result =
+        match key.base_version with
+        | Some v ->
+            Current.Job.log job "base version overridden to %s" v;
+            Lwt.return (Ok v)
+        | None ->
+            let** tag_raw = read_latest_tag job ~upstream in
+            Lwt.return (Ok (String.trim tag_raw))
+      in
+      let** tag = tag_result in
       let** epoch_raw = read_commit_epoch job ~upstream ~sha in
       let epoch = String.trim epoch_raw in
       let sha7 = if String.length sha >= 7 then String.sub sha 0 7 else sha in
@@ -253,24 +268,30 @@ module Cache = Current_cache.Make (Op)
    equality treats as a change — re-firing the solve → doc-plan chain
    hourly for nothing. See {!Docs_ci_lib.Remote_opam_repo.maintain}
    for the mechanics. *)
-let maintain ?branch ~schedule ~url ~path () : string Current.t =
+let maintain ?branch ?base_version ~schedule ~url ~path () : string Current.t =
   let open Current.Syntax in
-  Current.component "github-pin-overlay %s%s" url
+  Current.component "github-pin-overlay %s%s%s" url
     (match branch with Some b -> "#" ^ b | None -> "")
+    (match base_version with Some v -> "@" ^ v | None -> "")
   |> (let> () = Current.return () in
-      Cache.get ~schedule () Op.Key.{ url; branch; path })
+      Cache.get ~schedule () Op.Key.{ url; branch; base_version; path })
   |> Current.cutoff ~eq:String.equal
 
-let maintain_commit ?branch ~schedule ~url ~path () :
+let maintain_commit ?branch ?base_version ~schedule ~url ~path () :
     Current_git.Commit.t Current.t =
   let open Current.Syntax in
-  let+ sha = maintain ?branch ~schedule ~url ~path () in
+  let+ sha = maintain ?branch ?base_version ~schedule ~url ~path () in
   let overlay = Op.overlay_dir path in
   let p = Fpath.to_string overlay in
   Current_git.Commit.v ~repo:overlay
     ~id:(Current_git.Commit_id.v ~repo:p ~gref:"refs/heads/master" ~hash:sha)
 
-type spec = { url : string; branch : string option; path : Fpath.t }
+type spec = {
+  url : string;
+  branch : string option;
+  base_version : string option;
+  path : Fpath.t;
+}
 
 let spec_of_arg s =
   match String.index_opt s '=' with
@@ -282,21 +303,50 @@ let spec_of_arg s =
   | Some i ->
       let url_part = String.sub s 0 i in
       let path = String.sub s (i + 1) (String.length s - i - 1) in
-      (* An optional [#BRANCH] suffix on the URL selects a non-default
-       branch to track (e.g. a fork's feature branch). Split on the
-       last [#] so the rest of the URL is unaffected. *)
-      let url, branch =
+      (* An optional [#BRANCH] suffix selects a non-default branch to track
+         (e.g. a fork's feature branch); an optional [@VERSION] suffix (after
+         the branch, or on the URL when no branch is given) overrides the base
+         version used for the synthesised [<base>+<branch>.<epoch>.<sha7>]
+         label — needed when the tracked branch's latest reachable tag is
+         behind mainline, so the overlay still sorts above it. Split on the
+         last [#] so the rest of the URL is unaffected. *)
+      let url, branch, base_version =
         match String.rindex_opt url_part '#' with
         | Some j ->
             let b =
               String.sub url_part (j + 1) (String.length url_part - j - 1)
             in
-            (String.sub url_part 0 j, if b = "" then None else Some b)
-        | None -> (url_part, None)
+            let branch, base_version =
+              match String.rindex_opt b '@' with
+              | Some k ->
+                  let v = String.sub b (k + 1) (String.length b - k - 1) in
+                  (String.sub b 0 k, Some v)
+              | None -> (b, None)
+            in
+            let url = String.sub url_part 0 j in
+            (url, (if branch = "" then None else Some branch), base_version)
+        | None ->
+            let url, base_version =
+              match String.rindex_opt url_part '@' with
+              | Some k ->
+                  ( String.sub url_part 0 k,
+                    Some
+                      (String.sub url_part (k + 1) (String.length url_part - k - 1))
+                  )
+              | None -> (url_part, None)
+            in
+            (url, None, base_version)
       in
       if url = "" || path = "" then
         Error
           (`Msg
              (Printf.sprintf
                 "--github-pin-overlay %S: URL and PATH must both be non-empty" s))
-      else Ok { url; branch; path = Fpath.v path }
+      else if
+        match base_version with
+        | Some v -> v = ""
+        | None -> false
+      then
+        Error
+          (`Msg (Printf.sprintf "--github-pin-overlay %S: empty @VERSION override" s))
+      else Ok { url; branch; base_version; path = Fpath.v path }

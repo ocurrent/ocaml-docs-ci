@@ -21,30 +21,42 @@
     in [<path>/repo] flow through to a re-plan via OCurrent the same way
     mainline opam-repository commits do. *)
 
-type spec = { url : string; branch : string option; path : Fpath.t }
-(** One [--github-pin-overlay URL[#BRANCH]=PATH] entry: track {!field:url}
-    (optionally a non-default {!field:branch}) and keep an overlay under
-    {!field:path}. *)
+type spec = {
+  url : string;
+  branch : string option;
+  base_version : string option;
+  path : Fpath.t;
+}
+(** One [--github-pin-overlay URL[#BRANCH][@VERSION]=PATH] entry: track
+    {!field:url} (optionally a non-default {!field:branch}), optionally override
+    the synthesised base version with {!field:base_version}, and keep an overlay
+    under {!field:path}. *)
 
 val spec_of_arg : string -> (spec, [> `Msg of string ]) result
-(** Parse a [URL[#BRANCH]=PATH] CLI argument. Splits the spec on the first [=];
-    an optional [#BRANCH] suffix on the URL portion (split on its last [#])
-    selects a non-default branch to track. *)
+(** Parse a [URL[#BRANCH][@VERSION]=PATH] CLI argument. Splits the spec on the
+    first [=]; an optional [#BRANCH] suffix on the URL portion (split on its
+    last [#]) selects a non-default branch to track; an optional [@VERSION]
+    suffix (after the branch, or on the URL when no branch is given) overrides
+    the base version used for the synthesised [<base>+<branch>.<epoch>.<sha7>]
+    label — needed when the tracked branch's latest reachable tag is behind
+    mainline, so the overlay still sorts above it. *)
 
 val maintain :
   ?branch:string ->
+  ?base_version:string ->
   schedule:Current_cache.Schedule.t ->
   url:string ->
   path:Fpath.t ->
   unit ->
   string Current.t
-(** [maintain ?branch ~schedule ~url ~path ()] installs an OCurrent job that on
-    each schedule tick:
+(** [maintain ?branch ?base_version ~schedule ~url ~path ()] installs an OCurrent
+    job that on each schedule tick:
     - fetches [url] into [path/upstream/] (clones on first run, on [?branch]
       when given, else the default branch);
-    - reads upstream HEAD's SHA and the latest reachable tag;
+    - reads upstream HEAD's SHA and the latest reachable tag (skipped when
+      [?base_version] is given, which overrides the version base);
     - regenerates [path/repo/packages/<name>/<name>.<ver>/opam] for each tracked
-      package, with [version:] set to [<tag>+<branch>.<commit-epoch>.<sha7>] and
+      package, with [version:] set to [<base>+<branch>.<commit-epoch>.<sha7>] and
       [src:] pointing at the pinned commit;
     - commits the overlay if anything changed.
 
@@ -53,6 +65,7 @@ val maintain :
 
 val maintain_commit :
   ?branch:string ->
+  ?base_version:string ->
   schedule:Current_cache.Schedule.t ->
   url:string ->
   path:Fpath.t ->
