@@ -69,7 +69,7 @@ services:
       #                         latest version of each of the ~400 package
       #                         names in oxcaml/opam-repository; shares no
       #                         doc layers with the other profiles.
-      #   odoc-driver-series  = smoke test of jonludlam/odoc#driver-series
+      #   odoc-driver-series  = smoke test of jonludlam/odoc#driver-series-a
       #                         (the rewritten odoc_driver_voodoo): mainline
       #                         compiler, five packages, each covering one
       #                         risk — fmt (plain lib), logs (deps from an
@@ -86,9 +86,13 @@ services:
       # odoc and oxcaml's odoc.3.2.0+ox2. Both profiles layer it last.
       # Tracks master on the hourly schedule and re-plans when it moves.
       - --github-pin-overlay=https://github.com/ocaml/odoc=overlays/odoc-master
-      # odoc + odoc-driver from the driver-series branch of the jonludlam/odoc
-      # fork, for the odoc-driver-series profile only.
-      - --github-pin-overlay=https://github.com/jonludlam/odoc#driver-series=overlays/driver-series
+      # odoc + odoc-driver from the driver-series-a branch of the jonludlam/odoc
+      # fork, for the odoc-driver-series profile only. The branch's latest
+      # reachable tag is 3.2.1, but mainline odoc is 3.2.2 — a bare
+      # 3.2.1+driver-series would sort BELOW mainline and the solver would
+      # ignore the overlay, so the @3.2.2 base override publishes it as
+      # 3.2.2+driver-series, which beats mainline 3.2.2.
+      - --github-pin-overlay=https://github.com/jonludlam/odoc#driver-series-a@3.2.2=overlays/driver-series
       - --jobs=40
       - --cores-per-build=4
       - --overcommit=2.5
