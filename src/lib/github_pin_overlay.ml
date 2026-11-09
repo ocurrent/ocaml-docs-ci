@@ -77,20 +77,29 @@ module Op = struct
     let ( let** ) = Lwt_result.bind in
     if Sys.file_exists git_dir then
       let** _ = sh_log job "git -C %s fetch --prune --tags origin" p in
-      (* Same dance as Remote_opam_repo: explicit detached-HEAD guard
-         around [merge --ff-only @{u}], built via Printf because Fmt
-         eats [@{u}] as a semantic-tag. The clone below already put us
-         on the tracked [branch] (when set), so [@{u}] resolves to
-         [origin/<branch>] and the fetch+merge advances it. *)
+      (* The clone may already exist from an earlier run that tracked a
+         different [branch] (or left HEAD detached), so a [merge --ff-only
+         @{u}] would fast-forward the CURRENT branch's upstream and leave
+         HEAD stuck on the old commit — the overlay would keep pinning a
+         stale SHA forever. Instead we always force-checkout the ref being
+         pinned: [checkout -f -B] creates the local branch if absent and
+         resets it if present, discarding any working-tree drift, so HEAD
+         always ends up at the remote's tip for the ref we track. Built via
+         [Printf.sprintf] because Fmt eats [@{...}] as a semantic-tag. *)
       let cmd =
-        Printf.sprintf
-          "git -C %s symbolic-ref -q HEAD >/dev/null && git -C %s merge \
-           --ff-only '@{u}' || { echo \"WARNING: HEAD detached at $(git -C %s \
-           rev-parse --short HEAD); not auto-advancing.\" >&2; true; }"
-          p p p
+        match branch with
+        | Some b ->
+            Printf.sprintf "git -C %s checkout -f -B %s origin/%s" p
+              (Filename.quote b) (Filename.quote b)
+        | None ->
+            (* Default branch: reset to the remote's advertised default
+               HEAD, using the local branch name [origin/HEAD] names. *)
+            Printf.sprintf
+              "git -C %s checkout -f -B \"$(git -C %s rev-parse --abbrev-ref \
+               origin/HEAD | sed 's|^origin/||')\" origin/HEAD"
+              p p
       in
-      let** _ = sh_log job "%s" cmd in
-      Lwt.return (Ok ())
+      run_sh job "%s" cmd
     else
       match branch with
       | Some b ->
