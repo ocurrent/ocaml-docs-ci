@@ -18,6 +18,11 @@ let routes ~(ctx : Pages.ctx) =
       (Pages.recent_changes ~ctx:p name :> Resource.t) );
     ( (s "profiles" / str / s "snapshots" / str /? nil) @--> fun name key ->
       (Pages.snapshot_detail ~ctx:p name key :> Resource.t) );
+    ( (s "profiles" / str / s "snapshots.json" /? nil) @--> fun name ->
+      (Snapshot_data.snapshots ~ctx:p name :> Resource.t) );
+    ( (s "profiles" / str / s "snapshots" / str / s "final_status.json" /? nil)
+    @--> fun name key ->
+      (Snapshot_data.final_status ~ctx:p name key :> Resource.t) );
     ( (s "profiles" / str / s "snapshots" / str / s "diff" / str /? nil)
     @--> fun name key_old key_new ->
       (Pages.snapshot_diff ~ctx:p name key_old key_new :> Resource.t) );
