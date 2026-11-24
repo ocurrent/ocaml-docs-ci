@@ -171,3 +171,20 @@ Migrations will not run unless the --migration-path flag is present when invokin
 ### Epoch management
 Epochs are used in ocaml-docs-ci to organise sets of artifacts all produced by the same odoc/voodoo version.
 There is a cli tool for managing epochs described in [epoch.md](./src/cli/epoch.md).
+
+### Module index for ocaml.org
+
+After each completed run, the pipeline writes `doc-modules.jsonl.gz` at the root
+of the epoch's `html/` directory, so it is served next to the docs, at
+`/profiles/<profile>/docs/doc-modules.jsonl.gz` once the epoch is live.
+ocaml.org's package search uses it to find which package provides a module
+(`Lwt_io` → `lwt`).
+
+It is gzipped JSONL in ocaml.org's `ocamlorg-doc-modules` format, version 1: a
+header line, then one object per package, sorted by name,
+`{"name", "version", "modules"}`. For each package, it lists the module paths
+of the highest version whose `sidebar.json` has any, at most 3 deep and 500 per
+package (change these with the daemon's `--doc-modules-max-depth` and
+`--doc-modules-max-paths`; the next completed run re-exports). The same docs always give the same bytes, and the file is only
+rewritten when they change, so its ETag is stable. See
+`day11/doc/doc_modules.mli`.

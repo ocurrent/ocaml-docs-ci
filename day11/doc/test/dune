@@ -89,3 +89,8 @@
   eio_main
   fpath
   opam-format))
+
+(test
+ (name test_doc_modules)
+ (modules test_doc_modules)
+ (libraries day11_doc day11_test_util alcotest bos fpath unix yojson))
