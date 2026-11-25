@@ -66,27 +66,40 @@ module Op = struct
     in
     Current.Job.log job "Run %s complete" run_id;
     (* Reading a few thousand sidebars (some of them tens of megabytes) takes
-       a while: do it in a systhread, off the engine's event loop. *)
+       a while: do it in a systhread, off the engine's event loop. Each export
+       is timed, to see what it costs the daemon. *)
     let+ results =
       Lwt_eio.run_eio (fun () ->
           Eio_unix.run_in_systhread (fun () ->
               List.map
                 (fun dir ->
-                  ( dir,
+                  let t0 = Unix.gettimeofday () in
+                  let r =
                     Day11_doc.Doc_modules.write ~max_depth:key.max_depth
-                      ~max_paths:key.max_paths dir ))
+                      ~max_paths:key.max_paths dir
+                  in
+                  (dir, r, Unix.gettimeofday () -. t0))
                 (building :: live)))
     in
     List.fold_left
-      (fun acc (dir, r) ->
+      (fun acc (dir, r, elapsed) ->
         match r with
         | Ok (w, n) ->
-            Current.Job.log job "%a/%s: %d packages, %s" Fpath.pp dir
-              Day11_doc.Doc_modules.filename n
-              (match w with `Written -> "written" | `Unchanged -> "unchanged");
+            let w =
+              match w with `Written -> "written" | `Unchanged -> "unchanged"
+            in
+            Current.Job.log job "%a/%s: %d packages, %s in %.1fs" Fpath.pp dir
+              Day11_doc.Doc_modules.filename n w elapsed;
+            Log.info (fun f ->
+                f "%a/%s: %d packages, %s in %.1fs" Fpath.pp dir
+                  Day11_doc.Doc_modules.filename n w elapsed);
             acc
         | Error e ->
-            Current.Job.log job "%a: export failed: %s" Fpath.pp dir e;
+            Current.Job.log job "%a: export failed after %.1fs: %s" Fpath.pp dir
+              elapsed e;
+            Log.warn (fun f ->
+                f "%a: doc-modules export failed after %.1fs: %s" Fpath.pp dir
+                  elapsed e);
             Error (`Msg e))
       (Ok ()) results
 end
