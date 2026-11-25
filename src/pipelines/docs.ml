@@ -438,7 +438,8 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       ~input:ctx_current
       (Current.list_seq (List.map Current.catch all_nodes))
   in
-  let builds =
+  (* [Some run_id] once the run is complete, [None] before. *)
+  let completed_run =
     let+ results = collapsed_builds in
     (* Only act once the run has completed — i.e. every planned node has
        a result and no build/doc job is still pending. We require one
@@ -446,7 +447,7 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
        isn't fully resolved yet, so we write nothing (and, in particular,
        don't emit a partial [final_status.json] that the diff views would
        take as authoritative). This also guards the [List.map2] below. *)
-    if List.compare_lengths results all_dag_nodes <> 0 then ()
+    if List.compare_lengths results all_dag_nodes <> 0 then None
     else
       (* Derive [status.json] from the collapsed build results joined with
        the plan — NOT from history.jsonl. [results] is one entry per plan
@@ -598,8 +599,9 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
       (match Day11_lib.Run_timing.duration ~dir:snapshot_dir with
       | Some seconds -> Metrics.set_run_seconds ~profile:profile.name seconds
       | None -> ());
-      ()
+      Some (Day11_lib.Run_log.get_id run_log)
   in
+  let builds = Current.map ignore completed_run in
   (* Manual epoch promotion: a Dangerous OCurrent node per profile that,
      once confirmed in the web UI, swaps [html-live] to the freshly-built
      epoch. A sibling [Epoch_gc] node reclaims old epoch dirs as a
@@ -617,6 +619,14 @@ let v_for_profile ~config ~eio_env ~cache_dir:_ ?cpu_slots
           Epoch_promote.promote ~base_dir:plan.epoch_base
             ~epoch_hash:plan.epoch_hash;
           Epoch_gc.gc ~base_dir:plan.epoch_base ~epoch_hash:plan.epoch_hash;
+          (* The module paths of the epoch's docs, for ocaml.org's search,
+             regenerated after each completed run. *)
+          Current.option_iter
+            (Doc_modules_export.export
+               ~max_depth:(Config.doc_modules_max_depth config)
+               ~max_paths:(Config.doc_modules_max_paths config)
+               ~base_dir:plan.epoch_base ~epoch_hash:plan.epoch_hash)
+            completed_run;
         ]
 
 (* Fan out across profiles: each profile gets its own sub-pipeline
