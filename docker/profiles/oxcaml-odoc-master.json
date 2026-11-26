@@ -8,7 +8,7 @@
   ],
   "odoc_repo": null,
   "opam_build_repo": null,
-  "compiler": "ocaml-variants.5.2.0+ox",
+  "compiler": "ocaml-variants.5.4.0+ox",
   "target_mode": {
     "versions": {
       "latest": 1
@@ -433,10 +433,10 @@
   "arch": "x86_64",
   "os_distribution": "debian",
   "os_version": "trixie",
-  "driver_compiler": "ocaml-variants.5.2.0+ox",
+  "driver_compiler": "ocaml-variants.5.4.0+ox",
   "extra_pins": [],
   "pinned_versions": [
-    "oxcaml-compiler.5.2.0minus39"
+    "oxcaml-compiler.5.4.0-ox9"
   ],
   "patches_dir": null,
   "base_image_digest": null,

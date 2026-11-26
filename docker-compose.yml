@@ -64,8 +64,8 @@ services:
       #                         (Html_publish / Epoch_publish): pages for a
       #                         layer the other profile built must still
       #                         appear in this profile's epoch.
-      #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.2.0+ox,
-      #                         oxcaml-compiler pinned to 5.2.0minus39),
+      #   oxcaml-odoc-master  = oxcaml compiler (ocaml-variants.5.4.0+ox,
+      #                         oxcaml-compiler pinned to 5.4.0-ox9),
       #                         latest version of each of the ~400 package
       #                         names in oxcaml/opam-repository; shares no
       #                         doc layers with the other profiles.
