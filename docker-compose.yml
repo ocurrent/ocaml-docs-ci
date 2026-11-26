@@ -82,10 +82,13 @@ services:
       # Republish odoc/odoc-driver/odoc-md/odoc-parser/sherlodoc from
       # ocaml/odoc's default branch (master) as an opam overlay under
       # .day11/overlays/odoc-master/repo, versioned
-      # <latest-tag>+master.<epoch>.<sha7> so it outranks both mainline
-      # odoc and oxcaml's odoc.3.2.0+ox2. Both profiles layer it last.
-      # Tracks master on the hourly schedule and re-plans when it moves.
-      - --github-pin-overlay=https://github.com/ocaml/odoc=overlays/odoc-master
+      # 3.2.2+master.<epoch>.<sha7> so it outranks both mainline odoc
+      # 3.2.2 and oxcaml's odoc.3.2.0+ox2. Master's latest reachable tag
+      # is 3.2.1, and 3.2.1+master sorts below mainline 3.2.2, so without
+      # the @3.2.2 override the tools resolved to the 3.2.2 release.
+      # The profiles layer it last. Tracks master on the hourly schedule
+      # and re-plans when it moves.
+      - --github-pin-overlay=https://github.com/ocaml/odoc@3.2.2=overlays/odoc-master
       # odoc + odoc-driver from the driver-series-a branch of the jonludlam/odoc
       # fork, for the odoc-driver-series profile only. The branch's latest
       # reachable tag is 3.2.1, but mainline odoc is 3.2.2 — a bare
